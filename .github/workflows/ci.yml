@@ -1,0 +1,29 @@
+# CI: Build and test on every push and PR to main.
+# Requirements: none (no secrets needed).
+
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore OrgCli.slnx
+
+      - name: Build
+        run: dotnet build OrgCli.slnx --no-restore --warnaserror
+
+      - name: Test
+        run: dotnet test OrgCli.slnx --no-build

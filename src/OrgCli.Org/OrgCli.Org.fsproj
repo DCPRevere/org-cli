@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Utils.fs" />
+    <Compile Include="Config.fs" />
+    <Compile Include="FileConfig.fs" />
+    <Compile Include="Parsers.fs" />
+    <Compile Include="Document.fs" />
+    <Compile Include="Writer.fs" />
+    <Compile Include="Subtree.fs" />
+    <Compile Include="Headlines.fs" />
+    <Compile Include="Search.fs" />
+    <Compile Include="Clock.fs" />
+    <Compile Include="Links.fs" />
+    <Compile Include="HeadlineEdit.fs" />
+    <Compile Include="JsonOutput.fs" />
+    <Compile Include="Mutations.fs" />
+    <Compile Include="BatchMode.fs" />
+    <Compile Include="Agenda.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FParsec" Version="1.1.1" />
+  </ItemGroup>
+
+</Project>

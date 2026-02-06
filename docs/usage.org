@@ -1,0 +1,535 @@
+#+title: org CLI reference
+
+* Overview
+
+=org= is a CLI tool for querying and mutating org-mode files and managing an org-roam database. All commands output text by default; pass =--format json= (or =-f json=) for structured output wrapped in ={"ok":true,"data":...}= envelopes.
+
+The binary name is =org=. All examples below assume it is on your PATH.
+
+* Global options
+
+| Option                          | Short | Effect                                            |
+|---------------------------------+-------+---------------------------------------------------|
+| =--directory <path>=            | =-d=  | Base directory for file discovery (default: CWD)  |
+| =--files <path>=                |       | Explicit file(s); repeatable                      |
+| =--format <fmt>=                | =-f=  | =text= (default) or =json=                        |
+| =--config <path>=               |       | Config file path (see Configuration)              |
+| =--log-done <action>=           |       | Override log-done: =none=, =time=, or =note=      |
+| =--deadline-warning-days <n>=   |       | Override deadline warning days                    |
+| =--dry-run=                     |       | Preview mutation without writing to file           |
+| =--quiet=                       | =-q=  | Suppress informational text output                 |
+| =--version=                     |       | Print version and exit                             |
+| =--help=                        | =-h=  | Print help text (global or per-command)             |
+
+When no =--files= are given, the tool recursively finds all =.org= files under =--directory=.
+
+Every subcommand supports =--help= for its own usage.
+
+* Configuration
+
+Configuration is resolved in the following order (later overrides earlier):
+
+1. Built-in defaults
+2. XDG config file: =$XDG_CONFIG_HOME/org-cli/config.json= (typically =~/.config/org-cli/config.json=)
+3. Environment variables
+4. CLI flags (=--config=, =--log-done=, =--deadline-warning-days=)
+5. Per-file in-buffer settings (=#+TODO:=, =#+STARTUP:=, =#+PRIORITIES:=, =#+ARCHIVE:=)
+
+** Config file format
+
+The config file is JSON. All keys are optional; unset keys fall back to defaults.
+
+#+begin_src json
+{
+  "todoKeywords": {
+    "activeStates": [
+      {"keyword": "TODO"},
+      {"keyword": "NEXT", "logOnEnter": "note"}
+    ],
+    "doneStates": [
+      {"keyword": "DONE", "logOnLeave": "time"}
+    ]
+  },
+  "priorities": {"highest": "A", "lowest": "C", "default": "B"},
+  "logDone": "time",
+  "logRepeat": "time",
+  "logReschedule": "none",
+  "logRedeadline": "none",
+  "logRefile": "none",
+  "logIntoDrawer": "LOGBOOK",
+  "tagInheritance": true,
+  "deadlineWarningDays": 14,
+  "archiveLocation": null
+}
+#+end_src
+
+** Environment variables
+
+| Variable                         | Effect                              |
+|----------------------------------+-------------------------------------|
+| =ORG_CLI_LOG_DONE=               | =none=, =time=, or =note=           |
+| =ORG_CLI_LOG_INTO_DRAWER=        | Drawer name, or empty to disable    |
+| =ORG_CLI_DEADLINE_WARNING_DAYS=  | Integer                              |
+| =ORG_CLI_TAG_INHERITANCE=        | =true= / =false=                     |
+
+** Per-file settings
+
+In-buffer settings are standard org-mode keywords at the top of a file.
+
+=#+TODO:= defines TODO keyword sequences with optional per-keyword logging:
+
+#+begin_example
+#+TODO: TODO(t) NEXT(n@/!) | DONE(d!) CANCELLED(c@)
+#+end_example
+
+Inside the parentheses: an optional single-letter fast-select key, then =@= (log note) or =!= (log time). Before the =/= is enter action, after is leave action.
+
+=#+STARTUP:= sets logging behavior:
+
+#+begin_example
+#+STARTUP: logdone logrepeat nologreschedule
+#+end_example
+
+Recognized words: =logdone=, =lognotedone=, =nologdone=, =logrepeat=, =lognoterepeat=, =nologrepeat=, =logreschedule=, =lognotereschedule=, =nologreschedule=, =logredeadline=, =lognoteredeadline=, =nologredeadline=, =logrefile=, =lognoterefile=, =nologrefile=.
+
+=#+PRIORITIES:= sets the priority range:
+
+#+begin_example
+#+PRIORITIES: A E B
+#+end_example
+
+(Highest, lowest, default.)
+
+** Defaults
+
+| Setting              | Default value             |
+|----------------------+---------------------------|
+| LogDone              | =time=                     |
+| LogRepeat            | =time=                     |
+| LogReschedule        | =none=                     |
+| LogRedeadline        | =none=                     |
+| LogRefile            | =none=                     |
+| LogIntoDrawer        | =LOGBOOK=                  |
+| TagInheritance       | =true=                     |
+| PropertyInheritance  | =false=                    |
+| DeadlineWarningDays  | =14=                       |
+| Priorities           | A (highest), C (lowest), B (default) |
+
+* Headline identification
+
+Wherever =<headline>= appears in the commands below, you can pass:
+
+- An integer character position (as shown in =headlines= output).
+- An org-id (the value of an =:ID:= property on a headline).
+- An exact headline title string (matched against parsed headlines in the file).
+
+Resolution is attempted in that order: number, then UUID-shaped org-id, then title match.
+
+* Org commands
+
+** List headlines
+
+#+begin_example
+org headlines [-d dir] [--todo STATE] [--tag TAG] [--level N] [--property K=V]
+#+end_example
+
+Lists all headlines across org files. Filters are combinable. Output includes position, level stars, title, tags, outline path, and filename.
+
+Tag filtering respects tag inheritance when =tagInheritance= is enabled in config.
+
+** Create a headline
+
+#+begin_example
+org add <file> <title> [options]
+#+end_example
+
+Appends a new level-1 headline to the file. Creates the file if it doesn't exist.
+
+Options:
+- =--todo STATE= -- set TODO keyword
+- =--priority P= -- set priority (A-Z)
+- =--tag TAG= -- add tag (repeatable)
+- =--scheduled yyyy-MM-dd= -- add SCHEDULED timestamp
+- =--deadline yyyy-MM-dd= -- add DEADLINE timestamp
+- =--under <headline>= -- insert as a child of the given headline instead of appending at level 1
+
+#+begin_example
+org add tasks.org "Buy groceries" --todo TODO --tag errands --scheduled 2026-02-10
+org add project.org "Subtask" --todo TODO --under "Main task"
+#+end_example
+
+** Set TODO state
+
+#+begin_example
+org todo <file> <headline> <state>
+org todo <file> <headline> ""
+#+end_example
+
+Sets the TODO keyword. Pass an empty string to remove the keyword entirely.
+
+Behavioral details:
+- Setting to a done state adds a =CLOSED:= timestamp.
+- Setting away from a done state removes =CLOSED:=.
+- If the headline has a repeating timestamp (=+1w=, =.+1d=, =++1m=) on SCHEDULED or DEADLINE, marking DONE shifts the repeating timestamp forward, keeps the headline at its original TODO state (or =REPEAT_TO_STATE= property if set), sets a =LAST_REPEAT= property, and adds a logbook entry.
+- State changes are logged according to the config (per-keyword logging, =LogDone=, or the headline's =LOGGING= property). A headline with =:LOGGING: nil= suppresses all logging.
+
+** Set priority
+
+#+begin_example
+org priority <file> <headline> A
+org priority <file> <headline> ""
+#+end_example
+
+Sets or clears the priority cookie (=[#A]=, =[#B]=, etc.). Pass an empty string to remove.
+
+** Add / remove tags
+
+#+begin_example
+org tag add <file> <headline> <tag>
+org tag remove <file> <headline> <tag>
+#+end_example
+
+Adds or removes a tag on the headline line. Adding an existing tag is a no-op. Removing the last tag cleans up the colon markers.
+
+If the file defines mutually exclusive tag groups via =#+TAGS:=, adding a tag from such a group automatically removes conflicting tags from the same group.
+
+*** Tag definitions and mutual exclusion
+
+A file can declare tag groups:
+
+#+begin_example
+#+TAGS: { @work(w) @home(h) @travel(t) }
+#+TAGS: project(p) urgent(u)
+#+end_example
+
+Tags in ={ }= braces are mutually exclusive: setting =@work= on a headline removes =@home= and =@travel=. Tags outside braces are independent. The optional single character in parentheses is a fast-select key (not used by the CLI, but preserved for Emacs compatibility).
+
+** Set / remove properties
+
+#+begin_example
+org property set <file> <headline> <key> <value>
+org property remove <file> <headline> <key>
+#+end_example
+
+Sets a property in the headline's =:PROPERTIES:= drawer, creating the drawer if it doesn't exist. Removing the last property removes the drawer entirely.
+
+#+begin_example
+org property set tasks.org "My task" EFFORT "1:00"
+org property remove tasks.org "My task" EFFORT
+#+end_example
+
+** Set SCHEDULED
+
+#+begin_example
+org schedule <file> <headline> 2026-03-15
+org schedule <file> <headline> ""
+#+end_example
+
+Sets or removes the =SCHEDULED:= timestamp. Date format is =yyyy-MM-dd=. Preserves other planning keywords.
+
+If the previous SCHEDULED had a timestamp and =LogReschedule= is enabled, a log entry of the form =Rescheduled from "SCHEDULED: <old>"= is added.
+
+Timestamp ranges (=<start>--<end>=) are supported and preserved.
+
+** Set DEADLINE
+
+#+begin_example
+org deadline <file> <headline> 2026-03-15
+org deadline <file> <headline> ""
+#+end_example
+
+Same as schedule but for =DEADLINE:=. Logging uses =LogRedeadline=.
+
+** Clock in / out
+
+#+begin_example
+org clock in <file> <headline>
+org clock out <file> <headline>
+#+end_example
+
+=clock in= inserts an open =CLOCK:= entry into the headline's =:LOGBOOK:= drawer (created if missing). =clock out= finds the most recent open clock entry and closes it with the current time and a duration.
+
+** Clock report
+
+#+begin_example
+org clock [-d dir]
+org clock report [-d dir]
+#+end_example
+
+Reads =CLOCK:= entries from all files and reports per-headline totals and a grand total.
+
+** Add a note
+
+#+begin_example
+org note <file> <headline> <text>
+#+end_example
+
+Inserts a timestamped note into the headline's =:LOGBOOK:= drawer:
+
+: - Note taken on [2026-02-05 Thu 14:30] \\
+:   <text>
+
+** Refile
+
+#+begin_example
+org refile <src-file> <src-headline> <tgt-file> [<tgt-headline>]
+#+end_example
+
+Moves a subtree (including children) from source to target. The subtree becomes a child of the target headline, with levels adjusted. Works within the same file or across files. If no target headline is given, appends under the last headline in the target file.
+
+If =LogRefile= is enabled, a log entry of the form =Refiled on [timestamp]= is added.
+
+** Archive
+
+#+begin_example
+org archive <file> <headline>
+#+end_example
+
+Moves the subtree to =<file>_archive=. The archived subtree is adjusted to level 1 and stamped with properties: =ARCHIVE_TIME=, =ARCHIVE_FILE=, =ARCHIVE_OLPATH=, =ARCHIVE_CATEGORY=, and =ARCHIVE_TODO=.
+
+** Read a subtree
+
+#+begin_example
+org read <file> <headline>
+#+end_example
+
+Prints the full subtree content including children.
+
+** Search content
+
+#+begin_example
+org search <regex-pattern> [-d dir]
+#+end_example
+
+Regex search across org files. Results include file, line number, containing headline, and the matching line.
+
+** Link resolution
+
+#+begin_example
+org links <file> [-d dir]
+#+end_example
+
+Finds all =[[...]]= links in the given file and resolves them against the document set. Resolution strategies by link type:
+
+- =id:UUID= -- scans all files for a headline with matching =:ID:= property.
+- =file:path= -- resolves path relative to the source file's directory. Supports search options: =::*Heading=, =::#custom-id=, =::text=.
+- Fuzzy (no type prefix) -- =*Heading= searches current file by title, =#custom-id= searches by CUSTOM_ID property, plain text searches current file then all files.
+- =http:=, =https:= -- returned as-is, no resolution attempted.
+
+Link abbreviations defined via =#+LINK:= keywords in the file are expanded automatically:
+
+#+begin_example
+#+LINK: bug https://bugs.example.com/%s
+#+end_example
+
+A link =[[bug:123]]= resolves to =https://bugs.example.com/123=.
+
+** Export
+
+#+begin_example
+org export <file> --to <format>
+#+end_example
+
+Delegates to =pandoc= (must be installed). Converts org to the specified pandoc output format (markdown, html, latex, etc.).
+
+* Agenda commands
+
+** Today
+
+#+begin_example
+org agenda
+org agenda today
+#+end_example
+
+Shows scheduled items, deadlines, and overdue items for today. Overdue items are listed separately.
+
+** Week
+
+#+begin_example
+org agenda week
+#+end_example
+
+Same as today but covers the next 7 days, grouped by date.
+
+** TODO list
+
+#+begin_example
+org agenda todo [--state STATE] [--tag TAG]
+#+end_example
+
+Lists all headlines with a TODO keyword. Optionally filtered by specific state or tag.
+
+All agenda subcommands accept =--tag TAG= to filter results.
+
+* Roam commands
+
+All roam commands require a database. The database path defaults to =<directory>/.org-roam.db= but can be set with =--db <path>=.
+
+** Sync
+
+#+begin_example
+org roam sync [--force]
+#+end_example
+
+Scans org files and updates the roam database. Without =--force=, only processes files modified since last sync.
+
+** Node operations
+
+#+begin_example
+org roam node list
+org roam node get <node-id>
+org roam node find <title-or-alias>
+org roam node read <node-id>
+org roam node create <title> [-t tag] [-a alias] [-r ref] [--parent <file>]
+#+end_example
+
+- =list= -- all nodes in the database.
+- =get= -- single node by ID.
+- =find= -- lookup by title or alias.
+- =read= -- print the file content of a node.
+- =create= -- create a new file-level node (or headline node under =--parent=). Tags, aliases, and refs are repeatable flags.
+
+** Backlinks
+
+#+begin_example
+org roam backlinks <node-id>
+#+end_example
+
+Lists all nodes that link to the given node.
+
+** Tags
+
+#+begin_example
+org roam tag list
+org roam tag find <tag>
+#+end_example
+
+** Links
+
+#+begin_example
+org roam link add <src-file> <src-node-id> <tgt-node-id> [--description <desc>]
+#+end_example
+
+Adds an org-roam link between two nodes. Triggers a sync afterward.
+
+** Aliases and refs
+
+#+begin_example
+org roam alias add <file> <node-id> <alias>
+org roam alias remove <file> <node-id> <alias>
+org roam ref add <file> <node-id> <ref>
+org roam ref remove <file> <node-id> <ref>
+#+end_example
+
+Modifies the =ROAM_ALIASES= or =ROAM_REFS= property on the node, then syncs the database.
+
+* Utility commands
+
+** Schema
+
+#+begin_example
+org schema
+#+end_example
+
+Prints the full command schema as JSON. Useful for tool discovery by AI agents or script generators.
+
+** Shell completions
+
+#+begin_example
+org completions bash
+org completions zsh
+org completions fish
+#+end_example
+
+Generates shell completion scripts. Pipe into the appropriate file for your shell, e.g.:
+
+#+begin_example
+org completions bash >> ~/.bash_completion
+org completions zsh > ~/.zfunc/_org
+org completions fish > ~/.config/fish/completions/org.fish
+#+end_example
+
+** Batch mode
+
+#+begin_example
+echo '{"commands":[...]}' | org batch [-d dir] [--dry-run]
+#+end_example
+
+Reads a JSON object from stdin containing a =commands= array. Each command is applied sequentially against in-memory file contents. Files are written only after all commands succeed (unless =--dry-run=).
+
+Each command object has:
+
+| Field        | Required | Description                              |
+|--------------+----------+------------------------------------------|
+| =command=    | yes      | Command name (see below)                 |
+| =file=       | yes      | Target file path                         |
+| =identifier= | varies  | Headline identifier                       |
+| =args=       | varies   | Object with command-specific arguments   |
+
+Supported batch commands and their args:
+
+| Command          | Args                        |
+|------------------+-----------------------------|
+| =todo=           | =state=                      |
+| =tag-add=        | =tag=                        |
+| =tag-remove=     | =tag=                        |
+| =priority=       | =priority=                   |
+| =schedule=       | =date=                       |
+| =deadline=       | =date=                       |
+| =property-set=   | =key=, =value=               |
+| =property-remove= | =key=                       |
+| =note=           | =text=                       |
+| =clock-in=       | (none)                       |
+| =clock-out=      | (none)                       |
+
+Example:
+
+#+begin_src json
+{
+  "commands": [
+    {"command": "todo", "file": "tasks.org", "identifier": "Buy groceries", "args": {"state": "DONE"}},
+    {"command": "tag-add", "file": "tasks.org", "identifier": "Project plan", "args": {"tag": "urgent"}},
+    {"command": "schedule", "file": "tasks.org", "identifier": "42", "args": {"date": "2026-03-01"}}
+  ]
+}
+#+end_src
+
+Output is always JSON: an ok envelope containing an array of per-command results.
+
+* JSON output
+
+Pass =-f json= to any command. Mutation commands return the headline state after the change:
+
+#+begin_src json
+{"ok":true,"data":{"pos":42,"id":"abc-123","title":"My task","todo":"DONE","priority":"A","tags":["work"],"scheduled":null,"deadline":null,"closed":"[2026-02-06 Fri 10:00]"}}
+#+end_src
+
+With =--dry-run=, a =dry_run:true= field is added.
+
+Errors return:
+
+#+begin_src json
+{"ok":false,"error":{"type":"headline_not_found","message":"...","detail":null}}
+#+end_src
+
+Error types: =headline_not_found=, =file_not_found=, =parse_error=, =invalid_args=, =internal_error=.
+
+* Virtual and special properties
+
+When querying properties via =--property= filters, some virtual properties are computed rather than read from the drawer:
+
+| Property    | Value                                    |
+|-------------+------------------------------------------|
+| =ITEM=      | Headline title                            |
+| =TODO=      | Current TODO keyword                      |
+| =PRIORITY=  | Priority letter                           |
+| =LEVEL=     | Headline level (depth)                    |
+| =TAGS=      | Local tags                                |
+| =ALLTAGS=   | All tags including inherited              |
+| =FILE=      | Source file path                           |
+| =CATEGORY=  | Category (from property, file, or filename) |
+| =SCHEDULED= | SCHEDULED timestamp string                |
+| =DEADLINE=  | DEADLINE timestamp string                 |
+| =CLOSED=    | CLOSED timestamp string                   |
+
+Property resolution order for regular properties: own drawer, ancestor drawers (for always-inherited properties: CATEGORY, ARCHIVE, COLUMNS, LOGGING), file-level =#+PROPERTY:= keywords, =#+CATEGORY:= keyword.

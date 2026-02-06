@@ -1,0 +1,80 @@
+# Release: triggered on version tag push (v*).
+# Builds, tests, packs the dotnet tool, publishes self-contained binaries,
+# creates a GitHub release, and optionally pushes to nuget.org.
+#
+# Secrets required:
+#   NUGET_API_KEY  — API key from nuget.org (https://www.nuget.org/account/apikeys).
+#                    Create a key scoped to the "OrgCli" package with Push permission.
+#                    Add it as a repository secret under Settings > Secrets > Actions.
+#                    If the secret is absent, the nuget push step is skipped.
+#
+# Self-contained publish targets:
+#   dotnet publish -c Release -r linux-x64   --self-contained -p:PublishSingleFile=true
+#   dotnet publish -c Release -r osx-arm64   --self-contained -p:PublishSingleFile=true
+#   dotnet publish -c Release -r win-x64     --self-contained -p:PublishSingleFile=true
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore OrgCli.slnx
+
+      - name: Build
+        run: dotnet build OrgCli.slnx --no-restore --warnaserror
+
+      - name: Test
+        run: dotnet test OrgCli.slnx --no-build
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Pack dotnet tool
+        run: dotnet pack src/OrgCli/OrgCli.fsproj -c Release -p:Version=${{ steps.version.outputs.version }} -o artifacts/nupkg
+
+      - name: Publish linux-x64
+        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/linux-x64
+
+      - name: Publish osx-arm64
+        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/osx-arm64
+
+      - name: Publish win-x64
+        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/win-x64
+
+      - name: Package binaries
+        run: |
+          cd artifacts
+          tar czf org-linux-x64.tar.gz -C linux-x64 org
+          tar czf org-osx-arm64.tar.gz -C osx-arm64 org
+          zip -j org-win-x64.zip win-x64/org.exe
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/org-linux-x64.tar.gz
+            artifacts/org-osx-arm64.tar.gz
+            artifacts/org-win-x64.zip
+            artifacts/nupkg/*.nupkg
+
+      - name: Push to nuget.org
+        if: env.NUGET_API_KEY != ''
+        run: dotnet nuget push artifacts/nupkg/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}

@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="OrgParserTests.fs" />
+    <Compile Include="DatabaseTests.fs" />
+    <Compile Include="IntegrationTests.fs" />
+    <Compile Include="EdgeCaseTests.fs" />
+    <Compile Include="SchemaCompatibilityTests.fs" />
+    <Compile Include="PerformanceTests.fs" />
+    <Compile Include="EmacsInteropTests.fs" />
+    <Compile Include="AgendaTests.fs" />
+    <Compile Include="SubtreeTests.fs" />
+    <Compile Include="HeadlineQueryTests.fs" />
+    <Compile Include="MutationTests.fs" />
+    <Compile Include="SearchTests.fs" />
+    <Compile Include="ClockTests.fs" />
+    <Compile Include="LinkTests.fs" />
+    <Compile Include="JsonOutputTests.fs" />
+    <Compile Include="SchemaTests.fs" />
+    <Compile Include="BatchTests.fs" />
+    <Compile Include="FileConfigTests.fs" />
+    <Compile Include="ConfigTests.fs" />
+    <Compile Include="CorrectnessTests.fs" />
+    <Compile Include="RoundTripTests.fs" />
+    <Compile Include="ErrorPathTests.fs" />
+    <Compile Include="Tests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\OrgCli.Org\OrgCli.Org.fsproj" />
+    <ProjectReference Include="..\..\src\OrgCli.Roam\OrgCli.Roam.fsproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,137 @@
+#+title: org
+#+options: toc:nil num:nil
+
+A CLI for querying and mutating org-mode files and managing org-roam databases, built for scripts and AI agents.
+
+* Why this exists
+
+Grep can find text in org files but cannot understand their structure. This tool parses org-mode syntax -- headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links -- and exposes that structure through a command-line interface.
+
+The primary consumers are AI agents and automation scripts that need to query and modify an org-mode corpus without running Emacs.
+
+* Installation
+
+Requires [[https://dotnet.microsoft.com/download][.NET 9.0 SDK]].
+
+#+begin_src shell
+# Install as a global .NET tool
+dotnet tool install --global OrgCli
+
+# Or build from source
+git clone <repo-url>
+cd org-roam-cli
+dotnet build OrgCli.slnx
+#+end_src
+
+The tool installs as =org= on your PATH.
+
+* Quick start
+
+#+begin_src shell
+# List all headlines across org files in the current directory
+org headlines
+
+# Filter by TODO state and tag
+org headlines --todo TODO --tag work
+
+# View today's agenda
+org agenda today -d ~/org
+
+# Set a headline to DONE (by title)
+org todo tasks.org "Buy groceries" DONE
+
+# Set a headline to DONE (by position number)
+org todo tasks.org 42 DONE
+
+# Add a new headline
+org add tasks.org "New task" --todo TODO --tag project --scheduled 2026-03-01
+
+# Search across files
+org search "meeting.*notes" -d ~/org
+
+# JSON output for scripting
+org headlines --todo TODO -f json
+
+# Sync and query an org-roam database
+org roam sync -d ~/org
+org roam node list -d ~/org
+org roam backlinks <node-id> -d ~/org
+#+end_src
+
+* What it does
+
+** Org file operations
+
+- *Headlines* -- list, filter by TODO state / tag / level / property, with tag and property inheritance
+- *Mutations* -- set TODO state, priority, tags, properties, SCHEDULED, DEADLINE; respects repeaters, per-keyword logging, LOGBOOK drawers
+- *Clock* -- clock in/out, clock reports with per-headline and grand totals
+- *Refile* -- move subtrees within or across files, with level adjustment
+- *Archive* -- move subtrees to =.org_archive= with metadata stamps
+- *Search* -- regex search with context (containing headline, file, line number)
+- *Links* -- resolve =id:=, =file:=, fuzzy, and abbreviated links across the document set
+- *Export* -- convert via pandoc to any supported format
+- *Batch mode* -- execute multiple mutations atomically from JSON on stdin
+
+** Agenda
+
+Queries org files directly (no database needed).
+
+- Today/week views with overdue detection
+- TODO list with state and tag filtering
+- Timestamp range support (=<start>--<end>=)
+
+** Org-roam
+
+Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema version 20).
+
+- Sync files to database (incremental or forced)
+- Node CRUD (file-level and headline-level nodes)
+- Backlinks, tags, aliases, refs
+- Link management
+
+** For AI agents
+
+- =org schema= outputs a machine-readable JSON description of all commands and their arguments
+- =org batch= accepts a JSON command array on stdin for atomic multi-step operations
+- =-f json= on all commands for structured output with ={"ok":true,"data":...}= envelopes
+- =--dry-run= previews mutations without writing
+- =org completions bash|zsh|fish= for shell integration
+
+* Configuration
+
+Configuration is resolved in order (later overrides earlier):
+
+1. Built-in defaults
+2. XDG config file (=$XDG_CONFIG_HOME/org-cli/config.json=)
+3. Environment variables (=ORG_CLI_LOG_DONE=, =ORG_CLI_DEADLINE_WARNING_DAYS=, etc.)
+4. CLI flags (=--config=, =--log-done=, =--deadline-warning-days=)
+5. Per-file in-buffer settings (=#+TODO:=, =#+STARTUP:=, =#+PRIORITIES:=)
+
+See [[file:docs/usage.org][docs/usage.org]] for the complete configuration reference.
+
+* Project structure
+
+#+begin_example
+src/OrgCli.Org/   Parser library. Types, parsers, writer, mutations, agenda, config, batch mode.
+src/OrgCli.Roam/  Roam DB layer. Database, sync, node operations.
+src/OrgCli/       CLI entry point.
+tests/OrgCli.Tests/
+#+end_example
+
+* Building and testing
+
+#+begin_src shell
+dotnet build OrgCli.slnx
+dotnet test OrgCli.slnx
+#+end_src
+
+* Non-goals
+
+- Interactive or TUI features. This is a tool for scripts, not humans at a terminal.
+- Tables, spreadsheets, babel/code block evaluation.
+- Capture templates. Appending to a file is trivial; no tool needed.
+- File watching. Sync is explicit.
+
+* License
+
+MIT

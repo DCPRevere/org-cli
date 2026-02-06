@@ -1,0 +1,357 @@
+#+TITLE: Code Review Tasks
+#+TODO: TODO NEXT | DONE WONTFIX
+
+* Correctness
+** DONE findNodePosition returns 0 for missing nodes
+:PROPERTIES:
+:PRIORITY: A
+:FILE:     src/OrgCli.Roam/NodeOperations.fs
+:LINES:    148-155
+:END:
+
+~findNodePosition~ returns 0 for both file-level nodes and nodes that
+don't exist. Every caller (~addAlias~, ~removeAlias~, ~addRef~,
+~removeRef~) will silently modify properties at position 0 (file
+preamble) when the node isn't found. Should return ~option~ or
+~Result~.
+
+** DONE HeadlineEdit.getProperty uses case-insensitive matching
+:PROPERTIES:
+:PRIORITY: A
+:FILE:     src/OrgCli.Org/HeadlineEdit.fs
+:LINES:    202-206
+:END:
+
+Uses ~RegexOptions.IgnoreCase~ but org-mode properties are
+case-sensitive. ~:id:~ should not match ~:ID:~.
+
+** DONE HeadlineEdit.setProperty substring collision
+:PROPERTIES:
+:PRIORITY: A
+:FILE:     src/OrgCli.Org/HeadlineEdit.fs
+:LINES:    208-217
+:END:
+
+Regex for property key matches substrings. ~:ID:~ pattern matches
+inside ~:ROAM_ID:~, causing wrong replacement. Need word-boundary or
+exact-line match.
+
+** DONE Writer property functions use naive IndexOf
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Writer.fs
+:LINES:    202-283
+:END:
+
+~addProperty~, ~addToMultiValueProperty~, ~removeFromMultiValueProperty~
+search for ~:PROPERTIES:~ with ~IndexOf~ starting at ~nodePosition~. If
+body text or a source block contains ~:PROPERTIES:~ before the actual
+drawer, the wrong region is modified.
+
+** DONE Database.fs uses unsafe type casts
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Roam/Database.fs
+:LINES:    107-110
+:END:
+
+~o :?> string~ and ~o :?> int64~ throw ~InvalidCastException~ if the DB
+returns a different type. Should use safe casting or type conversion.
+
+** DONE Writer.formatTimestamp day name is locale-dependent
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Writer.fs
+:LINES:    29
+:END:
+
+~ts.Date.ToString("ddd")~ produces locale-dependent day names.
+Non-English systems produce wrong output. Should force
+~CultureInfo.InvariantCulture~.
+
+** DONE Agenda.expandTimestamp has no upper bound
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Agenda.fs
+:LINES:    22-30
+:END:
+
+A year-long range creates 365 items, a decade-long range 3650. No
+guard against accidental or malformed ranges. Add a cap or warning.
+
+** DONE NodeOperations.addLink appends at EOF
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Roam/NodeOperations.fs
+:LINES:    112-144
+:END:
+
+Ignores node position entirely and appends link at end of file. Broken
+for headline nodes — link lands outside the target subtree.
+
+** DONE NodeOperations.addTag crashes for headline nodes
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Roam/NodeOperations.fs
+:LINES:    225
+:END:
+
+~failwith "Adding tags to headline nodes is not yet implemented"~.
+Runtime crash instead of graceful error.
+
+** DONE NodeOperations.deleteNode doesn't delete headlines
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Roam/NodeOperations.fs
+:LINES:    261-275
+:END:
+
+For headline nodes, sets ~ROAM_EXCLUDE~ property instead of removing
+the subtree. The function name is misleading.
+
+** DONE Config.loadFromJson doesn't validate values
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Org/Config.fs
+:LINES:    51, 96
+:END:
+
+Line 51: reads ~v.GetString().[0]~ without checking string length —
+crashes on empty string (already handled with IsNullOrEmpty check).
+Line 96: accepts negative ~deadlineWarningDays~. Fixed: clamp to
+~max 0~.
+
+** DONE Sync.fs swallows file processing errors
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Roam/Sync.fs
+:LINES:    220-223
+:END:
+
+~try/catch~ around ~updateFile~ logs to stderr and continues. Caller
+gets no indication of partial failure. ~sync~ should return a list of
+failed files.
+
+** DONE HeadlineEdit.setProperty and removeProperty use case-insensitive matching
+:PROPERTIES:
+:PRIORITY: A
+:FILE:     src/OrgCli.Org/HeadlineEdit.fs
+:LINES:    208-225
+:END:
+
+~setProperty~ at line 211 and ~removeProperty~ at line 223 both pass
+~RegexOptions.IgnoreCase~. Same bug as ~getProperty~. Setting ~:ID:~
+could match ~:id:~ or vice versa, producing wrong property replacements.
+
+** DONE Clock.collectClockEntriesFromDocs double-counts nested headlines
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Clock.fs
+:LINES:    14-33
+:END:
+
+Uses ~Subtree.getSubtreeRange~ which includes child headlines. A
+parent headline's clock range includes children, so a CLOCK line in a
+child is counted both for the child and the parent.
+
+** DONE listOrgFiles misses .org.gpg and .org.age files
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Utils.fs
+:LINES:    88
+:END:
+
+~EnumerateFiles("*.org")~ only finds ~.org~ files. ~isOrgFile~ at
+line 82 accepts ~.org.gpg~ and ~.org.age~ but ~listOrgFiles~ never
+returns them.
+
+** DONE splitQuotedString doesn't handle escaped quotes
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Org/Types.fs
+:LINES:    176-199
+:END:
+
+~splitQuotedString~ treats every ~"~ as a quote delimiter. A value
+containing ~\"~ (backslash-escaped quote) will break parsing. Org-mode
+property values can contain escaped quotes.
+
+** DONE File-level node position inconsistent between Sync and NodeOperations
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Roam/Sync.fs
+:LINES:    78
+:END:
+
+~Sync.updateFile~ sets ~Pos = 1~ for file-level nodes (line 78).
+~NodeOperations.findNodePosition~ returns ~0~ for file-level nodes
+(line 150). Any caller combining the two will use the wrong offset.
+
+** DONE clockOut can produce negative duration
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Org/Mutations.fs
+:LINES:    379-382
+:END:
+
+If the clock-out timestamp is earlier than the clock-in timestamp
+(e.g., user error or timezone shift), ~now - startTs.Date~ produces a
+negative ~TimeSpan~. The formatted string shows negative hours/minutes
+which is invalid in org-mode.
+
+** DONE Links.findHeadlineContaining uses substring match
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Org/Links.fs
+:LINES:    31
+:END:
+
+~h.Title.Contains(text)~ matches substrings. Searching for "Test"
+matches "Testing framework". This is intentional fuzzy search behavior
+matching org-mode's ~::search~ link resolution semantics. Documented
+in Links.fs.
+
+* Architecture
+** TODO Unify timestamp/headline parsing
+:PROPERTIES:
+:PRIORITY: A
+:END:
+
+Headline syntax is parsed three different ways:
+- FParsec combinators in ~Parsers.fs~
+- Regex in ~Document.fs~ (~buildHeadlineRegex~)
+- Line-by-line string splitting in ~HeadlineEdit.fs~
+
+A timestamp parsed by FParsec may not round-trip through the
+regex-extracted planning line in HeadlineEdit. Changes to headline
+syntax require updates in three places with no compiler help.
+
+Should converge on a single parsing strategy, likely FParsec for
+grammar and a thin regex layer for section splitting only.
+
+** DONE Define position type with invariants
+:PROPERTIES:
+:PRIORITY: B
+:END:
+
+~int64~ positions are character offsets but semantics vary by call
+site. ~HeadlineEdit.split~ expects exact headline start.
+~Headlines.resolveHeadlinePos~ does fuzzy lookup.
+~NodeOperations.findNodePosition~ returns 0 as sentinel.
+
+Define a ~Position~ type (or at minimum document the contract) so
+callers know whether a function requires exact or approximate input.
+
+** DONE Break up Program.fs
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli/Program.fs
+:END:
+
+1083 lines. ~main~ is a 469-line pattern match mixing CLI parsing,
+business logic, and output formatting. ~handleRoam~ repeats
+~use db = new Database.OrgRoamDb(dbPath); db.Initialize()~ in 10+
+branches.
+
+Extract command handlers into separate modules or at least factor out
+the DB lifecycle into a ~withDb~ helper. Consider a command registry
+instead of nested match.
+
+** DONE Establish consistent error propagation
+:PROPERTIES:
+:PRIORITY: B
+:END:
+
+Error handling varies by layer:
+- ~Parsers.fs~: silently drops unparseable links
+- ~Document.fs~: returns ~None~ on parse failure, no details
+- ~Sync.fs~: ~eprintfn~ and continue
+- ~NodeOperations.fs~: mix of ~failwith~ and silent defaults
+- ~Program.fs~: top-level catch-all that loses context
+
+~Result<T, CliError>~ is used in Mutations/BatchMode but not in Roam
+or parsing. Should extend ~Result~ usage to all fallible operations.
+
+** DONE Schema has no single source of truth
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Org/JsonOutput.fs
+:LINES:    76-152
+:END:
+
+Commands are defined in string literals in ~JsonOutput.schema()~ and
+separately in ~Program.fs main~. These will drift. Either generate the
+schema from the command definitions or generate the dispatcher from the
+schema.
+
+** DONE Database.Initialize silently ignores old schema versions
+:PROPERTIES:
+:PRIORITY: B
+:FILE:     src/OrgCli.Roam/Database.fs
+:LINES:    150-153
+:END:
+
+When ~version < Domain.DbVersion~, the branch is an empty ~()~. No
+migration, no warning, no error. The database silently operates with
+a stale schema.
+
+** DONE Database.fs mutable connection is not thread-safe
+:PROPERTIES:
+:PRIORITY: C
+:FILE:     src/OrgCli.Roam/Database.fs
+:LINES:    75-86
+:END:
+
+Mutable connection singleton with no locking. Fine for a CLI today,
+but will break if the library is ever used concurrently (server,
+parallel shell completions, tests).
+
+* Tests
+** DONE Add round-trip tests
+:PROPERTIES:
+:PRIORITY: A
+:END:
+
+Nothing verifies parse -> mutate -> serialize -> re-parse produces
+equivalent results. This is the most important class of test for a
+file-format tool and it's absent.
+
+Minimum: for each mutation type, parse a document, apply the mutation,
+write it back, re-parse, and verify the mutation took effect and
+nothing else changed.
+
+** DONE Add error-path tests for parsing
+:PROPERTIES:
+:PRIORITY: B
+:END:
+
+Malformed timestamps, unclosed drawers, invalid properties — none
+tested. The parser silently drops bad input with no verification that
+it does so correctly or predictably.
+
+** DONE Expand batch mode tests
+:PROPERTIES:
+:PRIORITY: B
+:END:
+
+7 tests for batch mode. Missing: invalid JSON input, missing required
+fields, partial failure (some commands succeed, some fail), empty
+batch, large batches.
+
+** DONE Use structural JSON assertions
+:PROPERTIES:
+:PRIORITY: C
+:END:
+
+~Assert.Contains("\"pos\":42", result)~ breaks if serialization order
+changes. Tests should parse JSON and compare structurally, not as
+strings.
+
+** DONE Parameterize time-dependent tests
+:PROPERTIES:
+:PRIORITY: C
+:END:
+
+Tests hardcode ~DateTime(2026, 2, 5)~. No parameterized tests vary
+the date to catch boundary conditions in deadline warnings or repeater
+logic (e.g., month boundaries, leap years, DST transitions).
