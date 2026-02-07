@@ -1,0 +1,349 @@
+#+title: Using org with AI agents
+
+This document explains how an AI agent can use =org= to build and maintain a knowledge base, either for itself or on behalf of a human.
+
+* Discovery
+
+An agent's first step should be to learn what the tool can do:
+
+#+begin_src shell
+org schema
+#+end_src
+
+This returns a JSON object describing every command, its arguments, flags, and whether each argument is required. An agent can parse this once and use it to construct valid commands without hardcoding knowledge of the CLI interface.
+
+* Structured I/O
+
+All commands accept =-f json= for structured output. Mutations return the headline state after the change:
+
+#+begin_src shell
+org todo tasks.org "Buy groceries" DONE -f json
+#+end_src
+
+#+begin_example
+{"ok":true,"data":{"pos":42,"id":null,"title":"Buy groceries","todo":"DONE","priority":null,"tags":[],"scheduled":null,"deadline":null,"closed":"[2026-02-06 Thu 10:00]"}}
+#+end_example
+
+Errors use the same envelope:
+
+#+begin_example
+{"ok":false,"error":{"type":"headline_not_found","message":"No headline matching \"nonexistent\" in file","detail":null}}
+#+end_example
+
+Error types: =headline_not_found=, =file_not_found=, =parse_error=, =invalid_args=, =internal_error=. An agent should branch on =ok= and handle errors by type.
+
+* Batch mode
+
+When an agent needs to make multiple changes, =org batch= applies them atomically. Commands are executed sequentially against in-memory file contents. Files are only written after all commands succeed.
+
+#+begin_src shell
+echo '{
+  "commands": [
+    {"command": "todo", "file": "tasks.org", "identifier": "Buy groceries", "args": {"state": "DONE"}},
+    {"command": "tag-add", "file": "tasks.org", "identifier": "Write report", "args": {"tag": "urgent"}},
+    {"command": "schedule", "file": "tasks.org", "identifier": "Write report", "args": {"date": "2026-03-01"}}
+  ]
+}' | org batch -d ~/org -f json
+#+end_src
+
+This is preferable to three separate commands because the file is read once, all mutations are applied, and the file is written once. If any command fails, no files are modified.
+
+Use =--dry-run= to preview what would change without writing.
+
+* Building a knowledge base
+
+** File-per-topic with org-roam
+
+The org-roam model uses one file per topic. Each file has an =:ID:= property that makes it a node in a graph. Links between files create edges. This structure is well-suited to an agent that accumulates knowledge over time.
+
+Initialize:
+
+#+begin_src shell
+org roam node create "Python packaging" -d ~/org/agent -f json
+#+end_src
+
+#+begin_example
+{"ok":true,"data":{"id":"f47ac10b-...","title":"Python packaging","file":"/home/user/org/agent/python_packaging.org","level":0,"tags":[],"aliases":[]}}
+#+end_example
+
+=node create= generates a file with a UUID, title, and timestamp, syncs the database, and returns the created node. The agent can use the file path from the response to add structure:
+
+#+begin_src shell
+org add ~/org/agent/python_packaging.org "setuptools" --todo TODO --tag build-tool
+org add ~/org/agent/python_packaging.org "poetry" --todo TODO --tag build-tool
+org add ~/org/agent/python_packaging.org "uv" --tag build-tool
+#+end_src
+
+** Linking nodes
+
+An agent that discovers a relationship between two topics should record it as a link. The agent looks up both nodes to get their IDs and file paths:
+
+#+begin_src shell
+org roam node find "Python packaging" -d ~/org/agent -f json
+org roam node find "Dependency resolution" -d ~/org/agent -f json
+#+end_src
+
+Then creates the link using the source file, source node ID, and target node ID from the responses:
+
+#+begin_src shell
+org roam link add ~/org/agent/python_packaging.org "f47ac10b-..." "c9d3e8a2-..." \
+    -d ~/org/agent --description "uses"
+#+end_src
+
+This inserts an =[[id:...][Dependency resolution]]= link into the source file and records it in the database.
+
+** Querying the graph
+
+#+begin_src shell
+# What links to this node?
+org roam backlinks "f47ac10b-..." -d ~/org/agent -f json
+
+# All nodes tagged "build-tool"
+org roam tag find build-tool -d ~/org/agent -f json
+
+# Find a node by title or alias
+org roam node find "setuptools" -d ~/org/agent -f json
+
+# Full-text search across the knowledge base
+org search "dependency.*conflict" -d ~/org/agent -f json
+#+end_src
+
+** Adding aliases and refs
+
+Aliases let a node be found by multiple names. Refs associate external identifiers (URLs, DOIs, ISBNs) with a node.
+
+#+begin_src shell
+org roam alias add ~/org/agent/python_packaging.org "f47ac10b-..." "pip packaging"
+org roam ref add ~/org/agent/python_packaging.org "f47ac10b-..." "https://packaging.python.org"
+#+end_src
+
+Now =org roam node find "pip packaging"= resolves to the same node.
+
+* Managing tasks for a human
+
+An agent acting as a task manager operates on the human's existing org files.
+
+** Reading the current state
+
+#+begin_src shell
+# What is due today?
+org agenda today -d ~/org/human -f json
+
+# What is overdue or due this week?
+org agenda week -d ~/org/human -f json
+
+# All open tasks
+org agenda todo -d ~/org/human -f json
+
+# Open tasks tagged "work"
+org agenda todo --tag work -d ~/org/human -f json
+
+# Read a specific subtree (outputs raw org text, not JSON)
+org read ~/org/human/projects.org "Q1 planning"
+#+end_src
+
+** Making changes
+
+#+begin_src shell
+# Create a task
+org add ~/org/human/inbox.org "Review PR #42" --todo TODO --tag work --deadline 2026-02-10
+
+# Complete it
+org todo ~/org/human/inbox.org "Review PR #42" DONE
+
+# Reschedule something
+org schedule ~/org/human/projects.org "Quarterly review" 2026-03-15
+
+# Add a note to a task's logbook
+org note ~/org/human/projects.org "Quarterly review" "Pushed back per manager request"
+
+# Move a task to a different file
+org refile ~/org/human/inbox.org "Review PR #42" ~/org/human/work.org "Code reviews"
+#+end_src
+
+** Previewing changes
+
+An agent that is unsure whether a change is correct should preview it first:
+
+#+begin_src shell
+org todo tasks.org "Buy groceries" DONE --dry-run -f json
+#+end_src
+
+The response includes the full headline state as it would be after the change, with =dry_run: true=. The agent can inspect this, confirm with the user, and then repeat the command without =--dry-run=.
+
+* Separate repos for agent and human
+
+An agent and its human should not share a single org directory. The human's org files are theirs — task lists, projects, journals, notes they maintain by hand or through Emacs. The agent's knowledge base is different: it stores what the agent has learned, observations about the human's preferences and context, and its own working memory. Mixing them creates problems. The human doesn't want the agent's internal notes cluttering their agenda. The agent doesn't want a human's manual edits breaking assumptions it made about file structure.
+
+Use two directories:
+
+- =~/org/human= — the human's org files. The agent reads and writes here when asked to manage tasks, but the human owns this directory.
+- =~/org/agent= — the agent's own knowledge base. The human rarely looks at this. The agent uses org-roam here to build a graph of what it knows.
+
+Each directory gets its own roam database:
+
+#+begin_src shell
+org roam sync -d ~/org/human
+org roam sync -d ~/org/agent
+#+end_src
+
+** What belongs where
+
+The human's repo (=~/org/human=):
+- Tasks, projects, deadlines — things the human acts on.
+- Journal entries, meeting notes — things the human wrote or asked the agent to write.
+- Anything the human would see in their Emacs agenda.
+
+The agent's repo (=~/org/agent=):
+- People the human works with, and what the agent knows about them.
+- Preferences the agent has observed (e.g., the human prefers morning meetings, dislikes Monday deadlines).
+- Project context that spans multiple conversations.
+- Summaries of past interactions the agent may need to recall.
+
+The separation is clean: the human runs =org agenda -d ~/org/human= and sees only their tasks. The agent queries =~/org/agent= to remember context across sessions.
+
+* Serving and learning at the same time
+
+When an agent fulfills a request, the human's words often contain information worth remembering beyond the immediate task. An agent that only executes the request and discards the context will ask the same clarifying questions next time. An agent that records what it learned can make better decisions later without being told again.
+
+The pattern is: do what the human asked in their repo, then update your own repo with what you learned from the conversation.
+
+** Example
+
+The human says:
+
+#+begin_quote
+Cancel my Thursday meeting with Sarah and reschedule the API migration review to next week. Sarah is going to be out all of March.
+#+end_quote
+
+There are three things happening here. Two are explicit requests. One is ambient information the human mentioned in passing.
+
+*** Fulfill the requests in the human's repo
+
+#+begin_src shell
+# Cancel the meeting
+org todo ~/org/human/work.org "Meeting with Sarah" DONE
+
+# Reschedule the review
+org schedule ~/org/human/work.org "API migration review" 2026-02-16
+org note ~/org/human/work.org "API migration review" "Rescheduled — Sarah out all of March"
+
+# The human's roam database should reflect the changes
+org roam sync -d ~/org/human
+#+end_src
+
+*** Record what you learned in the agent's repo
+
+The human said Sarah is out all of March. That wasn't a task — it was context. But it has scheduling implications the agent should remember.
+
+The agent looks up Sarah in its knowledge base:
+
+#+begin_src shell
+org roam node find "Sarah" -d ~/org/agent -f json
+#+end_src
+
+#+begin_example
+{"ok":false,"error":{"type":"headline_not_found","message":"Node not found: Sarah","detail":null}}
+#+end_example
+
+The node doesn't exist. The agent creates it:
+
+#+begin_src shell
+org roam node create "Sarah" -d ~/org/agent -t person -t work -f json
+#+end_src
+
+#+begin_example
+{"ok":true,"data":{"id":"a1b2c3d4-...","title":"Sarah","file":"/home/user/org/agent/sarah.org","level":0,"tags":["person","work"],"aliases":[]}}
+#+end_example
+
+The response includes the file path and ID. The agent records the availability constraint:
+
+#+begin_src shell
+org add ~/org/agent/sarah.org "Unavailable March 2026" --tag scheduling
+org note ~/org/agent/sarah.org "Unavailable March 2026" \
+    "Human mentioned Sarah will be out all of March. Do not schedule meetings with her during this period."
+#+end_src
+
+The agent also noticed that Sarah is involved in the API migration. It looks for that node:
+
+#+begin_src shell
+org roam node find "API migration" -d ~/org/agent -f json
+#+end_src
+
+#+begin_example
+{"ok":false,"error":{"type":"headline_not_found","message":"Node not found: API migration","detail":null}}
+#+end_example
+
+It doesn't exist either, so the agent creates it:
+
+#+begin_src shell
+org roam node create "API migration" -d ~/org/agent -t project -f json
+#+end_src
+
+#+begin_example
+{"ok":true,"data":{"id":"e5f6a7b8-...","title":"API migration","file":"/home/user/org/agent/api_migration.org","level":0,"tags":["project"],"aliases":[]}}
+#+end_example
+
+Using the IDs from both responses, the agent links Sarah as a stakeholder:
+
+#+begin_src shell
+org roam link add ~/org/agent/api_migration.org "e5f6a7b8-..." "a1b2c3d4-..." \
+    -d ~/org/agent --description "stakeholder"
+#+end_src
+
+*** Using the knowledge later
+
+A week later the human says: "Schedule a review of the API migration with Sarah for March 10th."
+
+Before acting, the agent checks its own repo:
+
+#+begin_src shell
+org search "Sarah.*March\|March.*Sarah\|Unavailable.*March" -d ~/org/agent -f json
+#+end_src
+
+The search returns the note about Sarah being out all of March. The agent can now push back:
+
+#+begin_quote
+Sarah is marked as unavailable for all of March (you mentioned this on Feb 6). Should I schedule the review for late February or early April instead?
+#+end_quote
+
+Without the agent's repo, this context would have been lost between sessions.
+
+*** What the agent extracted
+
+From a single sentence ("Sarah is going to be out all of March") the agent recorded:
+
+1. A *person node* for Sarah, tagged =person= and =work=.
+2. A *scheduling constraint* — unavailable March 2026.
+3. A *link* from the API migration project to Sarah as a stakeholder.
+
+None of these were requested. The human asked to cancel a meeting and reschedule a review. The knowledge extraction is the agent's own initiative, and it happens in the agent's own repo where it won't clutter the human's agenda or files.
+
+* Patterns
+
+** Idempotent updates
+
+Adding a tag that already exists is a no-op. Setting a TODO state to its current value is a no-op (though it will still log if logging is configured). An agent does not need to check current state before making changes, but it should check state if it wants to avoid unnecessary log entries.
+
+** Identify headlines by org-id
+
+Position numbers change when a file is edited. Titles can be ambiguous. If the agent will refer to a headline across multiple operations, it should set an =:ID:= property first:
+
+#+begin_src shell
+org property set ~/org/human/tasks.org "My task" ID "$(uuidgen)"
+#+end_src
+
+Then use the ID in subsequent commands. IDs are stable across edits and unambiguous across files.
+
+** Sync after roam mutations
+
+=org roam alias add=, =ref add=, =link add=, and =node create= modify files but also need the database updated. These commands sync automatically. If the agent modifies org files directly (outside of =org= commands), it should run =org roam sync= afterward to keep the database consistent.
+
+** Error handling
+
+An agent should handle these cases:
+
+- =file_not_found= -- the file path is wrong or the file was deleted.
+- =headline_not_found= -- the identifier doesn't match any headline. The agent may need to re-query headlines to get current positions or titles.
+- =parse_error= -- the file contains syntax the parser cannot handle. The agent should not retry.
+- =invalid_args= -- the command was called with wrong arguments. The agent should check =org schema= or =org <command> --help=.

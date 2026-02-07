@@ -11,19 +11,17 @@ The primary consumers are AI agents and automation scripts that need to query an
 
 * Installation
 
-Requires [[https://dotnet.microsoft.com/download][.NET 9.0 SDK]].
+Pre-built binaries are available on the [[https://github.com/dcprevere/org-cli/releases][releases page]]. Download, extract, and put =org= on your PATH. No runtime dependencies.
 
 #+begin_src shell
-# Install as a global .NET tool
+# Or install as a global .NET tool (requires .NET 9.0 SDK)
 dotnet tool install --global OrgCli
 
 # Or build from source
 git clone <repo-url>
-cd org-roam-cli
+cd org-cli
 dotnet build OrgCli.slnx
 #+end_src
-
-The tool installs as =org= on your PATH.
 
 * Quick start
 
@@ -96,6 +94,8 @@ Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema v
 - =-f json= on all commands for structured output with ={"ok":true,"data":...}= envelopes
 - =--dry-run= previews mutations without writing
 - =org completions bash|zsh|fish= for shell integration
+
+See [[file:docs/agents.org][docs/agents.org]] for a guide to building a knowledge base with an AI agent.
 
 * Configuration
 

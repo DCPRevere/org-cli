@@ -457,20 +457,28 @@ let main args =
                 let deadline = Map.tryFind "deadline" opts |> Option.bind List.tryHead |> Option.map Utils.parseDate
                 let under = Map.tryFind "under" opts |> Option.bind List.tryHead
                 let content = if File.Exists(file) then File.ReadAllText(file) else ""
+                let printAdded (result: string) =
+                    File.WriteAllText(file, result)
+                    if isJson then
+                        match Headlines.resolveHeadlinePos result title with
+                        | Ok pos ->
+                            let state = HeadlineEdit.extractState result pos
+                            printfn "%s" (JsonOutput.ok (JsonOutput.formatHeadlineState state))
+                        | Error _ ->
+                            printfn "%s" (JsonOutput.ok (JsonValue.Create("Headline added")))
+                    else
+                        if not isQuiet then printfn "Headline added"
+                    0
                 match under with
                 | Some parentId ->
                     match Headlines.resolveHeadlinePos content parentId with
                     | Ok pos ->
                         let result = Mutations.addHeadlineUnder content pos title todoState priority tags scheduled deadline
-                        File.WriteAllText(file, result)
-                        printfn "Headline added"
-                        0
+                        printAdded result
                     | Error e -> printError isJson e
                 | None ->
                     let result = Mutations.addHeadline content title 1 todoState priority tags scheduled deadline
-                    File.WriteAllText(file, result)
-                    printfn "Headline added"
-                    0
+                    printAdded result
             | "add" :: _ ->
                 eprintfn "Error: 'add' requires <file> and <title> arguments."
                 printCommandHelp "add"
@@ -602,7 +610,13 @@ let main args =
                             let (newSrc, newTgt) = Mutations.refile fileCfg srcContent srcPos tgtContent tgtPos false DateTime.Now
                             File.WriteAllText(srcFile, newSrc)
                             File.WriteAllText(tgtFile, newTgt)
-                        printfn "Refile complete"
+                        if isJson then
+                            let obj = JsonObject()
+                            obj["source_file"] <- JsonValue.Create(srcFile)
+                            obj["target_file"] <- JsonValue.Create(tgtFile)
+                            printfn "%s" (JsonOutput.ok obj)
+                        else
+                            if not isQuiet then printfn "Refile complete"
                         0
             | "refile" :: _ ->
                 eprintfn "Error: 'refile' requires <src-file>, <src-headline>, and <tgt-file> arguments."
@@ -634,7 +648,13 @@ let main args =
                     let (newSrc, newArchive) = Mutations.archive content pos archiveContent file outlinePath DateTime.Now
                     File.WriteAllText(file, newSrc)
                     File.WriteAllText(archiveFile, newArchive)
-                    printfn "Archived to %s" archiveFile
+                    if isJson then
+                        let obj = JsonObject()
+                        obj["archive_file"] <- JsonValue.Create(archiveFile)
+                        obj["source_file"] <- JsonValue.Create(file)
+                        printfn "%s" (JsonOutput.ok obj)
+                    else
+                        if not isQuiet then printfn "Archived to %s" archiveFile
                     0
             | "archive" :: _ ->
                 eprintfn "Error: 'archive' requires <file> and <headline> arguments."
