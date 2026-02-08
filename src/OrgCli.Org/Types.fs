@@ -9,66 +9,54 @@ type CharPos = int64
 /// Org-mode timestamp types
 [<RequireQualifiedAccess>]
 type TimestampType =
-    | Active   // <2024-01-15 Mon>
+    | Active // <2024-01-15 Mon>
     | Inactive // [2024-01-15 Mon]
 
 /// Represents an org-mode timestamp
-type Timestamp = {
-    Type: TimestampType
-    Date: DateTime
-    HasTime: bool
-    Repeater: string option  // e.g., "+1w", ".+1d"
-    Delay: string option     // e.g., "-2d"
-    RangeEnd: Timestamp option  // end of <start>--<end> range, or None
-}
+type Timestamp =
+    { Type: TimestampType
+      Date: DateTime
+      HasTime: bool
+      Repeater: string option // e.g., "+1w", ".+1d"
+      Delay: string option // e.g., "-2d"
+      RangeEnd: Timestamp option } // end of <start>--<end> range, or None
 
 /// Represents an org-mode link
-type OrgLink = {
-    LinkType: string        // "id", "roam", "https", "file", etc.
-    Path: string            // The target (ID, URL, filename, etc.)
-    Description: string option
-    SearchOption: string option  // Text after :: in path
-    Position: int           // Character position in file
-}
+type OrgLink =
+    { LinkType: string // "id", "roam", "https", "file", etc.
+      Path: string // The target (ID, URL, filename, etc.)
+      Description: string option
+      SearchOption: string option // Text after :: in path
+      Position: int } // Character position in file
 
 /// Planning information (SCHEDULED, DEADLINE, CLOSED)
-type Planning = {
-    Scheduled: Timestamp option
-    Deadline: Timestamp option
-    Closed: Timestamp option
-}
+type Planning =
+    { Scheduled: Timestamp option
+      Deadline: Timestamp option
+      Closed: Timestamp option }
 
 /// A property from a property drawer
-type Property = {
-    Key: string
-    Value: string
-}
+type Property = { Key: string; Value: string }
 
 /// Represents the properties block
-type PropertyDrawer = {
-    Properties: Property list
-}
+type PropertyDrawer = { Properties: Property list }
 
 /// A file-level keyword (#+KEY: value)
-type Keyword = {
-    Key: string
-    Value: string
-}
+type Keyword = { Key: string; Value: string }
 
 /// Priority values A-Z
 type Priority = Priority of char
 
 /// Represents an org headline
-type Headline = {
-    Level: int
-    TodoKeyword: string option
-    Priority: Priority option
-    Title: string
-    Tags: string list
-    Planning: Planning option
-    Properties: PropertyDrawer option
-    Position: CharPos
-}
+type Headline =
+    { Level: int
+      TodoKeyword: string option
+      Priority: Priority option
+      Title: string
+      Tags: string list
+      Planning: Planning option
+      Properties: PropertyDrawer option
+      Position: CharPos }
 
 /// An element that can appear in an org document
 [<RequireQualifiedAccess>]
@@ -81,33 +69,32 @@ type OrgElement =
     | Other of string
 
 /// Represents a parsed org document
-type OrgDocument = {
-    FilePath: string option
-    Keywords: Keyword list
-    FileProperties: PropertyDrawer option
-    Headlines: Headline list
-    /// All links found in the document with their containing headline ID
-    Links: (OrgLink * string option) list  // (link, containing node ID)
-}
+type OrgDocument =
+    {
+        FilePath: string option
+        Keywords: Keyword list
+        FileProperties: PropertyDrawer option
+        Headlines: Headline list
+        /// All links found in the document with their containing headline ID
+        Links: (OrgLink * string option) list // (link, containing node ID)
+    }
 
-type ClockEntry = {
-    Start: Timestamp
-    End: Timestamp option
-    Duration: TimeSpan option
-}
+type ClockEntry =
+    { Start: Timestamp
+      End: Timestamp option
+      Duration: TimeSpan option }
 
 [<RequireQualifiedAccess>]
 type RepeaterType =
-    | Standard    // +1w
-    | FromToday   // .+1d
-    | NextFuture  // ++1m
+    | Standard // +1w
+    | FromToday // .+1d
+    | NextFuture // ++1m
 
-type ResolvedLink = {
-    Link: OrgLink
-    TargetFile: string option
-    TargetHeadline: string option
-    TargetPos: CharPos option
-}
+type ResolvedLink =
+    { Link: OrgLink
+      TargetFile: string option
+      TargetHeadline: string option
+      TargetPos: CharPos option }
 
 [<RequireQualifiedAccess>]
 type CliErrorType =
@@ -117,16 +104,12 @@ type CliErrorType =
     | InvalidArgs
     | InternalError
 
-type CliError = {
-    Type: CliErrorType
-    Message: string
-    Detail: string option
-}
+type CliError =
+    { Type: CliErrorType
+      Message: string
+      Detail: string option }
 
-type TagDef = {
-    Name: string
-    FastKey: char option
-}
+type TagDef = { Name: string; FastKey: char option }
 
 [<RequireQualifiedAccess>]
 type TagGroup =
@@ -139,40 +122,36 @@ type LogAction =
     | LogTime
     | LogNote
 
-type TodoKeywordDef = {
-    Keyword: string
-    LogOnEnter: LogAction
-    LogOnLeave: LogAction
-}
+type TodoKeywordDef =
+    { Keyword: string
+      LogOnEnter: LogAction
+      LogOnLeave: LogAction }
 
-type TodoKeywordConfig = {
-    ActiveStates: TodoKeywordDef list
-    DoneStates: TodoKeywordDef list
-}
+type TodoKeywordConfig =
+    { ActiveStates: TodoKeywordDef list
+      DoneStates: TodoKeywordDef list }
 
-type PriorityConfig = {
-    Highest: char
-    Lowest: char
-    Default: char
-}
+type PriorityConfig =
+    { Highest: char
+      Lowest: char
+      Default: char }
 
-type OrgConfig = {
-    TodoKeywords: TodoKeywordConfig
-    Priorities: PriorityConfig
-    LogDone: LogAction
-    LogRepeat: LogAction
-    LogReschedule: LogAction
-    LogRedeadline: LogAction
-    LogRefile: LogAction
-    LogIntoDrawer: string option
-    TagInheritance: bool
-    InheritTags: string list option
-    TagsExcludeFromInheritance: string list
-    PropertyInheritance: bool
-    InheritProperties: string list
-    DeadlineWarningDays: int
-    ArchiveLocation: string option
-}
+type OrgConfig =
+    { TodoKeywords: TodoKeywordConfig
+      Priorities: PriorityConfig
+      LogDone: LogAction
+      LogRepeat: LogAction
+      LogReschedule: LogAction
+      LogRedeadline: LogAction
+      LogRefile: LogAction
+      LogIntoDrawer: string option
+      TagInheritance: bool
+      InheritTags: string list option
+      TagsExcludeFromInheritance: string list
+      PropertyInheritance: bool
+      InheritProperties: string list
+      DeadlineWarningDays: int
+      ArchiveLocation: string option }
 
 module Types =
     /// Splits a string respecting quoted segments
@@ -182,8 +161,11 @@ module Types =
             match chars with
             | [] ->
                 let final = current |> List.rev |> Array.ofList |> String
-                if String.IsNullOrWhiteSpace(final) then List.rev acc
-                else List.rev (final :: acc)
+
+                if String.IsNullOrWhiteSpace(final) then
+                    List.rev acc
+                else
+                    List.rev (final :: acc)
             | '\\' :: '"' :: rest when inQuote ->
                 // Escaped quote inside quoted string - treat as literal quote
                 parse rest ('"' :: current) true acc
@@ -197,12 +179,13 @@ module Types =
             | ' ' :: rest when not inQuote ->
                 // Space outside quote - emit current if non-empty
                 let word = current |> List.rev |> Array.ofList |> String
+
                 if String.IsNullOrWhiteSpace(word) then
                     parse rest [] false acc
                 else
                     parse rest [] false (word :: acc)
-            | c :: rest ->
-                parse rest (c :: current) inQuote acc
+            | c :: rest -> parse rest (c :: current) inQuote acc
+
         parse (List.ofSeq s) [] false []
 
     /// Get the ID property from a property drawer
@@ -236,7 +219,7 @@ module Types =
     /// Check if node should be excluded from org-roam
     let isRoamExcluded (props: PropertyDrawer option) =
         tryGetProperty "ROAM_EXCLUDE" props
-        |> Option.map (fun v -> v.ToLowerInvariant() = "t")
+        |> Option.map (fun v -> not (String.IsNullOrWhiteSpace(v)))
         |> Option.defaultValue false
 
     /// Get the title keyword from document keywords
@@ -249,46 +232,43 @@ module Types =
     let getFileTags (keywords: Keyword list) =
         keywords
         |> List.tryFind (fun k -> k.Key.ToUpperInvariant() = "FILETAGS")
-        |> Option.map (fun k ->
-            k.Value.Split([|':'|], StringSplitOptions.RemoveEmptyEntries)
-            |> Array.toList)
+        |> Option.map (fun k -> k.Value.Split([| ':' |], StringSplitOptions.RemoveEmptyEntries) |> Array.toList)
         |> Option.defaultValue []
 
-    let private defKeyword kw = { Keyword = kw; LogOnEnter = LogAction.NoLog; LogOnLeave = LogAction.NoLog }
+    let private defKeyword kw =
+        { Keyword = kw
+          LogOnEnter = LogAction.NoLog
+          LogOnLeave = LogAction.NoLog }
 
-    let defaultTodoKeywords : TodoKeywordConfig = {
-        ActiveStates = [
-            defKeyword "TODO"
-            defKeyword "NEXT"
-            defKeyword "WAITING"
-            defKeyword "HOLD"
-            defKeyword "SOMEDAY"
-            defKeyword "PROJECT"
-        ]
-        DoneStates = [
-            defKeyword "DONE"
-            defKeyword "CANCELLED"
-            defKeyword "CANCELED"
-        ]
-    }
+    let defaultTodoKeywords: TodoKeywordConfig =
+        { ActiveStates =
+            [ defKeyword "TODO"
+              defKeyword "NEXT"
+              defKeyword "WAITING"
+              defKeyword "HOLD"
+              defKeyword "SOMEDAY"
+              defKeyword "PROJECT" ]
+          DoneStates = [ defKeyword "DONE"; defKeyword "CANCELLED"; defKeyword "CANCELED" ] }
 
-    let defaultConfig : OrgConfig = {
-        TodoKeywords = defaultTodoKeywords
-        Priorities = { Highest = 'A'; Lowest = 'C'; Default = 'B' }
-        LogDone = LogAction.LogTime
-        LogRepeat = LogAction.LogTime
-        LogReschedule = LogAction.NoLog
-        LogRedeadline = LogAction.NoLog
-        LogRefile = LogAction.NoLog
-        LogIntoDrawer = Some "LOGBOOK"
-        TagInheritance = true
-        InheritTags = None
-        TagsExcludeFromInheritance = []
-        PropertyInheritance = false
-        InheritProperties = []
-        DeadlineWarningDays = 14
-        ArchiveLocation = None
-    }
+    let defaultConfig: OrgConfig =
+        { TodoKeywords = defaultTodoKeywords
+          Priorities =
+            { Highest = 'A'
+              Lowest = 'C'
+              Default = 'B' }
+          LogDone = LogAction.LogTime
+          LogRepeat = LogAction.LogTime
+          LogReschedule = LogAction.NoLog
+          LogRedeadline = LogAction.NoLog
+          LogRefile = LogAction.NoLog
+          LogIntoDrawer = Some "LOGBOOK"
+          TagInheritance = true
+          InheritTags = None
+          TagsExcludeFromInheritance = []
+          PropertyInheritance = false
+          InheritProperties = []
+          DeadlineWarningDays = 14
+          ArchiveLocation = None }
 
     let allKeywords (config: TodoKeywordConfig) : string list =
         (config.ActiveStates |> List.map (fun d -> d.Keyword))
@@ -303,8 +283,10 @@ module Types =
     let buildHeadlineRegex (keywords: string list) : System.Text.RegularExpressions.Regex =
         let escaped = keywords |> List.map System.Text.RegularExpressions.Regex.Escape
         let kwPattern = String.Join("|", escaped)
-        let pattern = sprintf @"^(\*+)\s+(%s)?\s*(\[#([A-Z])\])?\s*(.+?)(\s+:[\w@:]+:)?\s*$" kwPattern
+
+        let pattern =
+            sprintf @"^(\*+)\s+(%s)?\s*(\[#([A-Z])\])?\s*(.+?)(\s+:[\w@:\-]+:)?\s*$" kwPattern
+
         System.Text.RegularExpressions.Regex(pattern)
 
-    let defaultHeadlineRegex =
-        buildHeadlineRegex (allKeywords defaultTodoKeywords)
+    let defaultHeadlineRegex = buildHeadlineRegex (allKeywords defaultTodoKeywords)

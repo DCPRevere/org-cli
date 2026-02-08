@@ -62,14 +62,14 @@ let ``removeProperty is case-sensitive`` () =
 
 [<Fact>]
 let ``formatTimestamp produces English day abbreviation`` () =
-    let ts = {
-        Type = TimestampType.Active
-        Date = DateTime(2026, 2, 9) // Monday
-        HasTime = false
-        Repeater = None
-        Delay = None
-        RangeEnd = None
-    }
+    let ts =
+        { Type = TimestampType.Active
+          Date = DateTime(2026, 2, 9) // Monday
+          HasTime = false
+          Repeater = None
+          Delay = None
+          RangeEnd = None }
+
     let result = Writer.formatTimestamp ts
     Assert.Contains("Mon", result)
 
@@ -81,17 +81,18 @@ let ``formatTimestamp produces English day abbreviation`` () =
 [<Fact>]
 let ``addProperty ignores PROPERTIES text inside source block`` () =
     let content =
-        "* My headline\n" +
-        "Some text\n" +
-        "#+BEGIN_SRC org\n" +
-        ":PROPERTIES:\n" +
-        ":FAKE: value\n" +
-        ":END:\n" +
-        "#+END_SRC\n" +
-        ":PROPERTIES:\n" +
-        ":ID: real-id\n" +
-        ":END:\n" +
-        "Body\n"
+        "* My headline\n"
+        + "Some text\n"
+        + "#+BEGIN_SRC org\n"
+        + ":PROPERTIES:\n"
+        + ":FAKE: value\n"
+        + ":END:\n"
+        + "#+END_SRC\n"
+        + ":PROPERTIES:\n"
+        + ":ID: real-id\n"
+        + ":END:\n"
+        + "Body\n"
+
     let nodePos = 0
     let result = Writer.addProperty content nodePos "NEW_PROP" "new-value"
     // The new property should be in the real drawer, not the fake one
@@ -110,35 +111,43 @@ let ``addProperty ignores PROPERTIES text inside source block`` () =
 
 [<Fact>]
 let ``expandTimestamp caps range at reasonable limit`` () =
-    let headline = {
-        Level = 1
-        TodoKeyword = Some "TODO"
-        Priority = None
-        Title = "Long range task"
-        Tags = []
-        Planning = Some {
-            Scheduled = Some {
-                Type = TimestampType.Active
-                Date = DateTime(2020, 1, 1)
-                HasTime = false
-                Repeater = None
-                Delay = None
-                RangeEnd = Some {
-                    Type = TimestampType.Active
-                    Date = DateTime(2030, 1, 1)
-                    HasTime = false
-                    Repeater = None
-                    Delay = None
-                    RangeEnd = None
-                }
-            }
-            Deadline = None
-            Closed = None
-        }
-        Properties = None
-        Position = 0L
-    }
-    let items = Agenda.collectDatedItemsFromDocs Types.defaultConfig [("test.org", { FilePath = Some "test.org"; Keywords = []; FileProperties = None; Headlines = [headline]; Links = [] })]
+    let headline =
+        { Level = 1
+          TodoKeyword = Some "TODO"
+          Priority = None
+          Title = "Long range task"
+          Tags = []
+          Planning =
+            Some
+                { Scheduled =
+                    Some
+                        { Type = TimestampType.Active
+                          Date = DateTime(2020, 1, 1)
+                          HasTime = false
+                          Repeater = None
+                          Delay = None
+                          RangeEnd =
+                            Some
+                                { Type = TimestampType.Active
+                                  Date = DateTime(2030, 1, 1)
+                                  HasTime = false
+                                  Repeater = None
+                                  Delay = None
+                                  RangeEnd = None } }
+                  Deadline = None
+                  Closed = None }
+          Properties = None
+          Position = 0L }
+
+    let items =
+        Agenda.collectDatedItemsFromDocs
+            Types.defaultConfig
+            [ ("test.org",
+               { FilePath = Some "test.org"
+                 Keywords = []
+                 FileProperties = None
+                 Headlines = [ headline ]
+                 Links = [] }) ]
     // A 10-year range should be capped, not produce 3652 items
     Assert.True(items.Length <= 366, sprintf "Expected at most 366 items but got %d" items.Length)
 
@@ -150,20 +159,23 @@ let ``expandTimestamp caps range at reasonable limit`` () =
 [<Fact>]
 let ``clock entries are not double-counted for nested headlines`` () =
     let content =
-        "* Parent\n" +
-        ":LOGBOOK:\n" +
-        "CLOCK: [2026-02-05 Thu 10:00]--[2026-02-05 Thu 11:00] =>  1:00\n" +
-        ":END:\n" +
-        "** Child\n" +
-        ":LOGBOOK:\n" +
-        "CLOCK: [2026-02-05 Thu 14:00]--[2026-02-05 Thu 15:00] =>  1:00\n" +
-        ":END:\n"
+        "* Parent\n"
+        + ":LOGBOOK:\n"
+        + "CLOCK: [2026-02-05 Thu 10:00]--[2026-02-05 Thu 11:00] =>  1:00\n"
+        + ":END:\n"
+        + "** Child\n"
+        + ":LOGBOOK:\n"
+        + "CLOCK: [2026-02-05 Thu 14:00]--[2026-02-05 Thu 15:00] =>  1:00\n"
+        + ":END:\n"
+
     let doc = Document.parse content
-    let entries = Clock.collectClockEntriesFromDocs [("test.org", doc, content)]
+    let entries = Clock.collectClockEntriesFromDocs [ ("test.org", doc, content) ]
+
     let parentEntries =
         entries
         |> List.filter (fun (h, _, _) -> h.Title = "Parent")
         |> List.collect (fun (_, _, clocks) -> clocks)
+
     let childEntries =
         entries
         |> List.filter (fun (h, _, _) -> h.Title = "Child")
@@ -196,6 +208,7 @@ let ``splitQuotedString handles backslash-escaped quotes inside quoted string`` 
 let ``loadFromJson with empty priority string does not crash`` () =
     let json = """{"priorities": {"highest": "", "lowest": "C", "default": "B"}}"""
     let result = Config.loadFromJson json
+
     match result with
     | Ok cfg -> Assert.Equal('A', cfg.Priorities.Highest) // Should use default
     | Error _ -> () // Error is also acceptable
@@ -204,8 +217,10 @@ let ``loadFromJson with empty priority string does not crash`` () =
 let ``loadFromJson with negative deadlineWarningDays returns non-negative`` () =
     let json = """{"deadlineWarningDays": -5}"""
     let result = Config.loadFromJson json
+
     match result with
-    | Ok cfg -> Assert.True(cfg.DeadlineWarningDays >= 0, sprintf "Expected non-negative but got %d" cfg.DeadlineWarningDays)
+    | Ok cfg ->
+        Assert.True(cfg.DeadlineWarningDays >= 0, sprintf "Expected non-negative but got %d" cfg.DeadlineWarningDays)
     | Error _ -> () // Error is also acceptable
 
 // ============================================================
@@ -215,8 +230,11 @@ let ``loadFromJson with negative deadlineWarningDays returns non-negative`` () =
 
 [<Fact>]
 let ``clockOut with earlier timestamp does not produce negative duration`` () =
-    let dayName = DateTime(2026, 2, 5).ToString("ddd", System.Globalization.CultureInfo.InvariantCulture).Substring(0, 3)
-    let content = sprintf "* TODO My task\n:LOGBOOK:\nCLOCK: [2026-02-05 %s 14:00]\n:END:\nBody\n" dayName
+    let dayName =
+        DateTime(2026, 2, 5).ToString("ddd", System.Globalization.CultureInfo.InvariantCulture).Substring(0, 3)
+
+    let content =
+        sprintf "* TODO My task\n:LOGBOOK:\nCLOCK: [2026-02-05 %s 14:00]\n:END:\nBody\n" dayName
     // Clock out at 13:00, which is before clock in at 14:00
     let clockOutTime = DateTime(2026, 2, 5, 13, 0, 0)
     let result = Mutations.clockOut content 0L clockOutTime
@@ -241,15 +259,18 @@ let ``clockOut with earlier timestamp does not produce negative duration`` () =
 
 [<Fact>]
 let ``Database GetNodeCount does not crash on COUNT result`` () =
-    let tmpDb = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+    let tmpDb =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+
     try
         use db = new OrgCli.Roam.Database.OrgRoamDb(tmpDb)
-        db.Initialize()
+        db.Initialize() |> ignore
         // COUNT(*) returns int64 from SQLite. This should not crash with InvalidCastException.
         let count = db.GetNodeCount("nonexistent-id")
         Assert.Equal(0, count)
     finally
-        if System.IO.File.Exists(tmpDb) then System.IO.File.Delete(tmpDb)
+        if System.IO.File.Exists(tmpDb) then
+            System.IO.File.Delete(tmpDb)
 
 // ============================================================
 // findNodePosition returns 0 for missing nodes
@@ -267,16 +288,17 @@ let ``Database GetNodeCount does not crash on COUNT result`` () =
 [<Fact>]
 let ``addToMultiValueProperty finds correct drawer after source block`` () =
     let content =
-        "* My headline\n" +
-        "#+BEGIN_SRC org\n" +
-        ":PROPERTIES:\n" +
-        ":ROAM_ALIASES: fake\n" +
-        ":END:\n" +
-        "#+END_SRC\n" +
-        ":PROPERTIES:\n" +
-        ":ID: real-id\n" +
-        ":END:\n" +
-        "Body\n"
+        "* My headline\n"
+        + "#+BEGIN_SRC org\n"
+        + ":PROPERTIES:\n"
+        + ":ROAM_ALIASES: fake\n"
+        + ":END:\n"
+        + "#+END_SRC\n"
+        + ":PROPERTIES:\n"
+        + ":ID: real-id\n"
+        + ":END:\n"
+        + "Body\n"
+
     let result = Writer.addToMultiValueProperty content 0 "ROAM_ALIASES" "new-alias"
     // Should add to the real drawer
     let realPropsIdx = result.IndexOf(":PROPERTIES:", result.IndexOf("#+END_SRC"))
@@ -290,8 +312,11 @@ let ``addToMultiValueProperty finds correct drawer after source block`` () =
 
 [<Fact>]
 let ``listOrgFiles finds .org.gpg and .org.age files`` () =
-    let tmpDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString())
+    let tmpDir =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString())
+
     System.IO.Directory.CreateDirectory(tmpDir) |> ignore
+
     try
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "notes.org"), "* Hello")
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "secret.org.gpg"), "encrypted")
@@ -314,16 +339,21 @@ let ``listOrgFiles finds .org.gpg and .org.age files`` () =
 
 [<Fact>]
 let ``addAlias fails when node ID not found in file`` () =
-    let tmpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+    let tmpFile =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+
     try
-        let content = ":PROPERTIES:\n:ID: file-node-id\n:END:\n#+title: Test\n\n* Headline\n:PROPERTIES:\n:ID: headline-id\n:END:\nBody\n"
+        let content =
+            ":PROPERTIES:\n:ID: file-node-id\n:END:\n#+title: Test\n\n* Headline\n:PROPERTIES:\n:ID: headline-id\n:END:\nBody\n"
+
         System.IO.File.WriteAllText(tmpFile, content)
         // addAlias for a non-existent node should return Error, not silently modify position 0
         match OrgCli.Roam.NodeOperations.addAlias tmpFile "nonexistent-id" "my-alias" with
         | Error msg -> Assert.Contains("nonexistent-id", msg)
-        | Ok () -> failwith "Expected Error but got Ok"
+        | Ok() -> failwith "Expected Error but got Ok"
     finally
-        if System.IO.File.Exists(tmpFile) then System.IO.File.Delete(tmpFile)
+        if System.IO.File.Exists(tmpFile) then
+            System.IO.File.Delete(tmpFile)
 
 // ============================================================
 // File-level node position inconsistent (Sync=1, NodeOps=0)
@@ -332,7 +362,9 @@ let ``addAlias fails when node ID not found in file`` () =
 
 [<Fact>]
 let ``addAlias for file-level node uses correct position`` () =
-    let tmpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+    let tmpFile =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+
     try
         let content = ":PROPERTIES:\n:ID: file-node-id\n:END:\n#+title: Test\n"
         System.IO.File.WriteAllText(tmpFile, content)
@@ -340,7 +372,8 @@ let ``addAlias for file-level node uses correct position`` () =
         let result = System.IO.File.ReadAllText(tmpFile)
         Assert.Contains(":ROAM_ALIASES: my-alias", result)
     finally
-        if System.IO.File.Exists(tmpFile) then System.IO.File.Delete(tmpFile)
+        if System.IO.File.Exists(tmpFile) then
+            System.IO.File.Delete(tmpFile)
 
 // ============================================================
 // Database.Initialize silently ignores old schema versions
@@ -349,10 +382,14 @@ let ``addAlias for file-level node uses correct position`` () =
 
 [<Fact>]
 let ``Database.Initialize warns or fails on old schema version`` () =
-    let tmpDb = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+    let tmpDb =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+
     try
         // Create a DB with an old schema version
-        use conn = new Microsoft.Data.Sqlite.SqliteConnection(sprintf "Data Source=%s" tmpDb)
+        use conn =
+            new Microsoft.Data.Sqlite.SqliteConnection(sprintf "Data Source=%s" tmpDb)
+
         conn.Open()
         use cmd = conn.CreateCommand()
         cmd.CommandText <- "PRAGMA user_version = 10"
@@ -363,12 +400,15 @@ let ``Database.Initialize warns or fails on old schema version`` () =
         cmd2.ExecuteNonQuery() |> ignore
         conn.Close()
 
-        // Now open with OrgRoamDb - should warn about old schema
+        // Now open with OrgRoamDb - should return error about old schema
         use db = new OrgCli.Roam.Database.OrgRoamDb(tmpDb)
-        let ex = Assert.Throws<Exception>(fun () -> db.Initialize())
-        Assert.Contains("older", ex.Message.ToLower())
+
+        match db.Initialize() with
+        | Ok() -> Assert.Fail("Expected error for old schema version")
+        | Error msg -> Assert.Contains("older", msg.ToLower())
     finally
-        if System.IO.File.Exists(tmpDb) then System.IO.File.Delete(tmpDb)
+        if System.IO.File.Exists(tmpDb) then
+            System.IO.File.Delete(tmpDb)
 
 // ============================================================
 // Sync.fs swallows file processing errors
@@ -377,23 +417,34 @@ let ``Database.Initialize warns or fails on old schema version`` () =
 
 [<Fact>]
 let ``sync returns list of failed files`` () =
-    let tmpDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString())
-    let tmpDb = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+    let tmpDir =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString())
+
+    let tmpDb =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+
     System.IO.Directory.CreateDirectory(tmpDir) |> ignore
+
     try
         // Create a valid org file
-        System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "good.org"), ":PROPERTIES:\n:ID: good-id\n:END:\n#+title: Good\n")
+        System.IO.File.WriteAllText(
+            System.IO.Path.Combine(tmpDir, "good.org"),
+            ":PROPERTIES:\n:ID: good-id\n:END:\n#+title: Good\n"
+        )
         // Create a malformed file that will cause parse errors
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "bad.org"), "\x00\x00\x00")
         use db = new OrgCli.Roam.Database.OrgRoamDb(tmpDb)
-        db.Initialize()
+        db.Initialize() |> ignore
         let errors = OrgCli.Roam.Sync.sync db tmpDir false
         // sync should return the list of errors instead of swallowing them
         // Note: if the bad file doesn't actually cause an error, that's OK too
         Assert.True(true) // At minimum, verify sync completes without crashing
     finally
-        if System.IO.File.Exists(tmpDb) then System.IO.File.Delete(tmpDb)
-        if System.IO.Directory.Exists(tmpDir) then System.IO.Directory.Delete(tmpDir, true)
+        if System.IO.File.Exists(tmpDb) then
+            System.IO.File.Delete(tmpDb)
+
+        if System.IO.Directory.Exists(tmpDir) then
+            System.IO.Directory.Delete(tmpDir, true)
 
 // ============================================================
 // NodeOperations.addTag crashes for headline nodes
@@ -402,16 +453,24 @@ let ``sync returns list of failed files`` () =
 
 [<Fact>]
 let ``addTag for headline node does not crash`` () =
-    let tmpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+    let tmpFile =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+
     try
-        let content = ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* My headline\n:PROPERTIES:\n:ID: headline-id\n:END:\nBody\n"
+        let content =
+            ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* My headline\n:PROPERTIES:\n:ID: headline-id\n:END:\nBody\n"
+
         System.IO.File.WriteAllText(tmpFile, content)
         // Should not throw - either succeeds or returns graceful error
-        OrgCli.Roam.NodeOperations.addTag tmpFile "headline-id" "newtag"
+        match OrgCli.Roam.NodeOperations.addTag tmpFile "headline-id" "newtag" with
+        | Error msg -> Assert.Fail(sprintf "addTag returned error: %s" msg)
+        | Ok() -> ()
+
         let result = System.IO.File.ReadAllText(tmpFile)
         Assert.Contains("newtag", result)
     finally
-        if System.IO.File.Exists(tmpFile) then System.IO.File.Delete(tmpFile)
+        if System.IO.File.Exists(tmpFile) then
+            System.IO.File.Delete(tmpFile)
 
 // ============================================================
 // NodeOperations.addLink appends at EOF
@@ -420,14 +479,24 @@ let ``addTag for headline node does not crash`` () =
 
 [<Fact>]
 let ``addLink for headline node places link within subtree`` () =
-    let tmpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
-    let tmpDb = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+    let tmpFile =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+
+    let tmpDb =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+
     try
-        let content = ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* Source node\n:PROPERTIES:\n:ID: source-id\n:END:\nBody of source\n\n* Other headline\nOther body\n"
+        let content =
+            ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* Source node\n:PROPERTIES:\n:ID: source-id\n:END:\nBody of source\n\n* Other headline\nOther body\n"
+
         System.IO.File.WriteAllText(tmpFile, content)
         use db = new OrgCli.Roam.Database.OrgRoamDb(tmpDb)
-        db.Initialize()
-        OrgCli.Roam.NodeOperations.addLink db tmpFile "source-id" "target-id" None
+        db.Initialize() |> ignore
+
+        match OrgCli.Roam.NodeOperations.addLink db tmpFile "source-id" "target-id" None with
+        | Error msg -> Assert.Fail(sprintf "addLink returned error: %s" msg)
+        | Ok() -> ()
+
         let result = System.IO.File.ReadAllText(tmpFile)
         let linkIdx = result.IndexOf("[[id:target-id]]")
         let otherIdx = result.IndexOf("* Other headline")
@@ -435,8 +504,11 @@ let ``addLink for headline node places link within subtree`` () =
         Assert.True(linkIdx >= 0, "Link should be present in file")
         Assert.True(linkIdx < otherIdx, sprintf "Link at %d should be before 'Other headline' at %d" linkIdx otherIdx)
     finally
-        if System.IO.File.Exists(tmpFile) then System.IO.File.Delete(tmpFile)
-        if System.IO.File.Exists(tmpDb) then System.IO.File.Delete(tmpDb)
+        if System.IO.File.Exists(tmpFile) then
+            System.IO.File.Delete(tmpFile)
+
+        if System.IO.File.Exists(tmpDb) then
+            System.IO.File.Delete(tmpDb)
 
 // ============================================================
 // NodeOperations.deleteNode doesn't delete headlines
@@ -445,20 +517,33 @@ let ``addLink for headline node places link within subtree`` () =
 
 [<Fact>]
 let ``deleteNode removes headline subtree`` () =
-    let tmpFile = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
-    let tmpDb = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+    let tmpFile =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".org")
+
+    let tmpDb =
+        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString() + ".db")
+
     try
-        let content = ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* Keep this\nKeep body\n\n* Delete me\n:PROPERTIES:\n:ID: delete-id\n:END:\nDelete body\n** Child of delete\nChild body\n\n* Also keep\nAlso body\n"
+        let content =
+            ":PROPERTIES:\n:ID: file-id\n:END:\n#+title: Test\n\n* Keep this\nKeep body\n\n* Delete me\n:PROPERTIES:\n:ID: delete-id\n:END:\nDelete body\n** Child of delete\nChild body\n\n* Also keep\nAlso body\n"
+
         System.IO.File.WriteAllText(tmpFile, content)
         use db = new OrgCli.Roam.Database.OrgRoamDb(tmpDb)
-        db.Initialize()
+        db.Initialize() |> ignore
         OrgCli.Roam.Sync.updateFile db (System.IO.Path.GetTempPath()) tmpFile
-        OrgCli.Roam.NodeOperations.deleteNode db "delete-id"
+
+        match OrgCli.Roam.NodeOperations.deleteNode db "delete-id" with
+        | Error msg -> Assert.Fail(sprintf "deleteNode returned error: %s" msg)
+        | Ok() -> ()
+
         let result = System.IO.File.ReadAllText(tmpFile)
         Assert.Contains("Keep this", result)
         Assert.Contains("Also keep", result)
         Assert.DoesNotContain("Delete me", result)
         Assert.DoesNotContain("Child of delete", result)
     finally
-        if System.IO.File.Exists(tmpFile) then System.IO.File.Delete(tmpFile)
-        if System.IO.File.Exists(tmpDb) then System.IO.File.Delete(tmpDb)
+        if System.IO.File.Exists(tmpFile) then
+            System.IO.File.Delete(tmpFile)
+
+        if System.IO.File.Exists(tmpDb) then
+            System.IO.File.Delete(tmpDb)

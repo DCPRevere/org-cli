@@ -7,8 +7,13 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>org</ToolCommandName>
     <PackageId>OrgCli</PackageId>
-    <Version>0.1.0</Version>
     <Description>CLI for org-mode file manipulation and org-roam database management</Description>
+    <Authors>dcprevere</Authors>
+
+    <PackageProjectUrl>https://github.com/dcprevere/org-cli</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/dcprevere/org-cli</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>org-mode;org-roam;cli;emacs</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OrgCli.Roam\OrgCli.Roam.fsproj" />
+    <ProjectReference Include="..\OrgCli.Index\OrgCli.Index.fsproj" />
   </ItemGroup>
 
 </Project>

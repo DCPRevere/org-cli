@@ -11,9 +11,11 @@ open OrgCli.Org
 let ``parse document with malformed timestamp does not crash`` () =
     // Invalid date values (month 99) crash DateTime constructor inside FParsec parser.
     // This documents the current behavior - the parser throws rather than skipping.
-    let content = "* TODO Task\nSCHEDULED: <2026-99-99 Bad>\n:PROPERTIES:\n:ID: abc\n:END:\n"
-    Assert.ThrowsAny<System.Exception>(fun () ->
-        Document.parse content |> ignore) |> ignore
+    let content =
+        "* TODO Task\nSCHEDULED: <2026-99-99 Bad>\n:PROPERTIES:\n:ID: abc\n:END:\n"
+
+    Assert.ThrowsAny<System.Exception>(fun () -> Document.parse content |> ignore)
+    |> ignore
 
 [<Fact>]
 let ``parse document with non-timestamp scheduled text does not crash`` () =
@@ -25,7 +27,9 @@ let ``parse document with non-timestamp scheduled text does not crash`` () =
 
 [<Fact>]
 let ``parse document with unclosed timestamp angle bracket`` () =
-    let content = "* TODO Task\nSCHEDULED: <2026-02-05 Thu\n:PROPERTIES:\n:ID: abc\n:END:\n"
+    let content =
+        "* TODO Task\nSCHEDULED: <2026-02-05 Thu\n:PROPERTIES:\n:ID: abc\n:END:\n"
+
     let doc = Document.parse content
     Assert.Equal(1, doc.Headlines.Length)
 
@@ -103,13 +107,14 @@ let ``parse document with empty link`` () =
 [<Fact>]
 let ``collectClockEntries skips malformed clock lines`` () =
     let content =
-        "* Task\n" +
-        ":LOGBOOK:\n" +
-        "CLOCK: not-a-timestamp\n" +
-        "CLOCK: [2026-02-05 Thu 10:00]--[2026-02-05 Thu 11:00] =>  1:00\n" +
-        ":END:\n"
+        "* Task\n"
+        + ":LOGBOOK:\n"
+        + "CLOCK: not-a-timestamp\n"
+        + "CLOCK: [2026-02-05 Thu 10:00]--[2026-02-05 Thu 11:00] =>  1:00\n"
+        + ":END:\n"
+
     let doc = Document.parse content
-    let entries = Clock.collectClockEntriesFromDocs [("test.org", doc, content)]
+    let entries = Clock.collectClockEntriesFromDocs [ ("test.org", doc, content) ]
     // Should still find the valid clock entry
     let clocks = entries |> List.collect (fun (_, _, c) -> c)
     Assert.Equal(1, clocks.Length)
@@ -121,20 +126,21 @@ let ``collectClockEntries skips malformed clock lines`` () =
 [<Fact>]
 let ``parse document with mix of valid and invalid elements`` () =
     let content =
-        ":PROPERTIES:\n" +
-        ":ID: file-id\n" +
-        ":END:\n" +
-        "#+title: Test\n" +
-        "\n" +
-        "* Valid headline\n" +
-        ":PROPERTIES:\n" +
-        ":ID: valid-id\n" +
-        ":END:\n" +
-        "Body with [[id:target][good link]].\n" +
-        "\n" +
-        "* Another headline with bad planning\n" +
-        "SCHEDULED: <broken-date>\n" +
-        "Some content.\n"
+        ":PROPERTIES:\n"
+        + ":ID: file-id\n"
+        + ":END:\n"
+        + "#+title: Test\n"
+        + "\n"
+        + "* Valid headline\n"
+        + ":PROPERTIES:\n"
+        + ":ID: valid-id\n"
+        + ":END:\n"
+        + "Body with [[id:target][good link]].\n"
+        + "\n"
+        + "* Another headline with bad planning\n"
+        + "SCHEDULED: <broken-date>\n"
+        + "Some content.\n"
+
     let doc = Document.parse content
     Assert.Equal(2, doc.Headlines.Length)
     Assert.Equal(Some "file-id", Types.tryGetId doc.FileProperties)

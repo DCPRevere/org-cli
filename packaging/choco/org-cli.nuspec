@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>org-cli</id>
+    <version>@@VERSION@@</version>
+    <title>org-cli</title>
+    <authors>dcprevere</authors>
+    <projectUrl>https://github.com/dcprevere/org-cli</projectUrl>
+
+    <tags>org-mode org-roam cli emacs</tags>
+    <summary>CLI for org-mode file manipulation and org-roam database management</summary>
+    <description>org-cli provides commands for querying, mutating, and searching org-mode files, plus org-roam database synchronization.</description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

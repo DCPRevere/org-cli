@@ -24,7 +24,11 @@ let ``ok wraps object data in envelope`` () =
 
 [<Fact>]
 let ``error produces structured error envelope`` () =
-    let err = { Type = CliErrorType.HeadlineNotFound; Message = "Headline not found: foo"; Detail = None }
+    let err =
+        { Type = CliErrorType.HeadlineNotFound
+          Message = "Headline not found: foo"
+          Detail = None }
+
     let result = JsonOutput.error err
     Assert.Contains("\"ok\":false", result)
     Assert.Contains("\"type\":\"headline_not_found\"", result)
@@ -32,29 +36,37 @@ let ``error produces structured error envelope`` () =
 
 [<Fact>]
 let ``error with detail includes detail field`` () =
-    let err = { Type = CliErrorType.ParseError; Message = "Parse failed"; Detail = Some "line 5" }
+    let err =
+        { Type = CliErrorType.ParseError
+          Message = "Parse failed"
+          Detail = Some "line 5" }
+
     let result = JsonOutput.error err
     Assert.Contains("\"detail\":\"line 5\"", result)
 
 [<Fact>]
 let ``error without detail has null detail`` () =
-    let err = { Type = CliErrorType.FileNotFound; Message = "File missing"; Detail = None }
+    let err =
+        { Type = CliErrorType.FileNotFound
+          Message = "File missing"
+          Detail = None }
+
     let result = JsonOutput.error err
     Assert.Contains("\"detail\":null", result)
 
 [<Fact>]
 let ``formatHeadlineState produces correct JSON`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 42L
-        Id = Some "abc-123"
-        Title = "My task"
-        Todo = Some "TODO"
-        Priority = Some 'A'
-        Tags = ["work"; "urgent"]
-        Scheduled = Some "<2026-02-10 Tue>"
-        Deadline = None
-        Closed = None
-    }
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 42L
+          Id = Some "abc-123"
+          Title = "My task"
+          Todo = Some "TODO"
+          Priority = Some 'A'
+          Tags = [ "work"; "urgent" ]
+          Scheduled = Some "<2026-02-10 Tue>"
+          Deadline = None
+          Closed = None }
+
     let result = JsonOutput.toJsonString (JsonOutput.formatHeadlineState state)
     Assert.Contains("\"pos\":42", result)
     Assert.Contains("\"id\":\"abc-123\"", result)
@@ -68,17 +80,17 @@ let ``formatHeadlineState produces correct JSON`` () =
 
 [<Fact>]
 let ``formatHeadlineState with null optionals`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 0L
-        Id = None
-        Title = "Plain"
-        Todo = None
-        Priority = None
-        Tags = []
-        Scheduled = None
-        Deadline = None
-        Closed = None
-    }
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 0L
+          Id = None
+          Title = "Plain"
+          Todo = None
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
     let result = JsonOutput.toJsonString (JsonOutput.formatHeadlineState state)
     Assert.Contains("\"id\":null", result)
     Assert.Contains("\"todo\":null", result)
@@ -95,10 +107,17 @@ let ``formatErrorType maps all error types`` () =
 
 [<Fact>]
 let ``formatHeadlineStateDryRun includes dry_run field`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 10L; Id = Some "x"; Title = "Test"; Todo = Some "TODO"
-        Priority = None; Tags = []; Scheduled = None; Deadline = None; Closed = None
-    }
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 10L
+          Id = Some "x"
+          Title = "Test"
+          Todo = Some "TODO"
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
     let result = JsonOutput.toJsonString (JsonOutput.formatHeadlineStateDryRun state)
     Assert.Contains("\"dry_run\":true", result)
     Assert.Contains("\"pos\":10", result)
@@ -108,26 +127,47 @@ let ``formatHeadlineStateDryRun includes dry_run field`` () =
 
 [<Fact>]
 let ``formatBatchResults wraps array in single envelope`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 0L; Id = None; Title = "T"; Todo = Some "TODO"
-        Priority = None; Tags = []; Scheduled = None; Deadline = None; Closed = None
-    }
-    let results = [Ok state; Ok state]
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 0L
+          Id = None
+          Title = "T"
+          Todo = Some "TODO"
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
+    let results = [ Ok state; Ok state ]
     let result = JsonOutput.formatBatchResults results
     Assert.StartsWith("{\"ok\":true,\"data\":[", result)
     Assert.DoesNotContain("\"ok\":true,\"data\":{\"ok\":", result)
 
 [<Fact>]
 let ``formatBatchResults formats errors without envelope`` () =
-    let err = { Type = CliErrorType.HeadlineNotFound; Message = "Not found"; Detail = None }
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 0L; Id = None; Title = "T"; Todo = None
-        Priority = None; Tags = []; Scheduled = None; Deadline = None; Closed = None
-    }
-    let results = [Ok state; Error err]
+    let err =
+        { Type = CliErrorType.HeadlineNotFound
+          Message = "Not found"
+          Detail = None }
+
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 0L
+          Id = None
+          Title = "T"
+          Todo = None
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
+    let results = [ Ok state; Error err ]
     let result = JsonOutput.formatBatchResults results
     Assert.Contains("\"ok\":false", result)
-    let okTrueCount = System.Text.RegularExpressions.Regex.Matches(result, "\"ok\":true").Count
+
+    let okTrueCount =
+        System.Text.RegularExpressions.Regex.Matches(result, "\"ok\":true").Count
+
     Assert.Equal(2, okTrueCount)
 
 [<Fact>]
@@ -141,10 +181,17 @@ let ``Utils.parseDate produces Active timestamp from yyyy-MM-dd`` () =
 
 [<Fact>]
 let ``JSON properly escapes special characters in strings`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 0L; Id = None; Title = "Task with \"quotes\" and\nnewline"
-        Todo = None; Priority = None; Tags = []; Scheduled = None; Deadline = None; Closed = None
-    }
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 0L
+          Id = None
+          Title = "Task with \"quotes\" and\nnewline"
+          Todo = None
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
     let result = JsonOutput.toJsonString (JsonOutput.formatHeadlineState state)
     Assert.Contains("\\\"quotes\\\"", result)
     Assert.Contains("\\n", result)
@@ -163,7 +210,11 @@ let ``structural: ok envelope has correct shape`` () =
 
 [<Fact>]
 let ``structural: error envelope has correct shape`` () =
-    let err = { Type = CliErrorType.HeadlineNotFound; Message = "Not found"; Detail = Some "ctx" }
+    let err =
+        { Type = CliErrorType.HeadlineNotFound
+          Message = "Not found"
+          Detail = Some "ctx" }
+
     let result = JsonOutput.error err
     let node = JsonNode.Parse(result)
     Assert.False(node["ok"].GetValue<bool>())
@@ -174,11 +225,17 @@ let ``structural: error envelope has correct shape`` () =
 
 [<Fact>]
 let ``structural: formatHeadlineState fields are correct types`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 42L; Id = Some "abc-123"; Title = "My task"; Todo = Some "TODO"
-        Priority = Some 'A'; Tags = ["work"; "urgent"]
-        Scheduled = Some "<2026-02-10 Tue>"; Deadline = None; Closed = None
-    }
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 42L
+          Id = Some "abc-123"
+          Title = "My task"
+          Todo = Some "TODO"
+          Priority = Some 'A'
+          Tags = [ "work"; "urgent" ]
+          Scheduled = Some "<2026-02-10 Tue>"
+          Deadline = None
+          Closed = None }
+
     let json = JsonOutput.toJsonString (JsonOutput.formatHeadlineState state)
     let node = JsonNode.Parse(json)
     Assert.Equal(42, node["pos"].GetValue<int>())
@@ -196,12 +253,23 @@ let ``structural: formatHeadlineState fields are correct types`` () =
 
 [<Fact>]
 let ``structural: batch results array has correct shape`` () =
-    let state : HeadlineEdit.HeadlineState = {
-        Pos = 0L; Id = None; Title = "T"; Todo = Some "TODO"
-        Priority = None; Tags = []; Scheduled = None; Deadline = None; Closed = None
-    }
-    let err = { Type = CliErrorType.HeadlineNotFound; Message = "Not found"; Detail = None }
-    let results = [Ok state; Error err]
+    let state: HeadlineEdit.HeadlineState =
+        { Pos = 0L
+          Id = None
+          Title = "T"
+          Todo = Some "TODO"
+          Priority = None
+          Tags = []
+          Scheduled = None
+          Deadline = None
+          Closed = None }
+
+    let err =
+        { Type = CliErrorType.HeadlineNotFound
+          Message = "Not found"
+          Detail = None }
+
+    let results = [ Ok state; Error err ]
     let json = JsonOutput.formatBatchResults results
     let node = JsonNode.Parse(json)
     Assert.True(node["ok"].GetValue<bool>())

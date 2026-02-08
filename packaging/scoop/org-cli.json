@@ -1,0 +1,23 @@
+{
+    "version": "@@VERSION@@",
+    "description": "CLI for org-mode file manipulation and org-roam database management",
+    "homepage": "https://github.com/dcprevere/org-cli",
+
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/dcprevere/org-cli/releases/download/v@@VERSION@@/org-win-x64.zip",
+            "hash": "@@SHA256_WIN_X64@@"
+        }
+    },
+    "bin": "org.exe",
+    "checkver": {
+        "github": "https://github.com/dcprevere/org-cli"
+    },
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/dcprevere/org-cli/releases/download/v$version/org-win-x64.zip"
+            }
+        }
+    }
+}

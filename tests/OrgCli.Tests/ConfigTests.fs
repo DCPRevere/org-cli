@@ -58,10 +58,16 @@ module ConfigTypes =
 
     [<Fact>]
     let ``allKeywords returns both active and done states`` () =
-        let custom : TodoKeywordConfig = {
-            ActiveStates = [{ Keyword = "OPEN"; LogOnEnter = LogAction.NoLog; LogOnLeave = LogAction.NoLog }]
-            DoneStates = [{ Keyword = "CLOSED"; LogOnEnter = LogAction.LogTime; LogOnLeave = LogAction.NoLog }]
-        }
+        let custom: TodoKeywordConfig =
+            { ActiveStates =
+                [ { Keyword = "OPEN"
+                    LogOnEnter = LogAction.NoLog
+                    LogOnLeave = LogAction.NoLog } ]
+              DoneStates =
+                [ { Keyword = "CLOSED"
+                    LogOnEnter = LogAction.LogTime
+                    LogOnLeave = LogAction.NoLog } ] }
+
         let all = Types.allKeywords custom
         Assert.Equal(2, all.Length)
         Assert.Equal("OPEN", all.[0])
@@ -94,7 +100,8 @@ module ConfigLoading =
 
     [<Fact>]
     let ``loadFromJson parses complete JSON`` () =
-        let json = """
+        let json =
+            """
         {
           "todoKeywords": {
             "activeStates": [
@@ -114,7 +121,9 @@ module ConfigLoading =
           "archiveLocation": "%s_archive::"
         }
         """
+
         let result = loadFromJson json
+
         match result with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
         | Ok cfg ->
@@ -140,6 +149,7 @@ module ConfigLoading =
     let ``loadFromJson with partial JSON uses defaults for missing fields`` () =
         let json = """{"logDone": "time", "deadlineWarningDays": 30}"""
         let result = loadFromJson json
+
         match result with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
         | Ok cfg ->
@@ -155,6 +165,7 @@ module ConfigLoading =
     [<Fact>]
     let ``loadFromJson with empty object returns defaults`` () =
         let result = loadFromJson "{}"
+
         match result with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
         | Ok cfg ->
@@ -165,13 +176,15 @@ module ConfigLoading =
     [<Fact>]
     let ``loadFromJson with invalid JSON returns Error`` () =
         let result = loadFromJson "not json at all"
+
         match result with
         | Ok _ -> failwith "Expected Error but got Ok"
         | Error _ -> ()
 
     [<Fact>]
     let ``loadFromJson parses todoKeywords with logOnLeave`` () =
-        let json = """
+        let json =
+            """
         {
           "todoKeywords": {
             "activeStates": [
@@ -181,6 +194,7 @@ module ConfigLoading =
           }
         }
         """
+
         match loadFromJson json with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
         | Ok cfg ->
@@ -193,14 +207,15 @@ module ConfigLoading =
     [<Fact>]
     let ``loadFromJson with null logIntoDrawer sets None`` () =
         let json = """{"logIntoDrawer": null}"""
+
         match loadFromJson json with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
-        | Ok cfg ->
-            Assert.Equal(None, cfg.LogIntoDrawer)
+        | Ok cfg -> Assert.Equal(None, cfg.LogIntoDrawer)
 
     [<Fact>]
     let ``loadFromFile with non-existent path returns Ok defaultConfig`` () =
         let result = loadFromFile "/tmp/org-cli-test-nonexistent-path/config.json"
+
         match result with
         | Error e -> failwith $"Expected Ok but got Error: {e}"
         | Ok cfg ->
@@ -210,8 +225,10 @@ module ConfigLoading =
     [<Fact>]
     let ``loadFromFile with valid file parses JSON`` () =
         let tmpFile = System.IO.Path.GetTempFileName()
+
         try
             System.IO.File.WriteAllText(tmpFile, """{"deadlineWarningDays": 21}""")
+
             match loadFromFile tmpFile with
             | Error e -> failwith $"Expected Ok but got Error: {e}"
             | Ok cfg ->
@@ -224,6 +241,7 @@ module ConfigLoading =
     let ``loadFromEnv reads ORG_CLI_DEADLINE_WARNING_DAYS`` () =
         let key = "ORG_CLI_DEADLINE_WARNING_DAYS"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "21")
             let cfg = loadFromEnv ()
@@ -235,6 +253,7 @@ module ConfigLoading =
     let ``loadFromEnv reads ORG_CLI_LOG_DONE`` () =
         let key = "ORG_CLI_LOG_DONE"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "note")
             let cfg = loadFromEnv ()
@@ -246,6 +265,7 @@ module ConfigLoading =
     let ``loadFromEnv reads ORG_CLI_TAG_INHERITANCE`` () =
         let key = "ORG_CLI_TAG_INHERITANCE"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "false")
             let cfg = loadFromEnv ()
@@ -257,6 +277,7 @@ module ConfigLoading =
     let ``loadFromEnv reads ORG_CLI_LOG_INTO_DRAWER`` () =
         let key = "ORG_CLI_LOG_INTO_DRAWER"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "MYLOG")
             let cfg = loadFromEnv ()
@@ -268,6 +289,7 @@ module ConfigLoading =
     let ``loadFromEnv with empty LOG_INTO_DRAWER sets None`` () =
         let key = "ORG_CLI_LOG_INTO_DRAWER"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "")
             let cfg = loadFromEnv ()
@@ -284,9 +306,14 @@ module ConfigOverlay =
         // The env var should win, producing LogTime — not NoLog.
         let key = "ORG_CLI_LOG_DONE"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "time")
-            let fileCfg = { Types.defaultConfig with LogDone = LogAction.NoLog }
+
+            let fileCfg =
+                { Types.defaultConfig with
+                    LogDone = LogAction.NoLog }
+
             let result = overlayEnv fileCfg
             Assert.Equal(LogAction.LogTime, result.LogDone)
         finally
@@ -296,9 +323,14 @@ module ConfigOverlay =
     let ``env var not set preserves file config`` () =
         let key = "ORG_CLI_LOG_DONE"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, null)
-            let fileCfg = { Types.defaultConfig with LogDone = LogAction.NoLog }
+
+            let fileCfg =
+                { Types.defaultConfig with
+                    LogDone = LogAction.NoLog }
+
             let result = overlayEnv fileCfg
             Assert.Equal(LogAction.NoLog, result.LogDone)
         finally
@@ -308,9 +340,14 @@ module ConfigOverlay =
     let ``env DeadlineWarningDays set to default overrides file config`` () =
         let key = "ORG_CLI_DEADLINE_WARNING_DAYS"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "14")
-            let fileCfg = { Types.defaultConfig with DeadlineWarningDays = 30 }
+
+            let fileCfg =
+                { Types.defaultConfig with
+                    DeadlineWarningDays = 30 }
+
             let result = overlayEnv fileCfg
             Assert.Equal(14, result.DeadlineWarningDays)
         finally
@@ -320,9 +357,14 @@ module ConfigOverlay =
     let ``env TagInheritance set to default overrides file config`` () =
         let key = "ORG_CLI_TAG_INHERITANCE"
         let prev = System.Environment.GetEnvironmentVariable(key)
+
         try
             System.Environment.SetEnvironmentVariable(key, "true")
-            let fileCfg = { Types.defaultConfig with TagInheritance = false }
+
+            let fileCfg =
+                { Types.defaultConfig with
+                    TagInheritance = false }
+
             let result = overlayEnv fileCfg
             Assert.True(result.TagInheritance)
         finally

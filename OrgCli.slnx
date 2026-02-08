@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/OrgCli.Org/OrgCli.Org.fsproj" />
+  <Project Path="src/OrgCli.Index/OrgCli.Index.fsproj" />
   <Project Path="src/OrgCli.Roam/OrgCli.Roam.fsproj" />
   <Project Path="src/OrgCli/OrgCli.fsproj" />
   <Project Path="tests/OrgCli.Tests/OrgCli.Tests.fsproj" />

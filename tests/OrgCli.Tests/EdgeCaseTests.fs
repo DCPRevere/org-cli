@@ -6,43 +6,51 @@ open OrgCli.Org
 
 [<Fact>]
 let ``Parse Unicode title`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: unicode-test
 :END:
 #+title: 日本語タイトル with émojis 🎉
 """
+
     let doc = Document.parse content
     Assert.Equal(Some "日本語タイトル with émojis 🎉", Types.tryGetTitle doc.Keywords)
 
 [<Fact>]
 let ``Parse title with special characters`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: special-chars
 :END:
 #+title: Title with "quotes" and (parens) and [brackets]
 """
+
     let doc = Document.parse content
     Assert.Equal(Some """Title with "quotes" and (parens) and [brackets]""", Types.tryGetTitle doc.Keywords)
 
 [<Fact>]
 let ``Parse empty property drawer`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :END:
 #+title: No ID
 """
+
     let doc = Document.parse content
     Assert.True((Types.tryGetId doc.FileProperties).IsNone)
 
 [<Fact>]
 let ``Parse headline without property drawer`` () =
-    let content = """
+    let content =
+        """
 * Headline without properties
 
 Just content.
 """
+
     let doc = Document.parse content
     Assert.Equal(1, doc.Headlines.Length)
     Assert.Equal("Headline without properties", doc.Headlines.[0].Title)
@@ -50,12 +58,14 @@ Just content.
 
 [<Fact>]
 let ``Parse multiple TODO keywords`` () =
-    let content = """
+    let content =
+        """
 * TODO First task
 * DONE Second task
 * NEXT Third task
 * WAITING Fourth task
 """
+
     let doc = Document.parse content
     Assert.Equal(4, doc.Headlines.Length)
     Assert.Equal(Some "TODO", doc.Headlines.[0].TodoKeyword)
@@ -65,19 +75,22 @@ let ``Parse multiple TODO keywords`` () =
 
 [<Fact>]
 let ``Parse all priority levels`` () =
-    let content = """
+    let content =
+        """
 * [#A] High priority
 * [#B] Medium priority
 * [#C] Low priority
 """
+
     let doc = Document.parse content
-    Assert.Equal(Some (Priority 'A'), doc.Headlines.[0].Priority)
-    Assert.Equal(Some (Priority 'B'), doc.Headlines.[1].Priority)
-    Assert.Equal(Some (Priority 'C'), doc.Headlines.[2].Priority)
+    Assert.Equal(Some(Priority 'A'), doc.Headlines.[0].Priority)
+    Assert.Equal(Some(Priority 'B'), doc.Headlines.[1].Priority)
+    Assert.Equal(Some(Priority 'C'), doc.Headlines.[2].Priority)
 
 [<Fact>]
 let ``Parse link with spaces in description`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -85,6 +98,7 @@ let ``Parse link with spaces in description`` () =
 
 Check out [[id:other][This is a long description with spaces]].
 """
+
     let doc = Document.parse content
     let link = doc.Links |> List.head |> fst
     Assert.Equal("other", link.Path)
@@ -92,7 +106,8 @@ Check out [[id:other][This is a long description with spaces]].
 
 [<Fact>]
 let ``Parse link without description`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -100,6 +115,7 @@ let ``Parse link without description`` () =
 
 See [[id:target-node]].
 """
+
     let doc = Document.parse content
     let link = doc.Links |> List.head |> fst
     Assert.Equal("target-node", link.Path)
@@ -107,7 +123,8 @@ See [[id:target-node]].
 
 [<Fact>]
 let ``Parse roam link`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -115,6 +132,7 @@ let ``Parse roam link`` () =
 
 Link to [[roam:Some Note Title]].
 """
+
     let doc = Document.parse content
     let link = doc.Links |> List.head |> fst
     Assert.Equal("roam", link.LinkType)
@@ -122,7 +140,8 @@ Link to [[roam:Some Note Title]].
 
 [<Fact>]
 let ``Parse https link`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -130,6 +149,7 @@ let ``Parse https link`` () =
 
 Visit [[https://example.com/path][Example Site]].
 """
+
     let doc = Document.parse content
     let link = doc.Links |> List.head |> fst
     Assert.Equal("https", link.LinkType)
@@ -137,46 +157,54 @@ Visit [[https://example.com/path][Example Site]].
 
 [<Fact>]
 let ``Parse headline with many tags`` () =
-    let content = """
+    let content =
+        """
 * Headline :tag1:tag2:tag3:tag4:tag5:
 """
+
     let doc = Document.parse content
     Assert.Equal(5, doc.Headlines.[0].Tags.Length)
 
 [<Fact>]
 let ``Parse deeply nested headlines`` () =
-    let content = """
+    let content =
+        """
 * Level 1
 ** Level 2
 *** Level 3
 **** Level 4
 ***** Level 5
 """
+
     let doc = Document.parse content
     Assert.Equal(5, doc.Headlines.Length)
     Assert.Equal(5, doc.Headlines.[4].Level)
 
 [<Fact>]
 let ``Compute outline path for deeply nested headline`` () =
-    let content = """
+    let content =
+        """
 * Grandparent
 ** Parent
 *** Child
 """
+
     let doc = Document.parse content
     let child = doc.Headlines.[2]
     let olp = Document.computeOutlinePath doc.Headlines child
-    Assert.Equal<string list>(["Grandparent"; "Parent"], olp)
+    Assert.Equal<string list>([ "Grandparent"; "Parent" ], olp)
 
 [<Fact>]
 let ``Parse quoted aliases with spaces`` () =
-    let content = """
+    let content =
+        """
 * Node
 :PROPERTIES:
 :ID: test
 :ROAM_ALIASES: "First Alias" "Second Alias" ThirdAlias
 :END:
 """
+
     let doc = Document.parse content
     let aliases = Types.getRoamAliases doc.Headlines.[0].Properties
     Assert.Equal(3, aliases.Length)
@@ -186,13 +214,15 @@ let ``Parse quoted aliases with spaces`` () =
 
 [<Fact>]
 let ``Parse refs with different types`` () =
-    let content = """
+    let content =
+        """
 * Node
 :PROPERTIES:
 :ID: test
 :ROAM_REFS: @citationKey "https://example.com" "http://other.com"
 :END:
 """
+
     let doc = Document.parse content
     let refs = Types.getRoamRefs doc.Headlines.[0].Properties
     Assert.Equal(3, refs.Length)
@@ -243,7 +273,8 @@ let ``Parse file with CRLF line endings`` () =
 
 [<Fact>]
 let ``Parse link with search option`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -251,6 +282,7 @@ let ``Parse link with search option`` () =
 
 See [[id:other::*Heading][link]].
 """
+
     let doc = Document.parse content
     let link = doc.Links |> List.head |> fst
     Assert.Equal("other", link.Path)

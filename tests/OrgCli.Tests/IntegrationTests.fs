@@ -8,7 +8,9 @@ open OrgCli.Org
 
 /// Create a temporary directory for tests
 let createTempDir () =
-    let path = Path.Combine(Path.GetTempPath(), "org-roam-test-" + Guid.NewGuid().ToString())
+    let path =
+        Path.Combine(Path.GetTempPath(), "org-roam-test-" + Guid.NewGuid().ToString())
+
     Directory.CreateDirectory(path) |> ignore
     path
 
@@ -19,12 +21,15 @@ let cleanupTempDir (path: string) =
 
 [<Fact>]
 let ``Sync creates database from org files`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let orgContent = ":PROPERTIES:\n:ID: test-node-001\n:END:\n#+title: Test Note\n\nSome content here.\n"
+        let orgContent =
+            ":PROPERTIES:\n:ID: test-node-001\n:END:\n#+title: Test Note\n\nSome content here.\n"
+
         File.WriteAllText(Path.Combine(tempDir, "test.org"), orgContent)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -37,14 +42,17 @@ let ``Sync creates database from org files`` () =
 
 [<Fact>]
 let ``Sync handles multiple files with links`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let file1 = ":PROPERTIES:\n:ID: node-a\n:END:\n#+title: Node A\n\nThis links to [[id:node-b][Node B]].\n"
+        let file1 =
+            ":PROPERTIES:\n:ID: node-a\n:END:\n#+title: Node A\n\nThis links to [[id:node-b][Node B]].\n"
+
         let file2 = ":PROPERTIES:\n:ID: node-b\n:END:\n#+title: Node B\n\nContent here.\n"
         File.WriteAllText(Path.Combine(tempDir, "a.org"), file1)
         File.WriteAllText(Path.Combine(tempDir, "b.org"), file2)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -65,13 +73,14 @@ let ``Sync handles multiple files with links`` () =
 
 [<Fact>]
 let ``Sync handles file modifications`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
         let filePath = Path.Combine(tempDir, "test.org")
         let original = ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Original Title\n"
         File.WriteAllText(filePath, original)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -92,13 +101,14 @@ let ``Sync handles file modifications`` () =
 
 [<Fact>]
 let ``Sync handles file deletion`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
         let filePath = Path.Combine(tempDir, "test.org")
         let content = ":PROPERTIES:\n:ID: node-to-delete\n:END:\n#+title: Will Be Deleted\n"
         File.WriteAllText(filePath, content)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -116,12 +126,15 @@ let ``Sync handles file deletion`` () =
 
 [<Fact>]
 let ``Sync handles headline nodes`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let orgContent = ":PROPERTIES:\n:ID: file-node\n:END:\n#+title: File Level\n\n* Headline Node\n:PROPERTIES:\n:ID: headline-node\n:ROAM_ALIASES: \"Headline Alias\"\n:END:\n\nContent under headline.\n\n** Nested Headline\n:PROPERTIES:\n:ID: nested-node\n:END:\n\nNested content.\n"
+        let orgContent =
+            ":PROPERTIES:\n:ID: file-node\n:END:\n#+title: File Level\n\n* Headline Node\n:PROPERTIES:\n:ID: headline-node\n:ROAM_ALIASES: \"Headline Alias\"\n:END:\n\nContent under headline.\n\n** Nested Headline\n:PROPERTIES:\n:ID: nested-node\n:END:\n\nNested content.\n"
+
         File.WriteAllText(Path.Combine(tempDir, "test.org"), orgContent)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -145,12 +158,15 @@ let ``Sync handles headline nodes`` () =
 
 [<Fact>]
 let ``Sync respects ROAM_EXCLUDE`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let orgContent = ":PROPERTIES:\n:ID: included-node\n:END:\n#+title: Included\n\n* Excluded Headline\n:PROPERTIES:\n:ID: excluded-node\n:ROAM_EXCLUDE: t\n:END:\n"
+        let orgContent =
+            ":PROPERTIES:\n:ID: included-node\n:END:\n#+title: Included\n\n* Excluded Headline\n:PROPERTIES:\n:ID: excluded-node\n:ROAM_EXCLUDE: t\n:END:\n"
+
         File.WriteAllText(Path.Combine(tempDir, "test.org"), orgContent)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -163,13 +179,13 @@ let ``Sync respects ROAM_EXCLUDE`` () =
 
 [<Fact>]
 let ``NodeOperations creates valid file node`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let options = {
-            NodeOperations.defaultCreateOptions "Test Create" with
-                Tags = ["tag1"; "tag2"]
-                Aliases = ["Alias 1"]
-        }
+        let options =
+            { NodeOperations.defaultCreateOptions "Test Create" with
+                Tags = [ "tag1"; "tag2" ]
+                Aliases = [ "Alias 1" ] }
 
         let filePath = NodeOperations.createFileNode tempDir options
 
@@ -187,12 +203,13 @@ let ``NodeOperations creates valid file node`` () =
 
 [<Fact>]
 let ``Find by title works`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
         let content = ":PROPERTIES:\n:ID: find-me\n:END:\n#+title: Unique Title Here\n"
         File.WriteAllText(Path.Combine(tempDir, "test.org"), content)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -205,12 +222,15 @@ let ``Find by title works`` () =
 
 [<Fact>]
 let ``Find by alias works`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let content = ":PROPERTIES:\n:ID: aliased-node\n:ROAM_ALIASES: \"My Alias\"\n:END:\n#+title: Real Title\n"
+        let content =
+            ":PROPERTIES:\n:ID: aliased-node\n:ROAM_ALIASES: \"My Alias\"\n:END:\n#+title: Real Title\n"
+
         File.WriteAllText(Path.Combine(tempDir, "test.org"), content)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)
@@ -223,14 +243,17 @@ let ``Find by alias works`` () =
 
 [<Fact>]
 let ``Find by tag works`` () =
-    let tempDir = createTempDir()
+    let tempDir = createTempDir ()
+
     try
-        let tagged = ":PROPERTIES:\n:ID: tagged-node\n:END:\n#+title: Tagged Note\n#+filetags: :project:important:\n"
+        let tagged =
+            ":PROPERTIES:\n:ID: tagged-node\n:END:\n#+title: Tagged Note\n#+filetags: :project:important:\n"
+
         let untagged = ":PROPERTIES:\n:ID: untagged-node\n:END:\n#+title: Untagged Note\n"
         File.WriteAllText(Path.Combine(tempDir, "tagged.org"), tagged)
         File.WriteAllText(Path.Combine(tempDir, "untagged.org"), untagged)
 
-        let dbPath = Path.Combine(tempDir, ".org-roam.db")
+        let dbPath = Path.Combine(tempDir, ".org.db")
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db tempDir false
         Assert.Empty(errors)

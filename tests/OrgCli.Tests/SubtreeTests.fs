@@ -11,13 +11,16 @@ let ``extractSubtree returns single headline with no children`` () =
 
 [<Fact>]
 let ``extractSubtree returns headline with deeper children`` () =
-    let content = "* Parent\nBody\n** Child One\nChild body\n** Child Two\nAnother body\n* Sibling\n"
+    let content =
+        "* Parent\nBody\n** Child One\nChild body\n** Child Two\nAnother body\n* Sibling\n"
+
     let result = Subtree.extractSubtree content 0L
     Assert.Equal("* Parent\nBody\n** Child One\nChild body\n** Child Two\nAnother body", result)
 
 [<Fact>]
 let ``extractSubtree from middle of file`` () =
-    let content = "* First\nBody\n* Second\nSecond body\n** Sub\nSub body\n* Third\nThird body\n"
+    let content =
+        "* First\nBody\n* Second\nSecond body\n** Sub\nSub body\n* Third\nThird body\n"
     // Position of "* Second"
     let pos = content.IndexOf("* Second") |> int64
     let result = Subtree.extractSubtree content pos
@@ -38,7 +41,9 @@ let ``removeSubtree removes from beginning`` () =
 
 [<Fact>]
 let ``removeSubtree removes from middle`` () =
-    let content = "* First\nBody\n* Second\nSecond body\n** Sub\nSub body\n* Third\nThird body\n"
+    let content =
+        "* First\nBody\n* Second\nSecond body\n** Sub\nSub body\n* Third\nThird body\n"
+
     let pos = content.IndexOf("* Second") |> int64
     let result = Subtree.removeSubtree content pos
     Assert.Equal("* First\nBody\n* Third\nThird body\n", result)

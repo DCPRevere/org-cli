@@ -6,7 +6,8 @@ open OrgCli.Org
 
 [<Fact>]
 let ``Parse simple file with title and ID`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: 12345678-1234-1234-1234-123456789012
 :END:
@@ -14,6 +15,7 @@ let ``Parse simple file with title and ID`` () =
 
 Some content here.
 """
+
     let doc = Document.parse content
 
     Assert.Equal(Some "My Test Note", Types.tryGetTitle doc.Keywords)
@@ -21,7 +23,8 @@ Some content here.
 
 [<Fact>]
 let ``Parse headline with properties`` () =
-    let content = """
+    let content =
+        """
 * Test Headline
 :PROPERTIES:
 :ID: abcd-1234
@@ -30,6 +33,7 @@ let ``Parse headline with properties`` () =
 
 Content under headline.
 """
+
     let doc = Document.parse content
 
     Assert.Equal(1, doc.Headlines.Length)
@@ -45,24 +49,27 @@ Content under headline.
 
 [<Fact>]
 let ``Parse headline with TODO and priority`` () =
-    let content = """
+    let content =
+        """
 * TODO [#A] Important Task :tag1:tag2:
 :PROPERTIES:
 :ID: task-id
 :END:
 """
+
     let doc = Document.parse content
 
     Assert.Equal(1, doc.Headlines.Length)
     let headline = doc.Headlines.[0]
     Assert.Equal(Some "TODO", headline.TodoKeyword)
-    Assert.Equal(Some (Priority 'A'), headline.Priority)
+    Assert.Equal(Some(Priority 'A'), headline.Priority)
     Assert.Equal("Important Task", headline.Title)
-    Assert.Equal<string list>(["tag1"; "tag2"], headline.Tags)
+    Assert.Equal<string list>([ "tag1"; "tag2" ], headline.Tags)
 
 [<Fact>]
 let ``Parse links in content`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: node-1
 :END:
@@ -70,6 +77,7 @@ let ``Parse links in content`` () =
 
 Here is a link to [[id:other-node][Other Node]] and [[roam:By Title]].
 """
+
     let doc = Document.parse content
 
     Assert.Equal(2, doc.Links.Length)
@@ -84,7 +92,7 @@ Here is a link to [[id:other-node][Other Node]] and [[roam:By Title]].
 [<Fact>]
 let ``splitQuotedString handles quoted and unquoted values`` () =
     let result = Types.splitQuotedString "foo \"bar baz\" qux"
-    Assert.Equal<string list>(["foo"; "bar baz"; "qux"], result)
+    Assert.Equal<string list>([ "foo"; "bar baz"; "qux" ], result)
 
 [<Fact>]
 let ``splitQuotedString handles empty string`` () =
@@ -94,11 +102,12 @@ let ``splitQuotedString handles empty string`` () =
 [<Fact>]
 let ``splitQuotedString handles single value`` () =
     let result = Types.splitQuotedString "single"
-    Assert.Equal<string list>(["single"], result)
+    Assert.Equal<string list>([ "single" ], result)
 
 [<Fact>]
 let ``Parse nested headlines`` () =
-    let content = """
+    let content =
+        """
 * Level 1
 :PROPERTIES:
 :ID: level-1
@@ -114,6 +123,7 @@ let ``Parse nested headlines`` () =
 :ID: level-3
 :END:
 """
+
     let doc = Document.parse content
 
     Assert.Equal(3, doc.Headlines.Length)
@@ -123,7 +133,8 @@ let ``Parse nested headlines`` () =
 
 [<Fact>]
 let ``Compute outline path`` () =
-    let content = """
+    let content =
+        """
 * Parent
 :PROPERTIES:
 :ID: parent
@@ -134,22 +145,25 @@ let ``Compute outline path`` () =
 :ID: child
 :END:
 """
+
     let doc = Document.parse content
 
     let child = doc.Headlines.[1]
     let olp = Document.computeOutlinePath doc.Headlines child
 
-    Assert.Equal<string list>(["Parent"], olp)
+    Assert.Equal<string list>([ "Parent" ], olp)
 
 [<Fact>]
 let ``Parse ROAM_REFS`` () =
-    let content = """
+    let content =
+        """
 * Reference Node
 :PROPERTIES:
 :ID: ref-node
 :ROAM_REFS: @citationKey "https://example.com"
 :END:
 """
+
     let doc = Document.parse content
 
     let headline = doc.Headlines.[0]
@@ -161,13 +175,15 @@ let ``Parse ROAM_REFS`` () =
 
 [<Fact>]
 let ``ROAM_EXCLUDE is detected`` () =
-    let content = """
+    let content =
+        """
 * Excluded Node
 :PROPERTIES:
 :ID: excluded
 :ROAM_EXCLUDE: t
 :END:
 """
+
     let doc = Document.parse content
 
     let headline = doc.Headlines.[0]
@@ -175,39 +191,52 @@ let ``ROAM_EXCLUDE is detected`` () =
 
 [<Fact>]
 let ``Parse filetags`` () =
-    let content = """
+    let content =
+        """
 :PROPERTIES:
 :ID: file-node
 :END:
 #+title: Tagged Note
 #+filetags: :tag1:tag2:tag3:
 """
+
     let doc = Document.parse content
 
     let tags = Types.getFileTags doc.Keywords
-    Assert.Equal<string list>(["tag1"; "tag2"; "tag3"], tags)
+    Assert.Equal<string list>([ "tag1"; "tag2"; "tag3" ], tags)
 
 // --- Timestamp formatting ---
 
 [<Fact>]
 let ``formatTimestamp with RangeEnd formats as range`` () =
-    let ts : Timestamp = {
-        Type = TimestampType.Active; Date = DateTime(2026, 2, 5); HasTime = false
-        Repeater = None; Delay = None
-        RangeEnd = Some {
-            Type = TimestampType.Active; Date = DateTime(2026, 2, 10); HasTime = false
-            Repeater = None; Delay = None; RangeEnd = None
-        }
-    }
+    let ts: Timestamp =
+        { Type = TimestampType.Active
+          Date = DateTime(2026, 2, 5)
+          HasTime = false
+          Repeater = None
+          Delay = None
+          RangeEnd =
+            Some
+                { Type = TimestampType.Active
+                  Date = DateTime(2026, 2, 10)
+                  HasTime = false
+                  Repeater = None
+                  Delay = None
+                  RangeEnd = None } }
+
     let result = Writer.formatTimestamp ts
     Assert.Equal("<2026-02-05 Thu>--<2026-02-10 Tue>", result)
 
 [<Fact>]
 let ``formatTimestamp without RangeEnd unchanged`` () =
-    let ts : Timestamp = {
-        Type = TimestampType.Active; Date = DateTime(2026, 2, 5); HasTime = false
-        Repeater = None; Delay = None; RangeEnd = None
-    }
+    let ts: Timestamp =
+        { Type = TimestampType.Active
+          Date = DateTime(2026, 2, 5)
+          HasTime = false
+          Repeater = None
+          Delay = None
+          RangeEnd = None }
+
     let result = Writer.formatTimestamp ts
     Assert.Equal("<2026-02-05 Thu>", result)
 
@@ -216,6 +245,7 @@ let ``formatTimestamp without RangeEnd unchanged`` () =
 [<Fact>]
 let ``pTimestampRange parses active date range`` () =
     let input = "<2026-02-05 Thu>--<2026-02-10 Tue>"
+
     match Parsers.runParser Parsers.pTimestampRange input with
     | Result.Ok ts ->
         Assert.Equal(DateTime(2026, 2, 5), ts.Date)
@@ -227,6 +257,7 @@ let ``pTimestampRange parses active date range`` () =
 [<Fact>]
 let ``pTimestampRange parses active date-time range`` () =
     let input = "<2026-02-05 Thu 10:00>--<2026-02-10 Tue 14:00>"
+
     match Parsers.runParser Parsers.pTimestampRange input with
     | Result.Ok ts ->
         Assert.True(ts.HasTime)
@@ -239,8 +270,9 @@ let ``pTimestampRange parses active date-time range`` () =
 [<Fact>]
 let ``pTimestampRange parses inactive date range`` () =
     let input = "[2026-02-05 Thu]--[2026-02-10 Tue]"
+
     match Parsers.runParser Parsers.pTimestampRange input with
-    | Result.Ok (ts: Timestamp) ->
+    | Result.Ok(ts: Timestamp) ->
         Assert.Equal(TimestampType.Inactive, ts.Type)
         Assert.True(ts.RangeEnd.IsSome)
         Assert.Equal(TimestampType.Inactive, ts.RangeEnd.Value.Type)
@@ -249,6 +281,7 @@ let ``pTimestampRange parses inactive date range`` () =
 [<Fact>]
 let ``pTimestampRange parses single timestamp as no range`` () =
     let input = "<2026-02-05 Thu>"
+
     match Parsers.runParser Parsers.pTimestampRange input with
     | Result.Ok ts ->
         Assert.Equal(DateTime(2026, 2, 5), ts.Date)
@@ -271,6 +304,7 @@ let ``Planning line with range parses correctly`` () =
 [<Fact>]
 let ``Clock entry with -- separator still works`` () =
     let line = "CLOCK: [2026-02-05 Thu 09:00]--[2026-02-05 Thu 10:30] =>  1:30"
+
     match Parsers.runParser Parsers.pClockEntry (line + "\n") with
     | Result.Ok entry ->
         Assert.Equal(DateTime(2026, 2, 5, 9, 0, 0), entry.Start.Date)
@@ -282,7 +316,9 @@ let ``Clock entry with -- separator still works`` () =
 
 [<Fact>]
 let ``Document.parse respects custom TODO keywords from #+TODO line`` () =
-    let content = "#+TODO: REVIEW APPROVE | MERGED REJECTED\n* REVIEW My PR\n* MERGED Old PR\n"
+    let content =
+        "#+TODO: REVIEW APPROVE | MERGED REJECTED\n* REVIEW My PR\n* MERGED Old PR\n"
+
     let doc = Document.parse content
     Assert.Equal(2, doc.Headlines.Length)
     Assert.Equal(Some "REVIEW", doc.Headlines.[0].TodoKeyword)
@@ -305,11 +341,18 @@ let ``Document.parse custom keywords: standard word not treated as keyword`` () 
 
 [<Fact>]
 let ``Document.parseWithConfig accepts external config`` () =
-    let cfg = { Types.defaultConfig with
-                    TodoKeywords = {
-                        ActiveStates = [{ Keyword = "OPEN"; LogOnEnter = LogAction.NoLog; LogOnLeave = LogAction.NoLog }]
-                        DoneStates = [{ Keyword = "CLOSED"; LogOnEnter = LogAction.NoLog; LogOnLeave = LogAction.NoLog }]
-                    } }
+    let cfg =
+        { Types.defaultConfig with
+            TodoKeywords =
+                { ActiveStates =
+                    [ { Keyword = "OPEN"
+                        LogOnEnter = LogAction.NoLog
+                        LogOnLeave = LogAction.NoLog } ]
+                  DoneStates =
+                    [ { Keyword = "CLOSED"
+                        LogOnEnter = LogAction.NoLog
+                        LogOnLeave = LogAction.NoLog } ] } }
+
     let content = "* OPEN Task\n* CLOSED Done\n* TODO Not keyword\n"
     let doc = Document.parseWithConfig cfg content
     Assert.Equal(Some "OPEN", doc.Headlines.[0].TodoKeyword)
@@ -320,7 +363,9 @@ module SourceBlockAwareness =
 
     [<Fact>]
     let ``Headlines inside BEGIN_SRC are not parsed as headlines`` () =
-        let content = "* Real headline\nSome text\n#+BEGIN_SRC org\n* Fake headline\n** Another fake\n#+END_SRC\n* Second real headline\n"
+        let content =
+            "* Real headline\nSome text\n#+BEGIN_SRC org\n* Fake headline\n** Another fake\n#+END_SRC\n* Second real headline\n"
+
         let doc = Document.parse content
         Assert.Equal(2, doc.Headlines.Length)
         Assert.Equal("Real headline", doc.Headlines.[0].Title)
@@ -328,7 +373,9 @@ module SourceBlockAwareness =
 
     [<Fact>]
     let ``Headlines inside BEGIN_EXAMPLE are not parsed as headlines`` () =
-        let content = "* Before\n#+BEGIN_EXAMPLE\n* Not a headline\n#+END_EXAMPLE\n* After\n"
+        let content =
+            "* Before\n#+BEGIN_EXAMPLE\n* Not a headline\n#+END_EXAMPLE\n* After\n"
+
         let doc = Document.parse content
         Assert.Equal(2, doc.Headlines.Length)
         Assert.Equal("Before", doc.Headlines.[0].Title)
@@ -336,7 +383,9 @@ module SourceBlockAwareness =
 
     [<Fact>]
     let ``Nested blocks are handled correctly`` () =
-        let content = "* Top\n#+begin_src python\ndef foo():\n    pass\n#+end_src\nBody text\n"
+        let content =
+            "* Top\n#+begin_src python\ndef foo():\n    pass\n#+end_src\nBody text\n"
+
         let doc = Document.parse content
         Assert.Equal(1, doc.Headlines.Length)
         Assert.Equal("Top", doc.Headlines.[0].Title)
@@ -351,7 +400,9 @@ module SourceBlockAwareness =
 
     [<Fact>]
     let ``Multiple blocks in sequence`` () =
-        let content = "* H1\n#+BEGIN_SRC\n* fake1\n#+END_SRC\n* H2\n#+BEGIN_EXAMPLE\n* fake2\n#+END_EXAMPLE\n* H3\n"
+        let content =
+            "* H1\n#+BEGIN_SRC\n* fake1\n#+END_SRC\n* H2\n#+BEGIN_EXAMPLE\n* fake2\n#+END_EXAMPLE\n* H3\n"
+
         let doc = Document.parse content
         Assert.Equal(3, doc.Headlines.Length)
         Assert.Equal("H1", doc.Headlines.[0].Title)

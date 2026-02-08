@@ -10,6 +10,8 @@
 #
 # Self-contained publish targets:
 #   dotnet publish -c Release -r linux-x64   --self-contained -p:PublishSingleFile=true
+#   dotnet publish -c Release -r linux-arm64 --self-contained -p:PublishSingleFile=true
+#   dotnet publish -c Release -r osx-x64     --self-contained -p:PublishSingleFile=true
 #   dotnet publish -c Release -r osx-arm64   --self-contained -p:PublishSingleFile=true
 #   dotnet publish -c Release -r win-x64     --self-contained -p:PublishSingleFile=true
 
@@ -51,6 +53,12 @@ jobs:
       - name: Publish linux-x64
         run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/linux-x64
 
+      - name: Publish linux-arm64
+        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r linux-arm64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/linux-arm64
+
+      - name: Publish osx-x64
+        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r osx-x64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/osx-x64
+
       - name: Publish osx-arm64
         run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true -p:Version=${{ steps.version.outputs.version }} -o artifacts/osx-arm64
 
@@ -61,17 +69,58 @@ jobs:
         run: |
           cd artifacts
           tar czf org-linux-x64.tar.gz -C linux-x64 org
+          tar czf org-linux-arm64.tar.gz -C linux-arm64 org
+          tar czf org-osx-x64.tar.gz -C osx-x64 org
           tar czf org-osx-arm64.tar.gz -C osx-arm64 org
           zip -j org-win-x64.zip win-x64/org.exe
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum org-linux-x64.tar.gz org-linux-arm64.tar.gz org-osx-x64.tar.gz org-osx-arm64.tar.gz org-win-x64.zip > sha256sums.txt
+
+      - name: Stamp packaging manifests
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          SHA_LINUX_X64=$(sha256sum artifacts/org-linux-x64.tar.gz | cut -d' ' -f1)
+          SHA_LINUX_ARM64=$(sha256sum artifacts/org-linux-arm64.tar.gz | cut -d' ' -f1)
+          SHA_OSX_X64=$(sha256sum artifacts/org-osx-x64.tar.gz | cut -d' ' -f1)
+          SHA_OSX_ARM64=$(sha256sum artifacts/org-osx-arm64.tar.gz | cut -d' ' -f1)
+          SHA_WIN_X64=$(sha256sum artifacts/org-win-x64.zip | cut -d' ' -f1)
+
+          stamp() {
+            sed -i \
+              -e "s/@@VERSION@@/$VER/g" \
+              -e "s/@@SHA256_LINUX_X64@@/$SHA_LINUX_X64/g" \
+              -e "s/@@SHA256_LINUX_ARM64@@/$SHA_LINUX_ARM64/g" \
+              -e "s/@@SHA256_OSX_X64@@/$SHA_OSX_X64/g" \
+              -e "s/@@SHA256_OSX_ARM64@@/$SHA_OSX_ARM64/g" \
+              -e "s/@@SHA256_WIN_X64@@/$SHA_WIN_X64/g" \
+              "$1"
+          }
+
+          stamp packaging/homebrew/org-cli.rb
+          stamp packaging/scoop/org-cli.json
+          stamp packaging/aur/PKGBUILD
+          stamp packaging/nix/default.nix
+          stamp packaging/choco/org-cli.nuspec
+          stamp packaging/choco/tools/chocolateyinstall.ps1
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             artifacts/org-linux-x64.tar.gz
+            artifacts/org-linux-arm64.tar.gz
+            artifacts/org-osx-x64.tar.gz
             artifacts/org-osx-arm64.tar.gz
             artifacts/org-win-x64.zip
             artifacts/nupkg/*.nupkg
+            artifacts/sha256sums.txt
+            packaging/homebrew/org-cli.rb
+            packaging/scoop/org-cli.json
+            packaging/aur/PKGBUILD
+            packaging/nix/default.nix
 
       - name: Push to nuget.org
         if: env.NUGET_API_KEY != ''

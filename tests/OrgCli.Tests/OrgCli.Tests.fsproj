@@ -28,21 +28,31 @@
     <Compile Include="CorrectnessTests.fs" />
     <Compile Include="RoundTripTests.fs" />
     <Compile Include="ErrorPathTests.fs" />
+    <Compile Include="PropertyTests.fs" />
+    <Compile Include="IndexTests.fs" />
+    <Compile Include="IndexSyncTests.fs" />
+    <Compile Include="IndexQueryTests.fs" />
+    <Compile Include="IndexIntegrationTests.fs" />
+    <Compile Include="RoamComplianceTests.fs" />
+    <Compile Include="CliHandlerTests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="FsCheck.Xunit" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="Xunit.SkippableFact" />
+    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\OrgCli.Org\OrgCli.Org.fsproj" />
+    <ProjectReference Include="..\..\src\OrgCli.Index\OrgCli.Index.fsproj" />
     <ProjectReference Include="..\..\src\OrgCli.Roam\OrgCli.Roam.fsproj" />
+    <ProjectReference Include="..\..\src\OrgCli\OrgCli.fsproj" />
   </ItemGroup>
 
 </Project>

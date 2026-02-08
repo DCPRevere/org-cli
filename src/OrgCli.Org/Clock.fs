@@ -10,6 +10,7 @@ let private headlineRegex = Regex(@"^(\*+) ", RegexOptions.Multiline)
 let private getOwnBodyRange (content: string) (pos: int64) : int * int =
     let startIdx = int pos
     let m = headlineRegex.Match(content, startIdx)
+
     if not m.Success || m.Index <> startIdx then
         startIdx, startIdx
     else
@@ -17,10 +18,10 @@ let private getOwnBodyRange (content: string) (pos: int64) : int * int =
             match content.IndexOf('\n', startIdx) with
             | -1 -> content.Length
             | i -> i + 1
+
         let nextHeadline =
-            headlineRegex.Matches(content, lineEnd)
-            |> Seq.cast<Match>
-            |> Seq.tryHead
+            headlineRegex.Matches(content, lineEnd) |> Seq.cast<Match> |> Seq.tryHead
+
         match nextHeadline with
         | Some nm -> startIdx, nm.Index
         | None -> startIdx, content.Length
@@ -28,7 +29,9 @@ let private getOwnBodyRange (content: string) (pos: int64) : int * int =
 /// Collect clock entries from pre-parsed documents.
 /// Returns list of (headline, file, clock entries) for headlines that have clock entries.
 /// Each headline only reports its own clock entries, not those of child headlines.
-let collectClockEntriesFromDocs (docs: (string * OrgDocument * string) list) : (Headline * string * ClockEntry list) list =
+let collectClockEntriesFromDocs
+    (docs: (string * OrgDocument * string) list)
+    : (Headline * string * ClockEntry list) list =
     docs
     |> List.collect (fun (file, doc, content) ->
         doc.Headlines
@@ -44,14 +47,18 @@ let collectClockEntriesFromDocs (docs: (string * OrgDocument * string) list) : (
                         match sectionContent.IndexOf('\n', m.Index) with
                         | -1 -> sectionContent.Length
                         | i -> i
+
                     let line = sectionContent.Substring(m.Index, lineEnd - m.Index)
+
                     match Parsers.runParser Parsers.pClockEntry (line.TrimStart() + "\n") with
                     | Result.Ok entry -> Some entry
                     | Result.Error _ -> None)
                 |> Seq.toList
 
-            if List.isEmpty clockEntries then None
-            else Some (h, file, clockEntries)))
+            if List.isEmpty clockEntries then
+                None
+            else
+                Some(h, file, clockEntries)))
 
 /// Collect clock entries from files on disk.
 let collectClockEntries (files: string list) : (Headline * string * ClockEntry list) list =
@@ -60,6 +67,7 @@ let collectClockEntries (files: string list) : (Headline * string * ClockEntry l
         |> List.map (fun f ->
             let content = System.IO.File.ReadAllText(f)
             (f, Document.parse content, content))
+
     collectClockEntriesFromDocs docs
 
 /// Sum the durations of completed clock entries.

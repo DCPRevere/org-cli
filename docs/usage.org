@@ -16,6 +16,7 @@ The binary name is =org=. All examples below assume it is on your PATH.
 | =--config <path>=               |       | Config file path (see Configuration)              |
 | =--log-done <action>=           |       | Override log-done: =none=, =time=, or =note=      |
 | =--deadline-warning-days <n>=   |       | Override deadline warning days                    |
+| =--db <path>=                   |       | Database path (default: =.org-index.db= in =-d=)   |
 | =--dry-run=                     |       | Preview mutation without writing to file           |
 | =--quiet=                       | =-q=  | Suppress informational text output                 |
 | =--version=                     |       | Print version and exit                             |
@@ -363,7 +364,7 @@ All agenda subcommands accept =--tag TAG= to filter results.
 
 * Roam commands
 
-All roam commands require a database. The database path defaults to =<directory>/.org-roam.db= but can be set with =--db <path>=.
+All roam commands require a database. The database path defaults to =~/.emacs.d/org-roam.db= but can be set with the global =--db <path>= option. When =--db= is specified, both roam tables and index tables coexist in the same file.
 
 ** Sync
 
@@ -422,6 +423,41 @@ org roam ref remove <file> <node-id> <ref>
 #+end_example
 
 Modifies the =ROAM_ALIASES= or =ROAM_REFS= property on the node, then syncs the database.
+
+* Index and full-text search
+
+** Build index
+
+#+begin_example
+org index [-d <dir>] [--force] [--quiet]
+#+end_example
+
+Scans all =.org= files under =-d= and builds (or updates) a SQLite headline index at =.org-index.db= in the target directory (or at the path given by =--db=). Without =--force=, only files modified since the last index are re-parsed. With =--force=, all files are re-indexed from scratch.
+
+The index is also updated automatically after mutations (=todo=, =add=, =refile=, etc.) when the database already exists. You must run =org index= once to create it; after that, incremental sync keeps it current.
+
+** Full-text search
+
+#+begin_example
+org fts <query> [-d <dir>] [--no-sync]
+#+end_example
+
+Searches headline bodies using FTS5 syntax. Requires an existing index (run =org index= first).
+
+By default, =fts= runs an incremental sync before querying to ensure results are fresh. Pass =--no-sync= to skip this step (useful in scripts where you've already synced).
+
+FTS5 query syntax supports:
+- Simple terms: =parser=
+- Boolean operators: =project AND CLI=
+- Prefix matching: =implement*=
+- Phrase matching: ="project timeline"=
+
+#+begin_example
+org fts "parser" -d ~/org
+org fts "project AND CLI" -d ~/org
+org fts "implement*" -d ~/org --no-sync
+org fts '"project timeline"' -d ~/org --format json
+#+end_example
 
 * Utility commands
 

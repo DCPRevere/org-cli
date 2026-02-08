@@ -18,6 +18,7 @@ module ParseTodoLine =
     [<Fact>]
     let ``all states default to NoLog when no parens`` () =
         let cfg = FileConfig.parseTodoLine "TODO WAIT | DONE CANCELLED"
+
         for d in cfg.ActiveStates @ cfg.DoneStates do
             Assert.Equal(LogAction.NoLog, d.LogOnEnter)
             Assert.Equal(LogAction.NoLog, d.LogOnLeave)
@@ -129,9 +130,11 @@ module MergeFileConfig =
     [<Fact>]
     let ``todo keywords from file replace base config`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "TODO"; Value = "OPEN INPROGRESS | CLOSED" }
-        ]
+
+        let keywords =
+            [ { Key = "TODO"
+                Value = "OPEN INPROGRESS | CLOSED" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         let allKws = Types.allKeywords merged.TodoKeywords
         Assert.Equal(3, allKws.Length)
@@ -142,9 +145,11 @@ module MergeFileConfig =
     [<Fact>]
     let ``seq_todo is treated same as todo`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "SEQ_TODO"; Value = "ALPHA | OMEGA" }
-        ]
+
+        let keywords =
+            [ { Key = "SEQ_TODO"
+                Value = "ALPHA | OMEGA" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal(1, merged.TodoKeywords.ActiveStates.Length)
         Assert.Equal("ALPHA", merged.TodoKeywords.ActiveStates.[0].Keyword)
@@ -153,19 +158,18 @@ module MergeFileConfig =
 
     [<Fact>]
     let ``startup logdone overrides base config`` () =
-        let baseConfig = { Types.defaultConfig with LogDone = LogAction.NoLog }
-        let keywords = [
-            { Key = "STARTUP"; Value = "logdone" }
-        ]
+        let baseConfig =
+            { Types.defaultConfig with
+                LogDone = LogAction.NoLog }
+
+        let keywords = [ { Key = "STARTUP"; Value = "logdone" } ]
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal(LogAction.LogTime, merged.LogDone)
 
     [<Fact>]
     let ``priorities from file override base config`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "PRIORITIES"; Value = "A Z M" }
-        ]
+        let keywords = [ { Key = "PRIORITIES"; Value = "A Z M" } ]
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal('A', merged.Priorities.Highest)
         Assert.Equal('Z', merged.Priorities.Lowest)
@@ -174,19 +178,21 @@ module MergeFileConfig =
     [<Fact>]
     let ``archive location from file`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "ARCHIVE"; Value = "archive/%s_archive::" }
-        ]
+
+        let keywords =
+            [ { Key = "ARCHIVE"
+                Value = "archive/%s_archive::" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal(Some "archive/%s_archive::", merged.ArchiveLocation)
 
     [<Fact>]
     let ``no relevant keywords returns base config unchanged`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "TITLE"; Value = "My Document" }
-            { Key = "AUTHOR"; Value = "Test" }
-        ]
+
+        let keywords =
+            [ { Key = "TITLE"; Value = "My Document" }; { Key = "AUTHOR"; Value = "Test" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal(baseConfig.TodoKeywords.ActiveStates.Length, merged.TodoKeywords.ActiveStates.Length)
         Assert.Equal(baseConfig.Priorities, merged.Priorities)
@@ -196,10 +202,12 @@ module MergeFileConfig =
     [<Fact>]
     let ``multiple todo lines are combined`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "TODO"; Value = "TODO | DONE" }
-            { Key = "TODO"; Value = "OPEN | CLOSED" }
-        ]
+
+        let keywords =
+            [ { Key = "TODO"; Value = "TODO | DONE" }
+              { Key = "TODO"
+                Value = "OPEN | CLOSED" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         let allKws = Types.allKeywords merged.TodoKeywords
         Assert.Equal(4, allKws.Length)
@@ -211,9 +219,11 @@ module MergeFileConfig =
     [<Fact>]
     let ``startup logrepeat overrides base config`` () =
         let baseConfig = Types.defaultConfig
-        let keywords = [
-            { Key = "STARTUP"; Value = "lognoterepeat" }
-        ]
+
+        let keywords =
+            [ { Key = "STARTUP"
+                Value = "lognoterepeat" } ]
+
         let merged = FileConfig.mergeFileConfig baseConfig keywords
         Assert.Equal(LogAction.LogNote, merged.LogRepeat)
 
@@ -221,7 +231,9 @@ module DynamicKeywordParsing =
 
     [<Fact>]
     let ``Document.parse recognizes custom TODO keywords from file header`` () =
-        let content = "#+TODO: OPEN INPROGRESS | CLOSED\n* OPEN My task\n* INPROGRESS Another\n* CLOSED Done task\n"
+        let content =
+            "#+TODO: OPEN INPROGRESS | CLOSED\n* OPEN My task\n* INPROGRESS Another\n* CLOSED Done task\n"
+
         let doc = Document.parse content
         Assert.Equal(3, doc.Headlines.Length)
         Assert.Equal(Some "OPEN", doc.Headlines.[0].TodoKeyword)
@@ -246,7 +258,9 @@ module DynamicKeywordParsing =
 
     [<Fact>]
     let ``Document.parse handles multiple #+TODO lines`` () =
-        let content = "#+TODO: TODO | DONE\n#+TODO: OPEN | CLOSED\n* TODO Task\n* OPEN Another\n"
+        let content =
+            "#+TODO: TODO | DONE\n#+TODO: OPEN | CLOSED\n* TODO Task\n* OPEN Another\n"
+
         let doc = Document.parse content
         Assert.Equal(Some "TODO", doc.Headlines.[0].TodoKeyword)
         Assert.Equal(Some "OPEN", doc.Headlines.[1].TodoKeyword)
@@ -260,21 +274,21 @@ module DynamicKeywordParsing =
 
     [<Fact>]
     let ``HeadlineEdit uses dynamic keywords for getState`` () =
-        let keywords = ["OPEN"; "CLOSED"]
+        let keywords = [ "OPEN"; "CLOSED" ]
         let line = "* OPEN My task"
         let state = HeadlineEdit.getStateWith keywords line
         Assert.Equal(Some "OPEN", state)
 
     [<Fact>]
     let ``HeadlineEdit uses dynamic keywords for replaceKeyword`` () =
-        let keywords = ["OPEN"; "CLOSED"]
+        let keywords = [ "OPEN"; "CLOSED" ]
         let line = "* OPEN My task"
         let result = HeadlineEdit.replaceKeywordWith keywords line (Some "CLOSED")
         Assert.Equal("* CLOSED My task", result)
 
     [<Fact>]
     let ``HeadlineEdit dynamic getState returns None for unknown keyword`` () =
-        let keywords = ["OPEN"; "CLOSED"]
+        let keywords = [ "OPEN"; "CLOSED" ]
         let line = "* TODO My task"
         let state = HeadlineEdit.getStateWith keywords line
         Assert.Equal(None, state)

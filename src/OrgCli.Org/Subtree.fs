@@ -9,16 +9,19 @@ let private headlineRegex = Regex(@"^(\*+) ", RegexOptions.Multiline)
 let getSubtreeRange (content: string) (pos: int64) : int * int =
     let startIdx = int pos
     let m = headlineRegex.Match(content, startIdx)
+
     if not m.Success || m.Index <> startIdx then
         startIdx, startIdx
     else
         let level = m.Groups.[1].Value.Length
+
         let endIdx =
             headlineRegex.Matches(content, startIdx + m.Length)
             |> Seq.cast<Match>
             |> Seq.tryFind (fun nm -> nm.Groups.[1].Value.Length <= level)
             |> Option.map (fun nm -> nm.Index)
             |> Option.defaultValue content.Length
+
         startIdx, endIdx
 
 /// Extract the subtree at `pos` as a string (trimmed of trailing whitespace).
@@ -38,38 +41,67 @@ let removeSubtree (content: string) (pos: int64) : string =
 let getHeadlineBody (content: string) (pos: int64) : string =
     let startIdx = int pos
     let m = headlineRegex.Match(content, startIdx)
-    if not m.Success || m.Index <> startIdx then ""
+
+    if not m.Success || m.Index <> startIdx then
+        ""
     else
         let lineEnd =
             match content.IndexOf('\n', startIdx) with
             | -1 -> content.Length
             | i -> i + 1
+
         let nextHeadline = headlineRegex.Match(content, lineEnd)
+
         let bodyEnd =
-            if nextHeadline.Success then nextHeadline.Index
-            else snd (getSubtreeRange content pos)
+            if nextHeadline.Success then
+                nextHeadline.Index
+            else
+                snd (getSubtreeRange content pos)
+
         content.Substring(lineEnd, bodyEnd - lineEnd).TrimEnd()
 
 /// Adjust all headline levels in subtreeContent by delta.
 /// Levels are clamped to a minimum of 1. Delta 0 is a no-op.
 let adjustLevels (subtreeContent: string) (delta: int) : string =
-    if delta = 0 then subtreeContent
+    if delta = 0 then
+        subtreeContent
     else
-        headlineRegex.Replace(subtreeContent, fun m ->
-            let currentLevel = m.Groups.[1].Value.Length
-            let newLevel = max 1 (currentLevel + delta)
-            (String.replicate newLevel "*") + " ")
+        headlineRegex.Replace(
+            subtreeContent,
+            fun m ->
+                let currentLevel = m.Groups.[1].Value.Length
+                let newLevel = max 1 (currentLevel + delta)
+                (String.replicate newLevel "*") + " "
+        )
+
+/// Append subtreeContent at the end of the file at level 1.
+let appendSubtree (content: string) (subtreeContent: string) : string =
+    let subtreeMatch = headlineRegex.Match(subtreeContent)
+
+    if not subtreeMatch.Success then
+        content
+    else
+        let subtreeRootLevel = subtreeMatch.Groups.[1].Value.Length
+        let delta = 1 - subtreeRootLevel
+        let adjusted = adjustLevels subtreeContent delta
+        let needsNewline = content.Length > 0 && content.[content.Length - 1] <> '\n'
+        let prefix = if needsNewline then "\n" else ""
+        content + prefix + adjusted
 
 /// Insert subtreeContent as a child of the headline at parentPos.
 /// The subtree levels are adjusted to be one deeper than the parent.
 let insertSubtreeAsChild (content: string) (parentPos: int64) (subtreeContent: string) : string =
     let parentStart = int parentPos
     let parentMatch = headlineRegex.Match(content, parentStart)
-    if not parentMatch.Success || parentMatch.Index <> parentStart then content
+
+    if not parentMatch.Success || parentMatch.Index <> parentStart then
+        content
     else
         let parentLevel = parentMatch.Groups.[1].Value.Length
         let subtreeMatch = headlineRegex.Match(subtreeContent)
-        if not subtreeMatch.Success then content
+
+        if not subtreeMatch.Success then
+            content
         else
             let subtreeRootLevel = subtreeMatch.Groups.[1].Value.Length
             let delta = (parentLevel + 1) - subtreeRootLevel

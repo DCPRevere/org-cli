@@ -8,8 +8,18 @@ open OrgCli.Org
 
 /// Format a node for text output
 let formatNodeText (node: RoamNode) =
-    let tags = if List.isEmpty node.Tags then "" else sprintf " [%s]" (String.Join(", ", node.Tags))
-    let aliases = if List.isEmpty node.Aliases then "" else sprintf " (aka: %s)" (String.Join(", ", node.Aliases))
+    let tags =
+        if List.isEmpty node.Tags then
+            ""
+        else
+            sprintf " [%s]" (String.Join(", ", node.Tags))
+
+    let aliases =
+        if List.isEmpty node.Aliases then
+            ""
+        else
+            sprintf " (aka: %s)" (String.Join(", ", node.Aliases))
+
     sprintf "%s: %s%s%s\n  File: %s\n  Level: %d" node.Id node.Title tags aliases node.File node.Level
 
 /// Format a node for JSON output
@@ -23,69 +33,129 @@ let formatNodeJson (node: RoamNode) : JsonNode =
     obj["aliases"] <- JsonOutput.jsonArray (node.Aliases |> List.map (fun a -> JsonValue.Create(a) :> JsonNode))
     obj
 
-/// Open a database, initialize it, run f, then dispose.
-let withDb dbPath (f: Database.OrgRoamDb -> 'a) : 'a =
-    use db = new Database.OrgRoamDb(dbPath)
-    db.Initialize()
-    f db
+let defaultDbPath () =
+    let emacsDir =
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".emacs.d")
 
-let handleRoam (printError: bool -> CliError -> int) (opts: Map<string, string list>) (isJson: bool) (roamRest: string list) (printUsage: unit -> unit) (getOpt: Map<string,string list> -> string -> string option -> string -> string) (getOptAll: Map<string,string list> -> string -> string option -> string list) =
-    let roamDir =
-        getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    Path.Combine(emacsDir, "org-roam.db")
+
+let ensureDbDirectory (dbPath: string) =
+    let dir = Path.GetDirectoryName(dbPath)
+
+    if not (String.IsNullOrEmpty(dir)) && not (Directory.Exists(dir)) then
+        Directory.CreateDirectory(dir) |> ignore
+
+/// Open a database, initialize it, run f, then dispose.
+let withDb dbPath (f: Database.OrgRoamDb -> int) : int =
+    ensureDbDirectory dbPath
+    use db = new Database.OrgRoamDb(dbPath)
+
+    match db.Initialize() with
+    | Error msg ->
+        eprintfn "Database error: %s" msg
+        1
+    | Ok() -> f db
+
+let handleRoam
+    (printError: bool -> CliError -> int)
+    (opts: Map<string, string list>)
+    (isJson: bool)
+    (roamRest: string list)
+    (printUsage: unit -> unit)
+    (getOpt: Map<string, string list> -> string -> string option -> string -> string)
+    (getOptAll: Map<string, string list> -> string -> string option -> string list)
+    =
+    let roamDir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
 
     let dbPath =
         match Map.tryFind "db" opts with
-        | Some (p :: _) -> p
-        | _ -> Path.Combine(roamDir, ".org-roam.db")
+        | Some(p :: _) -> p
+        | _ -> defaultDbPath ()
 
     match roamRest with
     | "sync" :: rest ->
-        let force = List.contains "--force" rest || Map.containsKey "force" opts || List.contains "-f" rest
+        let force =
+            List.contains "--force" rest
+            || Map.containsKey "force" opts
+            || List.contains "-f" rest
+
+        ensureDbDirectory dbPath
         use db = new Database.OrgRoamDb(dbPath)
         let errors = Sync.sync db roamDir force
+
         if isJson then
             let obj = JsonObject()
-            obj["errors"] <- JsonOutput.jsonArray (errors |> List.map (fun (file, msg) ->
-                let e = JsonObject()
-                e["file"] <- JsonValue.Create(file)
-                e["message"] <- JsonValue.Create(msg)
-                e :> JsonNode))
+
+            obj["errors"] <-
+                JsonOutput.jsonArray (
+                    errors
+                    |> List.map (fun (file, msg) ->
+                        let e = JsonObject()
+                        e["file"] <- JsonValue.Create(file)
+                        e["message"] <- JsonValue.Create(msg)
+                        e :> JsonNode)
+                )
+
             printfn "%s" (JsonOutput.ok obj)
         else
             for (file, msg) in errors do
                 eprintfn "Error processing %s: %s" file msg
+
             if List.isEmpty errors then
                 printfn "Sync complete"
             else
                 eprintfn "Sync completed with %d error(s)" errors.Length
+
         if List.isEmpty errors then 0 else 1
 
     | "node" :: "list" :: _ ->
         withDb dbPath (fun db ->
             let nodes = Sync.getAllNodes db
+
             if isJson then
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (nodes |> List.map formatNodeJson)))
             else
                 for node in nodes do
                     printfn "%s\n" (formatNodeText node)
+
             0)
 
     | "node" :: "get" :: nodeId :: _ ->
         withDb dbPath (fun db ->
             match Sync.getNode db nodeId with
             | None ->
-                printError isJson { Type = CliErrorType.HeadlineNotFound; Message = sprintf "Node not found: %s" nodeId; Detail = None }
+                printError
+                    isJson
+                    { Type = CliErrorType.HeadlineNotFound
+                      Message = sprintf "Node not found: %s" nodeId
+                      Detail = None }
             | Some node ->
-                printfn "%s" (if isJson then JsonOutput.ok (formatNodeJson node) else formatNodeText node)
+                printfn
+                    "%s"
+                    (if isJson then
+                         JsonOutput.ok (formatNodeJson node)
+                     else
+                         formatNodeText node)
+
                 0)
 
     | "node" :: "find" :: searchTerm :: _ ->
         withDb dbPath (fun db ->
             match Sync.findNodeByTitleOrAlias db searchTerm with
             | None ->
-                printError isJson { Type = CliErrorType.HeadlineNotFound; Message = sprintf "Node not found: %s" searchTerm; Detail = None }
+                printError
+                    isJson
+                    { Type = CliErrorType.HeadlineNotFound
+                      Message = sprintf "Node not found: %s" searchTerm
+                      Detail = None }
             | Some node ->
-                printfn "%s" (if isJson then JsonOutput.ok (formatNodeJson node) else formatNodeText node)
+                printfn
+                    "%s"
+                    (if isJson then
+                         JsonOutput.ok (formatNodeJson node)
+                     else
+                         formatNodeText node)
+
                 0)
 
     | "node" :: "create" :: title :: _ ->
@@ -95,15 +165,14 @@ let handleRoam (printError: bool -> CliError -> int) (opts: Map<string, string l
 
         let parentFile =
             match Map.tryFind "parent" opts with
-            | Some (v :: _) -> Some v
+            | Some(v :: _) -> Some v
             | _ -> None
 
-        let options = {
-            NodeOperations.defaultCreateOptions title with
+        let options =
+            { NodeOperations.defaultCreateOptions title with
                 Tags = tags
                 Aliases = aliases
-                Refs = refs
-        }
+                Refs = refs }
 
         let nodeId =
             match parentFile with
@@ -111,39 +180,51 @@ let handleRoam (printError: bool -> CliError -> int) (opts: Map<string, string l
             | None ->
                 let filePath = NodeOperations.createFileNode roamDir options
                 let doc = OrgCli.Org.Document.parseFile filePath
+
                 match Types.tryGetId doc.FileProperties with
                 | Some id -> id
                 | None -> failwith "Bug: createFileNode did not write an ID property"
 
         withDb dbPath (fun db ->
             let errors = Sync.sync db roamDir false
+
             for (file, msg) in errors do
                 eprintfn "Error syncing %s: %s" file msg
+
             match Sync.getNode db nodeId with
             | Some node ->
                 if isJson then
                     printfn "%s" (JsonOutput.ok (formatNodeJson node))
                 else
                     printfn "%s" (formatNodeText node)
-            | None ->
-                printfn "Created node: %s" nodeId
+            | None -> printfn "Created node: %s" nodeId
+
             0)
 
     | "node" :: "read" :: nodeId :: _ ->
         withDb dbPath (fun db ->
             match db.GetNode(nodeId) with
             | None ->
-                printError isJson { Type = CliErrorType.HeadlineNotFound; Message = sprintf "Node not found: %s" nodeId; Detail = None }
+                printError
+                    isJson
+                    { Type = CliErrorType.HeadlineNotFound
+                      Message = sprintf "Node not found: %s" nodeId
+                      Detail = None }
             | Some node ->
                 if File.Exists(node.File) then
                     printfn "%s" (File.ReadAllText(node.File))
                     0
                 else
-                    printError isJson { Type = CliErrorType.FileNotFound; Message = sprintf "File not found: %s" node.File; Detail = None })
+                    printError
+                        isJson
+                        { Type = CliErrorType.FileNotFound
+                          Message = sprintf "File not found: %s" node.File
+                          Detail = None })
 
     | "backlinks" :: nodeId :: _ ->
         withDb dbPath (fun db ->
             let backlinks = Sync.getBacklinks db nodeId
+
             if isJson then
                 let json =
                     backlinks
@@ -153,114 +234,165 @@ let handleRoam (printError: bool -> CliError -> int) (opts: Map<string, string l
                         obj["source_title"] <- JsonValue.Create(bl.SourceNode.Title)
                         obj["target_id"] <- JsonValue.Create(bl.TargetNodeId)
                         obj :> JsonNode)
+
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
+            else if List.isEmpty backlinks then
+                printfn "No backlinks found"
             else
-                if List.isEmpty backlinks then
-                    printfn "No backlinks found"
-                else
-                    for bl in backlinks do
-                        printfn "%s: %s -> %s" bl.SourceNode.Id bl.SourceNode.Title bl.TargetNodeId
+                for bl in backlinks do
+                    printfn "%s: %s -> %s" bl.SourceNode.Id bl.SourceNode.Title bl.TargetNodeId
+
             0)
 
     | "tag" :: "list" :: _ ->
         withDb dbPath (fun db ->
             let tags = db.GetAllTags()
+
             if isJson then
-                printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (tags |> List.map (fun t -> JsonValue.Create(t) :> JsonNode))))
+                printfn
+                    "%s"
+                    (JsonOutput.ok (JsonOutput.jsonArray (tags |> List.map (fun t -> JsonValue.Create(t) :> JsonNode))))
             else
                 for tag in tags do
                     printfn "%s" tag
+
             0)
 
     | "tag" :: "find" :: tag :: _ ->
         withDb dbPath (fun db ->
             let nodes = Sync.findNodesByTag db tag
+
             if isJson then
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (nodes |> List.map formatNodeJson)))
             else
                 for node in nodes do
                     printfn "%s\n" (formatNodeText node)
+
             0)
 
     | "link" :: "add" :: srcFile :: srcNode :: tgtNode :: _ ->
         let desc =
             match Map.tryFind "description" opts with
-            | Some (v :: _) -> Some v
+            | Some(v :: _) -> Some v
             | _ -> None
+
         withDb dbPath (fun db ->
-            NodeOperations.addLink db srcFile srcNode tgtNode desc
-            let errors = Sync.sync db roamDir false
-            for (file, msg) in errors do eprintfn "Error syncing %s: %s" file msg
-            if isJson then
-                match Sync.getNode db srcNode with
-                | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
-                | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Link added")))
-            else
-                printfn "Link added"
-            0)
+            match NodeOperations.addLink db srcFile srcNode tgtNode desc with
+            | Error msg ->
+                printError
+                    isJson
+                    { Type = CliErrorType.HeadlineNotFound
+                      Message = msg
+                      Detail = None }
+            | Ok() ->
+                let errors = Sync.sync db roamDir false
+
+                for (file, msg) in errors do
+                    eprintfn "Error syncing %s: %s" file msg
+
+                if isJson then
+                    match Sync.getNode db srcNode with
+                    | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
+                    | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Link added")))
+                else
+                    printfn "Link added"
+
+                0)
 
     | "alias" :: "add" :: filePath :: nodeId :: alias :: _ ->
         match NodeOperations.addAlias filePath nodeId alias with
         | Error msg ->
-            printError isJson { Type = CliErrorType.HeadlineNotFound; Message = msg; Detail = None }
-        | Ok () ->
+            printError
+                isJson
+                { Type = CliErrorType.HeadlineNotFound
+                  Message = msg
+                  Detail = None }
+        | Ok() ->
             withDb dbPath (fun db ->
                 let errors = Sync.sync db roamDir false
-                for (file, msg) in errors do eprintfn "Error syncing %s: %s" file msg
+
+                for (file, msg) in errors do
+                    eprintfn "Error syncing %s: %s" file msg
+
                 if isJson then
                     match Sync.getNode db nodeId with
                     | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
                     | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Alias added")))
                 else
                     printfn "Alias added"
+
                 0)
 
     | "alias" :: "remove" :: filePath :: nodeId :: alias :: _ ->
         match NodeOperations.removeAlias filePath nodeId alias with
         | Error msg ->
-            printError isJson { Type = CliErrorType.HeadlineNotFound; Message = msg; Detail = None }
-        | Ok () ->
+            printError
+                isJson
+                { Type = CliErrorType.HeadlineNotFound
+                  Message = msg
+                  Detail = None }
+        | Ok() ->
             withDb dbPath (fun db ->
                 let errors = Sync.sync db roamDir false
-                for (file, msg) in errors do eprintfn "Error syncing %s: %s" file msg
+
+                for (file, msg) in errors do
+                    eprintfn "Error syncing %s: %s" file msg
+
                 if isJson then
                     match Sync.getNode db nodeId with
                     | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
                     | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Alias removed")))
                 else
                     printfn "Alias removed"
+
                 0)
 
     | "ref" :: "add" :: filePath :: nodeId :: ref :: _ ->
         match NodeOperations.addRef filePath nodeId ref with
         | Error msg ->
-            printError isJson { Type = CliErrorType.HeadlineNotFound; Message = msg; Detail = None }
-        | Ok () ->
+            printError
+                isJson
+                { Type = CliErrorType.HeadlineNotFound
+                  Message = msg
+                  Detail = None }
+        | Ok() ->
             withDb dbPath (fun db ->
                 let errors = Sync.sync db roamDir false
-                for (file, msg) in errors do eprintfn "Error syncing %s: %s" file msg
+
+                for (file, msg) in errors do
+                    eprintfn "Error syncing %s: %s" file msg
+
                 if isJson then
                     match Sync.getNode db nodeId with
                     | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
                     | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Ref added")))
                 else
                     printfn "Ref added"
+
                 0)
 
     | "ref" :: "remove" :: filePath :: nodeId :: ref :: _ ->
         match NodeOperations.removeRef filePath nodeId ref with
         | Error msg ->
-            printError isJson { Type = CliErrorType.HeadlineNotFound; Message = msg; Detail = None }
-        | Ok () ->
+            printError
+                isJson
+                { Type = CliErrorType.HeadlineNotFound
+                  Message = msg
+                  Detail = None }
+        | Ok() ->
             withDb dbPath (fun db ->
                 let errors = Sync.sync db roamDir false
-                for (file, msg) in errors do eprintfn "Error syncing %s: %s" file msg
+
+                for (file, msg) in errors do
+                    eprintfn "Error syncing %s: %s" file msg
+
                 if isJson then
                     match Sync.getNode db nodeId with
                     | Some node -> printfn "%s" (JsonOutput.ok (formatNodeJson node))
                     | None -> printfn "%s" (JsonOutput.ok (JsonValue.Create("Ref removed")))
                 else
                     printfn "Ref removed"
+
                 0)
 
     | "node" :: "get" :: _ ->
@@ -322,5 +454,5 @@ let handleRoam (printError: bool -> CliError -> int) (opts: Map<string, string l
         1
 
     | [] ->
-        printUsage()
+        printUsage ()
         0

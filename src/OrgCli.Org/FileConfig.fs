@@ -13,14 +13,17 @@ let private parseLogging (indicators: string) : LogAction * LogAction =
         let parts = indicators.Split('/')
         let enterPart = parts.[0]
         let leavePart = if parts.Length > 1 then parts.[1] else ""
+
         let enter =
             if enterPart.Contains('@') then LogAction.LogNote
             elif enterPart.Contains('!') then LogAction.LogTime
             else LogAction.NoLog
+
         let leave =
             if leavePart.Contains('!') then LogAction.LogTime
             elif leavePart.Contains('@') then LogAction.LogNote
             else LogAction.NoLog
+
         (enter, leave)
     | false ->
         // No slash: everything is enter action
@@ -28,12 +31,14 @@ let private parseLogging (indicators: string) : LogAction * LogAction =
             if indicators.Contains('@') then LogAction.LogNote
             elif indicators.Contains('!') then LogAction.LogTime
             else LogAction.NoLog
+
         (enter, LogAction.NoLog)
 
 let private parenRegex = Regex(@"^([A-Z_]+)\(([^)]*)\)$", RegexOptions.Compiled)
 
 let private parseKeywordToken (token: string) : TodoKeywordDef =
     let m = parenRegex.Match(token)
+
     if m.Success then
         let name = m.Groups.[1].Value
         let inside = m.Groups.[2].Value
@@ -43,51 +48,67 @@ let private parseKeywordToken (token: string) : TodoKeywordDef =
                 inside.Substring(1)
             else
                 inside
+
         let (enter, leave) = parseLogging indicators
-        { Keyword = name; LogOnEnter = enter; LogOnLeave = leave }
+
+        { Keyword = name
+          LogOnEnter = enter
+          LogOnLeave = leave }
     else
-        { Keyword = token; LogOnEnter = LogAction.NoLog; LogOnLeave = LogAction.NoLog }
+        { Keyword = token
+          LogOnEnter = LogAction.NoLog
+          LogOnLeave = LogAction.NoLog }
 
 let parseTodoLine (value: string) : TodoKeywordConfig =
     let parts = value.Split('|')
+
     if parts.Length >= 2 then
         let activeTokens =
-            parts.[0].Trim().Split([|' '|], System.StringSplitOptions.RemoveEmptyEntries)
+            parts.[0].Trim().Split([| ' ' |], System.StringSplitOptions.RemoveEmptyEntries)
             |> Array.toList
+
         let doneTokens =
-            parts.[1].Trim().Split([|' '|], System.StringSplitOptions.RemoveEmptyEntries)
+            parts.[1].Trim().Split([| ' ' |], System.StringSplitOptions.RemoveEmptyEntries)
             |> Array.toList
-        {
-            ActiveStates = activeTokens |> List.map parseKeywordToken
-            DoneStates = doneTokens |> List.map parseKeywordToken
-        }
+
+        { ActiveStates = activeTokens |> List.map parseKeywordToken
+          DoneStates = doneTokens |> List.map parseKeywordToken }
     else
         // No pipe: all are active except the last which is done
         let tokens =
-            value.Trim().Split([|' '|], System.StringSplitOptions.RemoveEmptyEntries)
+            value.Trim().Split([| ' ' |], System.StringSplitOptions.RemoveEmptyEntries)
             |> Array.toList
+
         match tokens with
-        | [] ->
-            { ActiveStates = []; DoneStates = [] }
-        | [single] ->
-            { ActiveStates = []; DoneStates = [parseKeywordToken single] }
+        | [] -> { ActiveStates = []; DoneStates = [] }
+        | [ single ] ->
+            { ActiveStates = []
+              DoneStates = [ parseKeywordToken single ] }
         | _ ->
             let activeTokens = tokens |> List.take (tokens.Length - 1)
             let doneToken = tokens |> List.last
-            {
-                ActiveStates = activeTokens |> List.map parseKeywordToken
-                DoneStates = [parseKeywordToken doneToken]
-            }
 
-let parseStartupOptions (value: string) : {| LogDone: LogAction option; LogRepeat: LogAction option; LogReschedule: LogAction option; LogRedeadline: LogAction option; LogRefile: LogAction option |} =
+            { ActiveStates = activeTokens |> List.map parseKeywordToken
+              DoneStates = [ parseKeywordToken doneToken ] }
+
+let parseStartupOptions
+    (value: string)
+    : {| LogDone: LogAction option
+         LogRepeat: LogAction option
+         LogReschedule: LogAction option
+         LogRedeadline: LogAction option
+         LogRefile: LogAction option |}
+    =
     let words =
-        value.Trim().Split([|' '|], System.StringSplitOptions.RemoveEmptyEntries)
+        value.Trim().Split([| ' ' |], System.StringSplitOptions.RemoveEmptyEntries)
         |> Array.toList
-    let mutable logDone : LogAction option = None
-    let mutable logRepeat : LogAction option = None
-    let mutable logReschedule : LogAction option = None
-    let mutable logRedeadline : LogAction option = None
-    let mutable logRefile : LogAction option = None
+
+    let mutable logDone: LogAction option = None
+    let mutable logRepeat: LogAction option = None
+    let mutable logReschedule: LogAction option = None
+    let mutable logRedeadline: LogAction option = None
+    let mutable logRefile: LogAction option = None
+
     for w in words do
         match w.ToLowerInvariant() with
         | "logdone" -> logDone <- Some LogAction.LogTime
@@ -106,17 +127,22 @@ let parseStartupOptions (value: string) : {| LogDone: LogAction option; LogRepea
         | "lognoterefile" -> logRefile <- Some LogAction.LogNote
         | "nologrefile" -> logRefile <- Some LogAction.NoLog
         | _ -> ()
-    {| LogDone = logDone; LogRepeat = logRepeat; LogReschedule = logReschedule; LogRedeadline = logRedeadline; LogRefile = logRefile |}
+
+    {| LogDone = logDone
+       LogRepeat = logRepeat
+       LogReschedule = logReschedule
+       LogRedeadline = logRedeadline
+       LogRefile = logRefile |}
 
 let parsePriorities (value: string) : PriorityConfig option =
     let tokens =
-        value.Trim().Split([|' '|], System.StringSplitOptions.RemoveEmptyEntries)
+        value.Trim().Split([| ' ' |], System.StringSplitOptions.RemoveEmptyEntries)
+
     if tokens.Length = 3 && tokens |> Array.forall (fun t -> t.Length = 1) then
-        Some {
-            Highest = tokens.[0].[0]
-            Lowest = tokens.[1].[0]
-            Default = tokens.[2].[0]
-        }
+        Some
+            { Highest = tokens.[0].[0]
+              Lowest = tokens.[1].[0]
+              Default = tokens.[2].[0] }
     else
         None
 
@@ -134,7 +160,9 @@ let mergeFileConfig (baseConfig: OrgConfig) (keywords: Keyword list) : OrgConfig
         else
             let active = todoLines |> List.collect (fun c -> c.ActiveStates)
             let done' = todoLines |> List.collect (fun c -> c.DoneStates)
-            { ActiveStates = active; DoneStates = done' }
+
+            { ActiveStates = active
+              DoneStates = done' }
 
     let startupOpts =
         keywords
@@ -192,30 +220,43 @@ let private tagTokenRegex = Regex(@"^([^\(]+)(?:\((.)\))?$", RegexOptions.Compil
 
 let private parseTagToken (token: string) : TagDef =
     let m = tagTokenRegex.Match(token)
+
     if m.Success then
         let name = m.Groups.[1].Value
-        let fastKey = if m.Groups.[2].Success then Some m.Groups.[2].Value.[0] else None
+
+        let fastKey =
+            if m.Groups.[2].Success then
+                Some m.Groups.[2].Value.[0]
+            else
+                None
+
         { Name = name; FastKey = fastKey }
     else
         { Name = token; FastKey = None }
 
 let parseTagsLine (value: string) : TagGroup list =
     let tokens =
-        value.Trim().Split([|' '; '\t'|], System.StringSplitOptions.RemoveEmptyEntries)
+        value.Trim().Split([| ' '; '\t' |], System.StringSplitOptions.RemoveEmptyEntries)
         |> Array.toList
+
     let rec parse (remaining: string list) (currentRegular: TagDef list) (acc: TagGroup list) : TagGroup list =
         match remaining with
         | [] ->
-            if currentRegular.IsEmpty then List.rev acc
-            else List.rev (TagGroup.Regular (List.rev currentRegular) :: acc)
+            if currentRegular.IsEmpty then
+                List.rev acc
+            else
+                List.rev (TagGroup.Regular(List.rev currentRegular) :: acc)
         | "{" :: rest ->
             let acc =
-                if currentRegular.IsEmpty then acc
-                else TagGroup.Regular (List.rev currentRegular) :: acc
+                if currentRegular.IsEmpty then
+                    acc
+                else
+                    TagGroup.Regular(List.rev currentRegular) :: acc
+
             let groupTokens = rest |> List.takeWhile (fun t -> t <> "}")
             let afterGroup = rest |> List.skipWhile (fun t -> t <> "}") |> List.skip 1
             let defs = groupTokens |> List.map parseTagToken
             parse afterGroup [] (TagGroup.MutuallyExclusive defs :: acc)
-        | token :: rest ->
-            parse rest (parseTagToken token :: currentRegular) acc
+        | token :: rest -> parse rest (parseTagToken token :: currentRegular) acc
+
     parse tokens [] []

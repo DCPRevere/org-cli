@@ -1,4 +1,4 @@
-# CI: Build and test on every push and PR to main.
+# CI: Build, test, and check on every push and PR to master.
 # Requirements: none (no secrets needed).
 
 name: CI
@@ -7,7 +7,7 @@ on:
   push:
     branches: ["*"]
   pull_request:
-    branches: [main]
+    branches: [master]
 
 jobs:
   build:
@@ -19,6 +19,12 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Format check
+        run: dotnet fantomas --check .
+
       - name: Restore
         run: dotnet restore OrgCli.slnx
 
@@ -26,4 +32,7 @@ jobs:
         run: dotnet build OrgCli.slnx --no-restore --warnaserror
 
       - name: Test
-        run: dotnet test OrgCli.slnx --no-build
+        run: dotnet test OrgCli.slnx --no-build --collect:"XPlat Code Coverage"
+
+      - name: Vulnerability check
+        run: dotnet list OrgCli.slnx package --vulnerable --include-transitive 2>&1 | tee /dev/stderr | grep -q "no vulnerable packages" || exit 1

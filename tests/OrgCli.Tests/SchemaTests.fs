@@ -16,8 +16,10 @@ let ``schema includes all command names`` () =
     let doc = JsonDocument.Parse(schema)
     let root = doc.RootElement
     let commands = root.GetProperty("commands")
+
     let names =
-        [for i in 0 .. commands.GetArrayLength() - 1 -> commands.[i].GetProperty("name").GetString()]
+        [ for i in 0 .. commands.GetArrayLength() - 1 -> commands.[i].GetProperty("name").GetString() ]
+
     Assert.Contains("todo", names)
     Assert.Contains("add", names)
     Assert.Contains("agenda", names)
@@ -43,6 +45,7 @@ let ``schema commands have required fields`` () =
     let schema = JsonOutput.schema ()
     let doc = JsonDocument.Parse(schema)
     let commands = doc.RootElement.GetProperty("commands")
+
     for i in 0 .. commands.GetArrayLength() - 1 do
         let cmd = commands.[i]
         Assert.True(cmd.TryGetProperty("name") |> fst)

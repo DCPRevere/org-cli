@@ -1,25 +1,10 @@
 ---
-name: org-cli
+name: org-memory
 description: "Structured knowledge base and task management using org-mode files. Query, mutate, link, and search org files and org-roam databases with the `org` CLI."
-metadata:
-  {
-    "openclaw":
-      {
-        "emoji": "🦄",
-        "requires": { "bins": ["org"] },
-        "install":
-          [
-            {
-              "id": "github-release",
-              "kind": "manual",
-              "label": "Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"
-            }
-          ]
-      }
-  }
+metadata: {"openclaw":{"emoji":"🦄","requires":{"bins":["org"]},"install":[{"id":"github-release","kind":"manual","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}]}}
 ---
 
-# org-cli Skill
+# org-memory
 
 Use the `org` CLI to maintain structured, linked, human-readable knowledge in org-mode files. Org files are plain text with rich structure: headlines, TODO states, tags, properties, timestamps, and links. Combined with org-roam, they form a knowledge graph backed by a SQLite database.
 
@@ -31,34 +16,46 @@ Run `org schema` once to get a machine-readable description of all commands, arg
 
 ## Setup
 
-Maintain two separate org directories:
+Configuration is via environment variables. Set them in `openclaw.json` so they are injected into every command automatically.
 
-- **Your knowledge base** (`~/org/agent`): What you learn, entities you track, relationships between concepts. You own this. The human rarely looks at it.
-- **The human's files** (`~/org/human`): Their tasks, projects, notes. You read and write here when asked, but they own it.
+| Variable | Default | Purpose |
+|---|---|---|
+| `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
+| `ORG_MEMORY_AGENT_DIR` | `~/org/agent` | Agent's org directory |
+| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/.local/share/org-memory/agent/.org.db` | Agent's database |
+| `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
+| `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org directory |
+| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/.local/share/org-memory/human/.org.db` | Human's database |
 
-Each directory has its own org-roam database. Initialize by creating your first node:
+If `ORG_MEMORY_USE_FOR_AGENT` is not `true`, skip the Knowledge management section. If `ORG_MEMORY_USE_FOR_HUMAN` is not `true`, skip the Task management and Batch operations sections.
+
+Always pass `--db` to point at the correct database. The CLI auto-syncs the roam database after every mutation using the `--db` value. Without `--db`, the CLI defaults to the emacs org-roam database (`~/.emacs.d/org-roam.db`), which is not what you want.
+
+Initialize each enabled directory by creating a first node:
 
 ```bash
-org roam node create "Index" -d ~/org/agent -f json
+org roam node create "Index" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
 ```
 
 The response includes the node's ID, file path, title, and tags. Use these values in subsequent commands.
 
 ## Knowledge management
 
+This section applies when `ORG_MEMORY_USE_FOR_AGENT` is `true`.
+
 ### Record an entity
 
 ```bash
-org roam node create "Sarah" -d ~/org/agent -t person -t work -f json
+org roam node create "Sarah" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -t person -t work -f json
 ```
 
 ### Add structure to a node
 
-Use the file path from the create response:
+Use the file path returned by the create command:
 
 ```bash
-org add ~/org/agent/sarah.org "Unavailable March 2026" --tag scheduling
-org note ~/org/agent/sarah.org "Unavailable March 2026" "Out all of March per human."
+org add <file-from-response> "Unavailable March 2026" --tag scheduling --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION"
+org note <file-from-response> "Unavailable March 2026" "Out all of March per human." --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION"
 ```
 
 ### Link two nodes
@@ -66,23 +63,16 @@ org note ~/org/agent/sarah.org "Unavailable March 2026" "Out all of March per hu
 Look up both nodes, then link using their IDs and the source file path:
 
 ```bash
-org roam link add ~/org/agent/api_migration.org "e5f6a7b8-..." "a1b2c3d4-..." -d ~/org/agent --description "stakeholder"
+org roam link add <source-file> "e5f6a7b8-..." "a1b2c3d4-..." -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" --description "stakeholder"
 ```
 
 ### Query your knowledge
 
 ```bash
-# Find a node by name or alias
-org roam node find "Sarah" -d ~/org/agent -f json
-
-# What links to this node?
-org roam backlinks "a1b2c3d4-..." -d ~/org/agent -f json
-
-# All nodes with a tag
-org roam tag find person -d ~/org/agent -f json
-
-# Regex search across all files
-org search "Sarah.*March" -d ~/org/agent -f json
+org roam node find "Sarah" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+org roam backlinks "a1b2c3d4-..." -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+org roam tag find person -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+org search "Sarah.*March" -d "$ORG_MEMORY_AGENT_DIR" -f json
 ```
 
 ### Add aliases and refs
@@ -90,43 +80,31 @@ org search "Sarah.*March" -d ~/org/agent -f json
 Aliases let a node be found by multiple names. Refs associate URLs or external identifiers.
 
 ```bash
-org roam alias add ~/org/agent/sarah.org "a1b2c3d4-..." "Sarah Chen"
-org roam ref add ~/org/agent/sarah.org "a1b2c3d4-..." "https://github.com/sarahchen"
+org roam alias add <file> "a1b2c3d4-..." "Sarah Chen" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION"
+org roam ref add <file> "a1b2c3d4-..." "https://github.com/sarahchen" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION"
 ```
 
 ## Task management
 
+This section applies when `ORG_MEMORY_USE_FOR_HUMAN` is `true`.
+
 ### Read the human's state
 
 ```bash
-# Today's agenda
-org agenda today -d ~/org/human -f json
-
-# This week
-org agenda week -d ~/org/human -f json
-
-# All open tasks, optionally filtered by tag
-org agenda todo -d ~/org/human -f json
-org agenda todo --tag work -d ~/org/human -f json
+org agenda today -d "$ORG_MEMORY_HUMAN_DIR" -f json
+org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json
+org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json
+org agenda todo --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json
 ```
 
 ### Make changes
 
 ```bash
-# Create a task
-org add ~/org/human/inbox.org "Review PR #42" --todo TODO --tag work --deadline 2026-02-10
-
-# Complete it
-org todo ~/org/human/inbox.org "Review PR #42" DONE -f json
-
-# Reschedule
-org schedule ~/org/human/projects.org "Quarterly review" 2026-03-15 -f json
-
-# Add a note
-org note ~/org/human/projects.org "Quarterly review" "Pushed back per manager request"
-
-# Move a task between files
-org refile ~/org/human/inbox.org "Review PR #42" ~/org/human/work.org "Code reviews" -f json
+org add $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" --todo TODO --tag work --deadline 2026-02-10 --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+org todo $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" DONE --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org schedule $ORG_MEMORY_HUMAN_DIR/projects.org "Quarterly review" 2026-03-15 --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org note $ORG_MEMORY_HUMAN_DIR/projects.org "Quarterly review" "Pushed back per manager request" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+org refile $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" $ORG_MEMORY_HUMAN_DIR/work.org "Code reviews" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
 ### Preview before writing
@@ -139,6 +117,8 @@ org todo tasks.org "Buy groceries" DONE --dry-run -f json
 
 ## Batch operations
 
+This section applies when `ORG_MEMORY_USE_FOR_HUMAN` is `true`.
+
 Apply multiple mutations atomically. Commands execute sequentially against in-memory state. Files are written only if all succeed.
 
 ```bash
@@ -146,17 +126,19 @@ echo '{"commands":[
   {"command":"todo","file":"tasks.org","identifier":"Buy groceries","args":{"state":"DONE"}},
   {"command":"tag-add","file":"tasks.org","identifier":"Write report","args":{"tag":"urgent"}},
   {"command":"schedule","file":"tasks.org","identifier":"Write report","args":{"date":"2026-03-01"}}
-]}' | org batch -d ~/org/human -f json
+]}' | org batch -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
 ## When to record knowledge
 
-When the human tells you something, distinguish between requests and ambient information. Fulfill requests in their repo. Record what you learned in yours.
+When both features are enabled and the human tells you something, distinguish between requests and ambient information. Fulfill requests in `$ORG_MEMORY_HUMAN_DIR`. Record what you learned in `$ORG_MEMORY_AGENT_DIR`.
 
 Example: "Cancel my Thursday meeting with Sarah and reschedule the API migration review to next week. Sarah is going to be out all of March."
 
-- Cancel and reschedule: explicit requests, execute in `~/org/human`
-- Sarah out all of March: ambient information, record in `~/org/agent`
+- Cancel and reschedule: explicit requests, execute in `$ORG_MEMORY_HUMAN_DIR`
+- Sarah out all of March: ambient information, record in `$ORG_MEMORY_AGENT_DIR`
+
+If only agent memory is enabled, record everything relevant in `$ORG_MEMORY_AGENT_DIR`. If only human file management is enabled, only act on explicit requests.
 
 Check whether a node already exists before creating it. Use the returned data from mutations rather than making follow-up queries.
 
@@ -165,7 +147,7 @@ Check whether a node already exists before creating it. Use the returned data fr
 Always address headlines by org-id or exact title, not by position number. Positions change when files are edited. If you create a headline you'll refer to later, set an ID:
 
 ```bash
-org property set ~/org/human/tasks.org "My task" ID "$(uuidgen)" -f json
+org property set file.org "My task" ID "$(uuidgen)" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
 ## Error handling

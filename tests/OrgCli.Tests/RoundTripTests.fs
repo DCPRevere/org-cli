@@ -19,52 +19,49 @@ let private roundTrip (content: string) (mutate: string -> string) (verify: OrgD
 
 [<Fact>]
 let ``round-trip: setTodoState TODO->DONE preserves title and properties`` () =
-    let content = "* TODO My task\n:PROPERTIES:\n:ID: abc-123\n:CUSTOM: value\n:END:\nBody text.\n"
-    roundTrip content
-        (fun c -> Mutations.setTodoState config c 0L (Some "DONE") now)
-        (fun before after ->
-            let hBefore = before.Headlines.[0]
-            let hAfter = after.Headlines.[0]
-            Assert.Equal("My task", hAfter.Title)
-            Assert.Equal(Some "DONE", hAfter.TodoKeyword)
-            Assert.True(hAfter.Planning.IsSome)
-            Assert.True(hAfter.Planning.Value.Closed.IsSome)
-            // Properties preserved
-            Assert.Equal(
-                Types.tryGetId hBefore.Properties,
-                Types.tryGetId hAfter.Properties)
-            Assert.Equal(
-                Types.tryGetProperty "CUSTOM" hBefore.Properties,
-                Types.tryGetProperty "CUSTOM" hAfter.Properties))
+    let content =
+        "* TODO My task\n:PROPERTIES:\n:ID: abc-123\n:CUSTOM: value\n:END:\nBody text.\n"
+
+    roundTrip content (fun c -> Mutations.setTodoState config c 0L (Some "DONE") now) (fun before after ->
+        let hBefore = before.Headlines.[0]
+        let hAfter = after.Headlines.[0]
+        Assert.Equal("My task", hAfter.Title)
+        Assert.Equal(Some "DONE", hAfter.TodoKeyword)
+        Assert.True(hAfter.Planning.IsSome)
+        Assert.True(hAfter.Planning.Value.Closed.IsSome)
+        // Properties preserved
+        Assert.Equal(Types.tryGetId hBefore.Properties, Types.tryGetId hAfter.Properties)
+        Assert.Equal(Types.tryGetProperty "CUSTOM" hBefore.Properties, Types.tryGetProperty "CUSTOM" hAfter.Properties))
 
 [<Fact>]
 let ``round-trip: setTodoState DONE->TODO removes CLOSED, preserves SCHEDULED`` () =
     let dn = now.ToString("ddd", Globalization.CultureInfo.InvariantCulture)
-    let content = sprintf "* DONE My task\nSCHEDULED: <2026-02-05 %s> CLOSED: [2026-02-05 %s 14:30]\n:PROPERTIES:\n:ID: abc-123\n:END:\nBody\n" dn dn
-    roundTrip content
-        (fun c -> Mutations.setTodoState config c 0L (Some "TODO") now)
-        (fun _ after ->
-            let h = after.Headlines.[0]
-            Assert.Equal(Some "TODO", h.TodoKeyword)
-            Assert.True(h.Planning.IsSome)
-            Assert.True(h.Planning.Value.Scheduled.IsSome)
-            Assert.True(h.Planning.Value.Closed.IsNone))
+
+    let content =
+        sprintf
+            "* DONE My task\nSCHEDULED: <2026-02-05 %s> CLOSED: [2026-02-05 %s 14:30]\n:PROPERTIES:\n:ID: abc-123\n:END:\nBody\n"
+            dn
+            dn
+
+    roundTrip content (fun c -> Mutations.setTodoState config c 0L (Some "TODO") now) (fun _ after ->
+        let h = after.Headlines.[0]
+        Assert.Equal(Some "TODO", h.TodoKeyword)
+        Assert.True(h.Planning.IsSome)
+        Assert.True(h.Planning.Value.Scheduled.IsSome)
+        Assert.True(h.Planning.Value.Closed.IsNone))
 
 // --- setPriority round-trip ---
 
 [<Fact>]
 let ``round-trip: setPriority preserves everything else`` () =
     let content = "* TODO My task\n:PROPERTIES:\n:ID: abc-123\n:END:\nBody text.\n"
-    roundTrip content
-        (fun c -> Mutations.setPriority c 0L (Some 'A'))
-        (fun before after ->
-            let h = after.Headlines.[0]
-            Assert.Equal(Some (Priority 'A'), h.Priority)
-            Assert.Equal("My task", h.Title)
-            Assert.Equal(Some "TODO", h.TodoKeyword)
-            Assert.Equal(
-                Types.tryGetId before.Headlines.[0].Properties,
-                Types.tryGetId h.Properties))
+
+    roundTrip content (fun c -> Mutations.setPriority c 0L (Some 'A')) (fun before after ->
+        let h = after.Headlines.[0]
+        Assert.Equal(Some(Priority 'A'), h.Priority)
+        Assert.Equal("My task", h.Title)
+        Assert.Equal(Some "TODO", h.TodoKeyword)
+        Assert.Equal(Types.tryGetId before.Headlines.[0].Properties, Types.tryGetId h.Properties))
 
 // --- setScheduled round-trip ---
 
@@ -72,14 +69,13 @@ let ``round-trip: setPriority preserves everything else`` () =
 let ``round-trip: setScheduled preserves title and properties`` () =
     let content = "* TODO My task\n:PROPERTIES:\n:ID: abc-123\n:END:\nBody.\n"
     let schedTs = Utils.parseDate "2026-03-01"
-    roundTrip content
-        (fun c -> Mutations.setScheduled config c 0L (Some schedTs) now)
-        (fun _ after ->
-            let h = after.Headlines.[0]
-            Assert.True(h.Planning.IsSome)
-            Assert.True(h.Planning.Value.Scheduled.IsSome)
-            Assert.Equal(DateTime(2026, 3, 1).Date, h.Planning.Value.Scheduled.Value.Date.Date)
-            Assert.Equal("My task", h.Title))
+
+    roundTrip content (fun c -> Mutations.setScheduled config c 0L (Some schedTs) now) (fun _ after ->
+        let h = after.Headlines.[0]
+        Assert.True(h.Planning.IsSome)
+        Assert.True(h.Planning.Value.Scheduled.IsSome)
+        Assert.Equal(DateTime(2026, 3, 1).Date, h.Planning.Value.Scheduled.Value.Date.Date)
+        Assert.Equal("My task", h.Title))
 
 // --- setDeadline round-trip ---
 
@@ -93,7 +89,12 @@ let ``round-trip: setDeadline then remove preserves body`` () =
 
     let withoutDeadline = Mutations.setDeadline config withDeadline 0L None now
     let docWithout = Document.parse withoutDeadline
-    Assert.True(docWithout.Headlines.[0].Planning.IsNone || docWithout.Headlines.[0].Planning.Value.Deadline.IsNone)
+
+    Assert.True(
+        docWithout.Headlines.[0].Planning.IsNone
+        || docWithout.Headlines.[0].Planning.Value.Deadline.IsNone
+    )
+
     Assert.Contains("Important body", withoutDeadline)
 
 // --- addTag/removeTag round-trip ---
@@ -136,7 +137,7 @@ let ``round-trip: multiple mutations compose correctly`` () =
     let doc = Document.parse step4
     let h = doc.Headlines.[0]
     Assert.Equal(Some "TODO", h.TodoKeyword)
-    Assert.Equal(Some (Priority 'B'), h.Priority)
+    Assert.Equal(Some(Priority 'B'), h.Priority)
     Assert.True(h.Planning.Value.Scheduled.IsSome)
     Assert.Contains("important", h.Tags)
     Assert.Equal("My task", h.Title)
@@ -147,9 +148,10 @@ let ``round-trip: multiple mutations compose correctly`` () =
 [<Fact>]
 let ``round-trip: mutating one headline does not affect siblings`` () =
     let content =
-        "* TODO First task\n:PROPERTIES:\n:ID: first\n:END:\nFirst body.\n\n" +
-        "* DONE Second task :tag1:\n:PROPERTIES:\n:ID: second\n:END:\nSecond body.\n\n" +
-        "** Child of second\nChild body.\n"
+        "* TODO First task\n:PROPERTIES:\n:ID: first\n:END:\nFirst body.\n\n"
+        + "* DONE Second task :tag1:\n:PROPERTIES:\n:ID: second\n:END:\nSecond body.\n\n"
+        + "** Child of second\nChild body.\n"
+
     let docBefore = Document.parse content
     let firstPos = docBefore.Headlines.[0].Position
 
