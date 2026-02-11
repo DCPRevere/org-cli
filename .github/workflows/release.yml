@@ -1,12 +1,33 @@
 # Release: triggered on version tag push (v*).
 # Builds, tests, packs the dotnet tool, publishes self-contained binaries,
-# creates a GitHub release, and optionally pushes to nuget.org.
+# creates a GitHub release, and pushes to configured package registries.
 #
 # Secrets required:
 #   NUGET_API_KEY  — API key from nuget.org (https://www.nuget.org/account/apikeys).
 #                    Create a key scoped to the "OrgCli" package with Push permission.
 #                    Add it as a repository secret under Settings > Secrets > Actions.
 #                    If the secret is absent, the nuget push step is skipped.
+#
+#   CLAWHUB_TOKEN  — Auth token for ClawHub (https://clawhub.ai).
+#                    Log in with GitHub, go to Settings, generate a token.
+#                    Add it as a repository secret under Settings > Secrets > Actions.
+#                    If the secret is absent, the ClawHub publish step is skipped.
+#
+#   HOMEBREW_TAP_TOKEN — GitHub PAT (classic, repo scope) for dcprevere/homebrew-org-cli.
+#                        Generate at https://github.com/settings/tokens.
+#                        If absent, the Homebrew tap push is skipped.
+#
+#   SCOOP_BUCKET_TOKEN — GitHub PAT (classic, repo scope) for dcprevere/scoop-org-cli.
+#                        Can reuse HOMEBREW_TAP_TOKEN if scoped to both repos.
+#                        If absent, the Scoop bucket push is skipped.
+#
+#   AUR_SSH_KEY        — SSH private key registered on aur.archlinux.org.
+#                        Generate with ssh-keygen, add public key at
+#                        https://aur.archlinux.org/account.
+#                        If absent, the AUR publish is skipped.
+#
+#   CHOCO_API_KEY      — Chocolatey API key from https://community.chocolatey.org/account.
+#                        If absent, the Chocolatey push is skipped.
 #
 # Self-contained publish targets:
 #   dotnet publish -c Release -r linux-x64   --self-contained -p:PublishSingleFile=true
@@ -46,6 +67,15 @@ jobs:
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Validate version matches tag
+        run: |
+          FILE_VER="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' Directory.Build.props)"
+          TAG_VER="${{ steps.version.outputs.version }}"
+          if [ "$FILE_VER" != "$TAG_VER" ]; then
+            echo "::error::Directory.Build.props version '$FILE_VER' does not match tag '$TAG_VER'. Update <Version> before tagging."
+            exit 1
+          fi
 
       - name: Pack dotnet tool
         run: dotnet pack src/OrgCli/OrgCli.fsproj -c Release -p:Version=${{ steps.version.outputs.version }} -o artifacts/nupkg
@@ -102,7 +132,6 @@ jobs:
           stamp packaging/homebrew/org-cli.rb
           stamp packaging/scoop/org-cli.json
           stamp packaging/aur/PKGBUILD
-          stamp packaging/nix/default.nix
           stamp packaging/choco/org-cli.nuspec
           stamp packaging/choco/tools/chocolateyinstall.ps1
 
@@ -120,10 +149,77 @@ jobs:
             packaging/homebrew/org-cli.rb
             packaging/scoop/org-cli.json
             packaging/aur/PKGBUILD
-            packaging/nix/default.nix
 
       - name: Push to nuget.org
         if: env.NUGET_API_KEY != ''
         run: dotnet nuget push artifacts/nupkg/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+      - name: Publish to ClawHub
+        if: env.CLAWHUB_TOKEN != ''
+        run: |
+          npm install -g clawhub
+          cd integrations/openclaw
+          clawhub publish --token "$CLAWHUB_TOKEN" --tag "${{ steps.version.outputs.version }}"
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      - name: Push to Homebrew tap
+        if: env.HOMEBREW_TAP_TOKEN != ''
+        run: |
+          git clone --depth 1 https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/dcprevere/homebrew-org-cli.git _tap
+          mkdir -p _tap/Formula
+          cp packaging/homebrew/org-cli.rb _tap/Formula/org-cli.rb
+          cd _tap
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/org-cli.rb
+          git diff --cached --quiet && exit 0
+          git commit -m "org-cli ${{ steps.version.outputs.version }}"
+          git push
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Push to Scoop bucket
+        if: env.SCOOP_BUCKET_TOKEN != ''
+        run: |
+          git clone --depth 1 https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/dcprevere/scoop-org-cli.git _bucket
+          cp packaging/scoop/org-cli.json _bucket/org-cli.json
+          cd _bucket
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add org-cli.json
+          git diff --cached --quiet && exit 0
+          git commit -m "org-cli ${{ steps.version.outputs.version }}"
+          git push
+        env:
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+
+      - name: Publish to AUR
+        if: env.AUR_SSH_KEY != ''
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: org-cli-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          commit_username: github-actions[bot]
+          commit_email: github-actions[bot]@users.noreply.github.com
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.version }}"
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+
+      - name: Publish to Chocolatey
+        if: env.CHOCO_API_KEY != ''
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+          DIR="$(mktemp -d)"
+          mkdir -p "$DIR/_rels" artifacts/choco
+          cp packaging/choco/org-cli.nuspec "$DIR/"
+          cp -r packaging/choco/tools "$DIR/"
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="nuspec" ContentType="application/octet"/><Default Extension="ps1" ContentType="application/octet"/></Types>\n' > "$DIR/[Content_Types].xml"
+          printf '<?xml version="1.0" encoding="utf-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.microsoft.com/packaging/2010/07/manifest" Target="/org-cli.nuspec" Id="R1"/></Relationships>\n' > "$DIR/_rels/.rels"
+          (cd "$DIR" && zip -qr - .) > "artifacts/choco/org-cli.${VER}.nupkg"
+          dotnet nuget push "artifacts/choco/org-cli.${VER}.nupkg" --api-key "$CHOCO_API_KEY" --source https://push.chocolatey.org/
+        env:
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}

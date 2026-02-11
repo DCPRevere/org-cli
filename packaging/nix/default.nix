@@ -2,7 +2,7 @@
 
 buildDotnetModule rec {
   pname = "org-cli";
-  version = "@@VERSION@@";
+  version = builtins.head (builtins.match ".*<Version>([^<]+)</Version>.*" (builtins.readFile ../../Directory.Build.props));
 
   src = ../..;
 

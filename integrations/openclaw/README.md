@@ -14,6 +14,58 @@ cp -r integrations/openclaw ~/.openclaw/skills/org-memory
 
 3. Ask your agent to "refresh skills" or restart the gateway.
 
+## Quick start
+
+Once installed, just talk to your agent naturally:
+
+- **"Remember: Sarah prefers morning meetings"** → Agent saves to its knowledge base
+- **"Note: Buy groceries"** → Agent adds TODO to your inbox
+- **"What do you know about Sarah?"** → Agent queries its knowledge
+
+## When to use org-memory
+
+OpenClaw's default memory (`MEMORY.md` + semantic search) works well for simple setups. org-memory is worth the added complexity when you need more.
+
+### org-memory vs MEMORY.md
+
+| Capability | MEMORY.md | org-memory |
+|------------|-----------|------------|
+| Store facts about one person | ✓ Works great | Overkill |
+| Store 20+ entities (people, projects, companies) | Gets messy | Each entity = separate file |
+| "List all my clients" | Grep through text | `tag find client` → structured list |
+| Track relationships | Text references | Graph links with backlinks |
+| "What's due this week?" | ❌ Not possible | `agenda week` → parsed dates |
+| Task management | ❌ No date support | SCHEDULED, DEADLINE, repeaters |
+
+**Use MEMORY.md** for: personal preferences, key dates, simple facts (<100 items).
+
+**Use org-memory** for: CRM-like knowledge, task management, relationship graphs, or any knowledge base that will grow beyond 100 entities.
+
+### org-memory vs Obsidian
+
+Both are linked knowledge graphs. Key differences:
+
+| | Obsidian | org-memory |
+|---|----------|------------|
+| Format | Markdown + YAML frontmatter | Org-mode |
+| Task management | Limited (no native dates) | Full agenda: SCHEDULED, DEADLINE, repeaters, clock |
+| Query language | Dataview plugin (JS-based) | CLI with JSON output |
+| Human editing | Obsidian app or any editor | Emacs or any editor |
+| Agent integration | Needs custom tooling | Built for CLI/agent use |
+
+**Use Obsidian** if: you already live in Obsidian and want your agent to share that vault.
+
+**Use org-memory** if: you need real task management with dates, prefer CLI-native tooling, or use Emacs.
+
+### The killer feature
+
+The real differentiator is **agenda queries**. The moment you want:
+- "What's due today?"
+- "Schedule this for next Monday"
+- "Show me overdue tasks"
+
+...MEMORY.md and Obsidian can't help. org-memory handles this natively because org-mode was built for it.
+
 ## What it does
 
 The skill teaches the agent to use `org` for:
