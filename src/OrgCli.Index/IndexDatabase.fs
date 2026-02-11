@@ -178,7 +178,9 @@ type OrgIndexDb(dbPath: string) =
         |> ignore
 
     member _.UpdateFileMtime(path: string, mtime: int64) =
-        executeNonQuery "UPDATE index_files SET mtime = @mtime WHERE path = @path" [ "@path", box path; "@mtime", box mtime ]
+        executeNonQuery
+            "UPDATE index_files SET mtime = @mtime WHERE path = @path"
+            [ "@path", box path; "@mtime", box mtime ]
         |> ignore
 
     member _.UpdateFile(path: string, hash: string, mtime: int64) =

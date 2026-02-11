@@ -600,10 +600,7 @@ let ``mutation with --db auto-syncs roam database`` () =
 
     try
         let filePath =
-            writeOrgFile
-                dir
-                "test.org"
-                ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Tasks\n\n* TODO Buy groceries\n"
+            writeOrgFile dir "test.org" ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Tasks\n\n* TODO Buy groceries\n"
 
         // Create the roam db via initial sync
         do

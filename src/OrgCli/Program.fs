@@ -270,7 +270,10 @@ let printUsage () =
     printfn "  --deadline-warning-days <n>  Override deadline warning days"
     printfn "  --dry-run               Preview mutation without writing to file"
     printfn "  -q, --quiet             Suppress informational text output"
-    printfn "  --db <path>             Database path (default: ~/.emacs.d/org-roam.db for roam, <dir>/.org-index.db for index)"
+
+    printfn
+        "  --db <path>             Database path (default: ~/.emacs.d/org-roam.db for roam, <dir>/.org-index.db for index)"
+
     printfn ""
     printfn "Org Commands:"
     printfn "  headlines [-d dir] [--todo STATE] [--tag TAG] [--level N] [--property K=V]"
