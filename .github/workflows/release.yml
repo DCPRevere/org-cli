@@ -152,12 +152,14 @@ jobs:
 
       - name: Push to nuget.org
         if: env.NUGET_API_KEY != ''
+        continue-on-error: true
         run: dotnet nuget push artifacts/nupkg/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
       - name: Publish to ClawHub
         if: env.CLAWHUB_TOKEN != ''
+        continue-on-error: true
         run: |
           npm install -g clawhub
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser
@@ -167,6 +169,7 @@ jobs:
 
       - name: Push to Homebrew tap
         if: env.HOMEBREW_TAP_TOKEN != ''
+        continue-on-error: true
         run: |
           git clone --depth 1 https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/dcprevere/homebrew-org-cli.git _tap
           mkdir -p _tap/Formula
@@ -183,6 +186,7 @@ jobs:
 
       - name: Push to Scoop bucket
         if: env.SCOOP_BUCKET_TOKEN != ''
+        continue-on-error: true
         run: |
           git clone --depth 1 https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/dcprevere/scoop-org-cli.git _bucket
           cp packaging/scoop/org-cli.json _bucket/org-cli.json
@@ -198,6 +202,7 @@ jobs:
 
       - name: Publish to AUR
         if: env.AUR_SSH_KEY != ''
+        continue-on-error: true
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
           pkgname: org-cli-bin
@@ -211,6 +216,7 @@ jobs:
 
       - name: Publish to Chocolatey
         if: env.CHOCO_API_KEY != ''
+        continue-on-error: true
         run: |
           VER="${{ steps.version.outputs.version }}"
           DIR="$(mktemp -d)"
