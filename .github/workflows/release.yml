@@ -163,7 +163,7 @@ jobs:
         run: |
           npm install -g clawhub
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser
-          clawhub publish integrations/openclaw --version "${{ steps.version.outputs.version }}"
+          clawhub publish integrations/openclaw --slug org-memory --version "${{ steps.version.outputs.version }}"
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
 
