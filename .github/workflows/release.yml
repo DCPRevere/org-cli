@@ -205,7 +205,7 @@ jobs:
         continue-on-error: true
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
-          pkgname: org-cli
+          pkgname: org-cli-bin
           pkgbuild: packaging/aur/PKGBUILD
           commit_username: github-actions[bot]
           commit_email: github-actions[bot]@users.noreply.github.com
