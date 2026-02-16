@@ -23,7 +23,13 @@ Examples:
 - "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in your repo
 - "Note: Review PR #42 by Friday" → Add a TODO with deadline to the human's inbox
 
-Don't ask for confirmation on shortcuts — just do it and confirm what you saved.
+Don't ask for confirmation on shortcuts — just do it. After every write, print a line in this exact format:
+
+```
+org-memory: <action> <file-path>
+```
+
+Examples: `org-memory: added TODO to ~/org/human/inbox.org`, `org-memory: created node ~/org/agent/sarah.org`, `org-memory: updated ~/org/agent/sarah.org`.
 
 ## Output format
 
@@ -194,6 +200,8 @@ Example: "Cancel my Thursday meeting with Sarah and reschedule the API migration
 If only agent memory is enabled, record everything relevant in `$ORG_MEMORY_AGENT_DIR`. If only human file management is enabled, only act on explicit requests.
 
 Check whether a node already exists before creating it. Use the returned data from mutations rather than making follow-up queries.
+
+**Always report writes.** After every mutation to either directory, print `org-memory: <action> <file-path>`. Never silently write to either directory.
 
 ## Stable identifiers
 
