@@ -5,6 +5,55 @@ open System.Text.Json.Nodes
 open OrgCli.Org
 open OrgCli.Index
 
+/// Extract CUSTOM_ID from a parsed headline's properties.
+let headlineCustomId (h: Headline) : string option =
+    Types.tryGetProperty "CUSTOM_ID" h.Properties
+
+/// Format CUSTOM_ID as a text prefix, e.g. " (k4t)".
+let formatCustomIdText (h: Headline) : string =
+    match headlineCustomId h with
+    | Some id -> sprintf " (%s)" id
+    | None -> ""
+
+/// Set custom_id on a JSON object from a parsed headline.
+let setCustomIdJson (obj: JsonObject) (h: Headline) =
+    obj["custom_id"] <- JsonOutput.jstr (headlineCustomId h)
+
+/// Print rows as an aligned table with uppercase headers.
+/// columns: list of (header, extract) pairs.
+/// rows: list of data items.
+let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
+    if List.isEmpty rows then
+        ()
+    else
+        let headers = columns |> List.map fst
+        let extractors = columns |> List.map snd
+        let data = rows |> List.map (fun r -> extractors |> List.map (fun f -> f r))
+
+        let widths =
+            List.init columns.Length (fun i ->
+                let headerW = headers.[i].Length
+
+                let maxDataW =
+                    data |> List.map (fun row -> row.[i].Length) |> List.max
+
+                max headerW maxDataW)
+
+        let gap = 3
+
+        let formatRow (cells: string list) =
+            cells
+            |> List.mapi (fun i cell ->
+                if i = cells.Length - 1 then
+                    cell
+                else
+                    cell.PadRight(widths.[i] + gap))
+            |> String.concat ""
+
+        printfn "%s" (formatRow headers)
+        for row in data do
+            printfn "%s" (formatRow row)
+
 /// Format an agenda item for text output
 let formatAgendaItemText (item: Agenda.AgendaItem) =
     let typeStr =
@@ -25,7 +74,8 @@ let formatAgendaItemText (item: Agenda.AgendaItem) =
         else
             sprintf " :%s:" (String.Join(":", item.Headline.Tags))
 
-    sprintf "  %s %s%s %s%s" typeStr todo priority item.Headline.Title tags
+    let cid = formatCustomIdText item.Headline
+    sprintf "  %s %s%s %s%s%s" typeStr todo priority item.Headline.Title tags cid
 
 /// Format an agenda item for JSON output
 let formatAgendaItemJson (item: Agenda.AgendaItem) : JsonNode =
@@ -42,7 +92,13 @@ let formatAgendaItemJson (item: Agenda.AgendaItem) : JsonNode =
         | None -> ""
 
     let obj = JsonObject()
-    obj["date"] <- JsonValue.Create(item.Date.ToString("yyyy-MM-dd"))
+    let dateFmt =
+        if item.HasTime then
+            item.Date.ToString("yyyy-MM-dd HH:mm")
+        else
+            item.Date.ToString("yyyy-MM-dd")
+
+    obj["date"] <- JsonValue.Create(dateFmt)
     obj["type"] <- JsonValue.Create(typeStr)
     obj["todo"] <- JsonValue.Create(todo)
     obj["priority"] <- JsonValue.Create(priority)
@@ -50,6 +106,7 @@ let formatAgendaItemJson (item: Agenda.AgendaItem) : JsonNode =
     obj["tags"] <- JsonOutput.jsonArray (item.Headline.Tags |> List.map (fun t -> JsonValue.Create(t) :> JsonNode))
     obj["file"] <- JsonValue.Create(item.File)
     obj["level"] <- JsonValue.Create(item.Headline.Level)
+    setCustomIdJson obj item.Headline
     obj
 
 /// Parse command line arguments (supports repeated flags)
@@ -154,6 +211,42 @@ let tryAutoSyncRoam (opts: Map<string, string list>) (filePaths: string list) =
                     OrgCli.Roam.Sync.updateFile db dir f
         with _ ->
             ()
+
+/// Determine if an argument looks like a file path (as opposed to a bare identifier).
+let looksLikeFile (arg: string) : bool =
+    arg.EndsWith(".org", StringComparison.OrdinalIgnoreCase)
+    || arg.Contains('/')
+    || arg.Contains('\\')
+    || File.Exists(arg)
+
+/// Look up file path for a CUSTOM_ID or other identifier via the index database.
+let resolveFileFromIndex (opts: Map<string, string list>) (identifier: string) : Result<string, CliError> =
+    let dbPath = resolveIndexDbPath opts
+
+    if not (File.Exists(dbPath)) then
+        Error
+            { Type = CliErrorType.InvalidArgs
+              Message = "No index database found. Use <file> <identifier> or run 'org index' first."
+              Detail = None }
+    else
+        try
+            use db = new IndexDatabase.OrgIndexDb(dbPath)
+            db.Initialize()
+            let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+            IndexSync.syncDirectory db dir
+
+            match db.FindByCustomId(identifier) with
+            | Some(file, _) -> Ok file
+            | None ->
+                Error
+                    { Type = CliErrorType.HeadlineNotFound
+                      Message = sprintf "No headline found for identifier: %s" identifier
+                      Detail = None }
+        with ex ->
+            Error
+                { Type = CliErrorType.InternalError
+                  Message = sprintf "Index lookup failed: %s" ex.Message
+                  Detail = None }
 
 /// Read file, resolve headline, apply transform, optionally write, print message.
 let executeMutation
@@ -309,6 +402,7 @@ let printUsage () =
     printfn "  fts <query> [-d dir]                    Full-text search via index"
     printfn ""
     printfn "Agenda Commands:"
+    printfn "  today                                 All TODOs due today or overdue"
     printfn "  agenda [today]                        Scheduled + deadlines + overdue for today"
     printfn "  agenda week                           Next 7 days"
     printfn "  agenda todo [--state STATE]            All TODO items, optionally filtered"
@@ -337,14 +431,99 @@ let printUsage () =
     printfn "  roam ref add <file> <node-id> <ref>    Add a reference"
     printfn "  roam ref remove <file> <node-id> <ref> Remove a reference"
 
+let agendaTableColumns: (string * (Agenda.AgendaItem -> string)) list =
+    [ "ID",
+      (fun item ->
+          headlineCustomId item.Headline
+          |> Option.defaultValue "")
+      "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
+      "TYPE",
+      (fun item ->
+          match item.Type with
+          | Agenda.Scheduled -> "Sched"
+          | Agenda.Deadline -> "Dead")
+      "DATE",
+      (fun item ->
+          if item.HasTime then
+              item.Date.ToString("yyyy-MM-dd HH:mm")
+          else
+              item.Date.ToString("yyyy-MM-dd"))
+      "TITLE", (fun item -> item.Headline.Title)
+      "TAGS",
+      (fun item ->
+          if List.isEmpty item.Headline.Tags then
+              ""
+          else
+              sprintf ":%s:" (String.Join(":", item.Headline.Tags)))
+      "FILE", (fun item -> Path.GetFileName(item.File)) ]
+
 let printAgendaDayText (date: DateTime) (items: Agenda.AgendaItem list) =
     let dayItems = items |> List.filter (fun i -> i.Date = date.Date)
 
     if not (List.isEmpty dayItems) then
         printfn "%s %s" (date.ToString("yyyy-MM-dd")) (date.ToString("ddd"))
+        printTable agendaTableColumns dayItems
 
-        for item in dayItems do
-            printfn "%s  %s" (formatAgendaItemText item) (Path.GetFileName(item.File))
+let todayTableColumns: (string * (Agenda.AgendaItem -> string)) list =
+    [ "ID",
+      (fun item ->
+          headlineCustomId item.Headline
+          |> Option.defaultValue "")
+      "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
+      "DATE",
+      (fun item ->
+          if item.HasTime then
+              item.Date.ToString("yyyy-MM-dd HH:mm")
+          else
+              item.Date.ToString("yyyy-MM-dd"))
+      "TITLE", (fun item -> item.Headline.Title)
+      "TAGS",
+      (fun item ->
+          if List.isEmpty item.Headline.Tags then
+              ""
+          else
+              sprintf ":%s:" (String.Join(":", item.Headline.Tags)))
+      "FILE", (fun item -> Path.GetFileName(item.File)) ]
+
+let handleToday (config: OrgConfig) (opts: Map<string, string list>) (isJson: bool) =
+    let files = resolveFiles opts
+    let tagFilter = Map.tryFind "tag" opts |> Option.bind List.tryHead
+    let today = DateTime.Today
+    let tomorrow = today.AddDays(1.0)
+
+    let items = Agenda.collectDatedItems config files
+
+    let due =
+        items
+        |> List.filter (fun i ->
+            i.Date < tomorrow
+            && not (Agenda.isDoneState config i.Headline.TodoKeyword)
+            && i.Headline.TodoKeyword.IsSome)
+        |> List.distinctBy (fun i -> i.Headline.Position, i.File)
+        |> (fun items ->
+            match tagFilter with
+            | Some t -> Agenda.filterByTag t items
+            | None -> items)
+        |> List.sortBy (fun i -> i.Date.Date, (if i.HasTime then 0 else 1), i.Date.TimeOfDay)
+
+    if isJson then
+        printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (due |> List.map formatAgendaItemJson)))
+    else if List.isEmpty due then
+        printfn "Nothing due today."
+    else
+        let overdue = due |> List.filter (fun i -> i.Date.Date < today)
+        let todayItems = due |> List.filter (fun i -> i.Date.Date >= today)
+
+        if not (List.isEmpty overdue) then
+            printfn "Overdue:"
+            printTable todayTableColumns overdue
+            printfn ""
+
+        if not (List.isEmpty todayItems) then
+            printfn "Today:"
+            printTable todayTableColumns todayItems
+
+    0
 
 let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: bool) (rest: string list) =
     let files = resolveFiles opts
@@ -368,7 +547,7 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
             (overdue @ todayItems)
             |> List.distinctBy (fun i -> i.Headline.Position, i.File)
             |> applyTagFilter
-            |> List.sortBy (fun i -> i.Date)
+            |> List.sortBy (fun i -> i.Date.Date, (if i.HasTime then 0 else 1), i.Date.TimeOfDay)
 
         if isJson then
             printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (combined |> List.map formatAgendaItemJson)))
@@ -382,13 +561,12 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
 
             if not (List.isEmpty overdueOnly) then
                 printfn "Overdue:"
-
-                for item in overdueOnly do
-                    printfn "%s  %s" (formatAgendaItemText item) (Path.GetFileName(item.File))
-
+                printTable agendaTableColumns overdueOnly
                 printfn ""
 
-            printAgendaDayText today todayOnly
+            if not (List.isEmpty todayOnly) then
+                printfn "%s %s" (today.ToString("yyyy-MM-dd")) (today.ToString("ddd"))
+                printTable agendaTableColumns todayOnly
 
         0
 
@@ -403,7 +581,7 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
             (overdue @ weekItems)
             |> List.distinctBy (fun i -> i.Headline.Position, i.File)
             |> applyTagFilter
-            |> List.sortBy (fun i -> i.Date)
+            |> List.sortBy (fun i -> i.Date.Date, (if i.HasTime then 0 else 1), i.Date.TimeOfDay)
 
         if isJson then
             printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (combined |> List.map formatAgendaItemJson)))
@@ -415,17 +593,18 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
 
             if not (List.isEmpty overdueOnly) then
                 printfn "Overdue:"
-
-                for item in overdueOnly do
-                    printfn "%s  %s" (formatAgendaItemText item) (Path.GetFileName(item.File))
-
+                printTable agendaTableColumns overdueOnly
                 printfn ""
 
             let dates = weekOnly |> List.map (fun i -> i.Date) |> List.distinct |> List.sort
 
             for date in dates do
-                printAgendaDayText date weekOnly
-                printfn ""
+                let dayItems = weekOnly |> List.filter (fun i -> i.Date = date.Date)
+
+                if not (List.isEmpty dayItems) then
+                    printfn "%s %s" (date.ToString("yyyy-MM-dd")) (date.ToString("ddd"))
+                    printTable agendaTableColumns dayItems
+                    printfn ""
 
         0
 
@@ -445,21 +624,39 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
         else if List.isEmpty filtered then
             printfn "No TODO items found."
         else
-            for item in filtered do
-                let todo = item.Headline.TodoKeyword |> Option.defaultValue ""
+            let todoTableColumns: (string * (Agenda.AgendaItem -> string)) list =
+                [ "ID",
+                  (fun item ->
+                      headlineCustomId item.Headline
+                      |> Option.defaultValue "")
+                  "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
+                  "PRI",
+                  (fun item ->
+                      match item.Headline.Priority with
+                      | Some(Priority c) -> string c
+                      | None -> "")
+                  "TITLE", (fun item -> item.Headline.Title)
+                  "SCHEDULED",
+                  (fun item ->
+                      item.Headline.Planning
+                      |> Option.bind (fun p -> p.Scheduled)
+                      |> Option.map (fun ts -> ts.Date.ToString("yyyy-MM-dd"))
+                      |> Option.defaultValue "")
+                  "DEADLINE",
+                  (fun item ->
+                      item.Headline.Planning
+                      |> Option.bind (fun p -> p.Deadline)
+                      |> Option.map (fun ts -> ts.Date.ToString("yyyy-MM-dd"))
+                      |> Option.defaultValue "")
+                  "TAGS",
+                  (fun item ->
+                      if List.isEmpty item.Headline.Tags then
+                          ""
+                      else
+                          sprintf ":%s:" (String.Join(":", item.Headline.Tags)))
+                  "FILE", (fun item -> Path.GetFileName(item.File)) ]
 
-                let priority =
-                    match item.Headline.Priority with
-                    | Some(Priority c) -> sprintf " [#%c]" c
-                    | None -> ""
-
-                let tags =
-                    if List.isEmpty item.Headline.Tags then
-                        ""
-                    else
-                        sprintf " :%s:" (String.Join(":", item.Headline.Tags))
-
-                printfn "  %s%s %s%s  %s" todo priority item.Headline.Title tags (Path.GetFileName(item.File))
+            printTable todoTableColumns filtered
 
         0
 
@@ -514,36 +711,114 @@ let handleHeadlines (config: OrgConfig) (opts: Map<string, string list>) (isJson
                 obj["path"] <-
                     JsonOutput.jsonArray (m.OutlinePath |> List.map (fun p -> JsonValue.Create(p) :> JsonNode))
 
+                setCustomIdJson obj m.Headline
                 obj :> JsonNode)
 
         printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
     else
-        for m in filtered do
-            let todo =
-                m.Headline.TodoKeyword
-                |> Option.map (fun t -> t + " ")
-                |> Option.defaultValue ""
+        let headlineTableColumns: (string * (Headlines.HeadlineMatch -> string)) list =
+            [ "ID",
+              (fun m ->
+                  headlineCustomId m.Headline
+                  |> Option.defaultValue (string m.Headline.Position))
+              "LVL", (fun m -> string m.Headline.Level)
+              "STATE", (fun m -> m.Headline.TodoKeyword |> Option.defaultValue "")
+              "TITLE", (fun m -> m.Headline.Title)
+              "TAGS",
+              (fun m ->
+                  if List.isEmpty m.Headline.Tags then
+                      ""
+                  else
+                      sprintf ":%s:" (String.Join(":", m.Headline.Tags)))
+              "PATH",
+              (fun m ->
+                  if List.isEmpty m.OutlinePath then
+                      ""
+                  else
+                      String.Join(" > ", m.OutlinePath))
+              "FILE", (fun m -> Path.GetFileName m.File) ]
 
-            let tags =
-                if List.isEmpty m.Headline.Tags then
-                    ""
-                else
-                    sprintf " :%s:" (String.Join(":", m.Headline.Tags))
+        printTable headlineTableColumns filtered
 
-            let pathStr =
-                if List.isEmpty m.OutlinePath then
-                    ""
-                else
-                    sprintf " [%s]" (String.Join(" > ", m.OutlinePath))
+    0
 
-            printfn
-                "%d  %s%s%s%s  %s"
-                m.Headline.Position
-                (String.replicate m.Headline.Level "*")
-                (sprintf " %s%s" todo m.Headline.Title)
-                tags
-                pathStr
-                (Path.GetFileName m.File)
+let handleCustomIdAssign (opts: Map<string, string list>) (isJson: bool) (isDryRun: bool) (isQuiet: bool) : int =
+    let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let dbPath = resolveIndexDbPath opts
+    use db = new IndexDatabase.OrgIndexDb(dbPath)
+    db.Initialize()
+    IndexSync.syncDirectory db dir
+
+    let files = Utils.listOrgFiles dir
+    let mutable totalAssigned = 0
+    let mutable totalSkipped = 0
+    let sessionIds = System.Collections.Generic.HashSet<string>()
+
+    let generateUniqueWithSession () =
+        let count = db.CountCustomIds() + sessionIds.Count
+        let mutable length = CustomId.recommendedLength count 0.01
+        let mutable result = None
+
+        while result.IsNone do
+            let mutable tries = 0
+
+            while tries < 10 && result.IsNone do
+                let candidate = CustomId.generate length
+
+                if not (db.CustomIdExists(candidate)) && not (sessionIds.Contains(candidate)) then
+                    result <- Some candidate
+
+                tries <- tries + 1
+
+            if result.IsNone then
+                length <- length + 1
+
+        let id = result.Value
+        sessionIds.Add(id) |> ignore
+        id
+
+    for file in files do
+        let content = File.ReadAllText(file)
+        let doc = Document.parse content
+
+        let needsId =
+            doc.Headlines
+            |> List.filter (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties |> Option.isNone)
+            |> List.sortByDescending (fun h -> h.Position)
+
+        totalSkipped <- totalSkipped + (doc.Headlines.Length - needsId.Length)
+
+        if not (List.isEmpty needsId) then
+            let mutable current = content
+
+            for h in needsId do
+                let customId = generateUniqueWithSession ()
+                current <- Mutations.setProperty current h.Position "CUSTOM_ID" customId
+                totalAssigned <- totalAssigned + 1
+
+            if not isDryRun then
+                File.WriteAllText(file, current)
+                IndexSync.syncFile db file
+
+    if isJson then
+        let obj = System.Text.Json.Nodes.JsonObject()
+        obj["assigned"] <- System.Text.Json.Nodes.JsonValue.Create(totalAssigned)
+        obj["skipped"] <- System.Text.Json.Nodes.JsonValue.Create(totalSkipped)
+        obj["files"] <- System.Text.Json.Nodes.JsonValue.Create(files.Length)
+        printfn "%s" (JsonOutput.ok obj)
+    else if not isQuiet then
+        if isDryRun then
+            eprintfn
+                "Would assign %d CUSTOM_IDs across %d files (%d already have IDs) (dry run)"
+                totalAssigned
+                files.Length
+                totalSkipped
+        else
+            eprintfn
+                "Assigned %d CUSTOM_IDs across %d files (%d already had IDs)"
+                totalAssigned
+                files.Length
+                totalSkipped
 
     0
 
@@ -629,19 +904,24 @@ let handleFts (opts: Map<string, string list>) (isJson: bool) (query: string) : 
                              | None -> null)
 
                         obj["rank"] <- JsonValue.Create(r.Rank)
+                        obj["custom_id"] <- JsonOutput.jstr r.CustomId
                         obj :> JsonNode)
 
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
             else if List.isEmpty results then
                 printfn "No results."
             else
-                for r in results do
-                    let context =
-                        match r.Context with
-                        | Some c -> sprintf "  %s" (c.Replace("\n", " ").Trim())
-                        | None -> ""
+                let ftsTableColumns: (string * (FtsResult -> string)) list =
+                    [ "ID", (fun (r: FtsResult) -> r.CustomId |> Option.defaultValue "")
+                      "TITLE", (fun (r: FtsResult) -> r.Title)
+                      "CONTEXT",
+                      (fun (r: FtsResult) ->
+                          match r.Context with
+                          | Some c -> c.Replace("\n", " ").Trim()
+                          | None -> "")
+                      "FILE", (fun (r: FtsResult) -> Path.GetFileName r.File) ]
 
-                    printfn "%s:%d  %s%s" r.File r.CharPos r.Title context
+                printTable ftsTableColumns results
 
             0
 
@@ -681,6 +961,11 @@ let main args =
     else
         try
             match positional with
+            | "today" :: rest when hasHelpFlag opts rest ->
+                printCommandHelp "today"
+                0
+            | "today" :: _ -> handleToday config opts isJson
+
             | "agenda" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "agenda"
                 0
@@ -717,7 +1002,25 @@ let main args =
                 let under = Map.tryFind "under" opts |> Option.bind List.tryHead
                 let content = if File.Exists(file) then File.ReadAllText(file) else ""
 
+                let stampCustomId (result: string) =
+                    let dbPath = resolveIndexDbPath opts
+
+                    if File.Exists(dbPath) then
+                        try
+                            use db = new IndexDatabase.OrgIndexDb(dbPath)
+                            db.Initialize()
+                            let customId = CustomIdService.generateUnique db
+
+                            match Headlines.resolveHeadlinePos result title with
+                            | Ok pos -> Mutations.setProperty result pos "CUSTOM_ID" customId
+                            | Error _ -> result
+                        with _ ->
+                            result
+                    else
+                        result
+
                 let printAdded (result: string) =
+                    let result = stampCustomId result
                     File.WriteAllText(file, result)
                     tryAutoSyncIndex opts [ file ]
                     tryAutoSyncRoam opts [ file ]
@@ -755,12 +1058,21 @@ let main args =
             | "todo" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "todo"
                 0
-            | "todo" :: file :: identifier :: state :: _ ->
+            | "todo" :: file :: identifier :: state :: _ when looksLikeFile file ->
                 let newState = if state = "" then None else Some state
 
                 executeMutation opts file identifier isJson isDryRun isQuiet "TODO state updated" (fun c p ->
                     let fileCfg = mergeFileConfig config c
                     Mutations.setTodoState fileCfg c p newState DateTime.Now)
+            | "todo" :: identifier :: state :: _ ->
+                let newState = if state = "" then None else Some state
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "TODO state updated" (fun c p ->
+                        let fileCfg = mergeFileConfig config c
+                        Mutations.setTodoState fileCfg c p newState DateTime.Now)
+                | Error e -> printError isJson e
             | "todo" :: _ ->
                 eprintfn "Error: 'todo' requires <file>, <headline>, and <state> arguments."
                 printCommandHelp "todo"
@@ -769,11 +1081,19 @@ let main args =
             | "priority" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "priority"
                 0
-            | "priority" :: file :: identifier :: pri :: _ ->
+            | "priority" :: file :: identifier :: pri :: _ when looksLikeFile file ->
                 let priority = if pri = "" then None else Some pri.[0]
 
                 executeMutation opts file identifier isJson isDryRun isQuiet "Priority updated" (fun c p ->
                     Mutations.setPriority c p priority)
+            | "priority" :: identifier :: pri :: _ ->
+                let priority = if pri = "" then None else Some pri.[0]
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Priority updated" (fun c p ->
+                        Mutations.setPriority c p priority)
+                | Error e -> printError isJson e
             | "priority" :: _ ->
                 eprintfn "Error: 'priority' requires <file>, <headline>, and <priority> arguments."
                 printCommandHelp "priority"
@@ -782,13 +1102,25 @@ let main args =
             | "tag" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "tag"
                 0
-            | "tag" :: "add" :: file :: identifier :: tag :: _ ->
+            | "tag" :: "add" :: file :: identifier :: tag :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Tag added" (fun c p ->
                     Mutations.addTag c p tag)
+            | "tag" :: "add" :: identifier :: tag :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Tag added" (fun c p ->
+                        Mutations.addTag c p tag)
+                | Error e -> printError isJson e
 
-            | "tag" :: "remove" :: file :: identifier :: tag :: _ ->
+            | "tag" :: "remove" :: file :: identifier :: tag :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Tag removed" (fun c p ->
                     Mutations.removeTag c p tag)
+            | "tag" :: "remove" :: identifier :: tag :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Tag removed" (fun c p ->
+                        Mutations.removeTag c p tag)
+                | Error e -> printError isJson e
             | "tag" :: _ ->
                 eprintfn "Error: 'tag' requires add|remove <file> <headline> <tag>."
                 printCommandHelp "tag"
@@ -797,13 +1129,25 @@ let main args =
             | "property" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "property"
                 0
-            | "property" :: "set" :: file :: identifier :: key :: value :: _ ->
+            | "property" :: "set" :: file :: identifier :: key :: value :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Property set" (fun c p ->
                     Mutations.setProperty c p key value)
+            | "property" :: "set" :: identifier :: key :: value :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Property set" (fun c p ->
+                        Mutations.setProperty c p key value)
+                | Error e -> printError isJson e
 
-            | "property" :: "remove" :: file :: identifier :: key :: _ ->
+            | "property" :: "remove" :: file :: identifier :: key :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Property removed" (fun c p ->
                     Mutations.removeProperty c p key)
+            | "property" :: "remove" :: identifier :: key :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Property removed" (fun c p ->
+                        Mutations.removeProperty c p key)
+                | Error e -> printError isJson e
             | "property" :: _ ->
                 eprintfn "Error: 'property' requires set|remove <file> <headline> <key> [<value>]."
                 printCommandHelp "property"
@@ -812,12 +1156,21 @@ let main args =
             | "schedule" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "schedule"
                 0
-            | "schedule" :: file :: identifier :: date :: _ ->
+            | "schedule" :: file :: identifier :: date :: _ when looksLikeFile file ->
                 let ts = if date = "" then None else Some(Utils.parseDate date)
 
                 executeMutation opts file identifier isJson isDryRun isQuiet "Schedule updated" (fun c p ->
                     let fileCfg = mergeFileConfig config c
                     Mutations.setScheduled fileCfg c p ts DateTime.Now)
+            | "schedule" :: identifier :: date :: _ ->
+                let ts = if date = "" then None else Some(Utils.parseDate date)
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Schedule updated" (fun c p ->
+                        let fileCfg = mergeFileConfig config c
+                        Mutations.setScheduled fileCfg c p ts DateTime.Now)
+                | Error e -> printError isJson e
             | "schedule" :: _ ->
                 eprintfn "Error: 'schedule' requires <file>, <headline>, and <date> arguments."
                 printCommandHelp "schedule"
@@ -826,12 +1179,21 @@ let main args =
             | "deadline" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "deadline"
                 0
-            | "deadline" :: file :: identifier :: date :: _ ->
+            | "deadline" :: file :: identifier :: date :: _ when looksLikeFile file ->
                 let ts = if date = "" then None else Some(Utils.parseDate date)
 
                 executeMutation opts file identifier isJson isDryRun isQuiet "Deadline updated" (fun c p ->
                     let fileCfg = mergeFileConfig config c
                     Mutations.setDeadline fileCfg c p ts DateTime.Now)
+            | "deadline" :: identifier :: date :: _ ->
+                let ts = if date = "" then None else Some(Utils.parseDate date)
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Deadline updated" (fun c p ->
+                        let fileCfg = mergeFileConfig config c
+                        Mutations.setDeadline fileCfg c p ts DateTime.Now)
+                | Error e -> printError isJson e
             | "deadline" :: _ ->
                 eprintfn "Error: 'deadline' requires <file>, <headline>, and <date> arguments."
                 printCommandHelp "deadline"
@@ -840,9 +1202,15 @@ let main args =
             | "note" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "note"
                 0
-            | "note" :: file :: identifier :: text :: _ ->
+            | "note" :: file :: identifier :: text :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Note added" (fun c p ->
                     Mutations.addNote c p text DateTime.Now)
+            | "note" :: identifier :: text :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Note added" (fun c p ->
+                        Mutations.addNote c p text DateTime.Now)
+                | Error e -> printError isJson e
             | "note" :: _ ->
                 eprintfn "Error: 'note' requires <file>, <headline>, and <text> arguments."
                 printCommandHelp "note"
@@ -930,7 +1298,7 @@ let main args =
             | "archive" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "archive"
                 0
-            | "archive" :: file :: identifier :: _ ->
+            | "archive" :: file :: identifier :: _ when looksLikeFile file ->
                 if not (File.Exists file) then
                     printError
                         isJson
@@ -977,6 +1345,49 @@ let main args =
                             printfn "Archived to %s" archiveFile
 
                         0
+            | "archive" :: identifier :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    let content = File.ReadAllText(file)
+
+                    match Headlines.resolveHeadlinePos content identifier with
+                    | Error e -> printError isJson e
+                    | Ok pos ->
+                        let doc = Document.parse content
+                        let matches = Headlines.collectHeadlinesFromDocs [ (file, doc) ]
+
+                        let outlinePath =
+                            matches
+                            |> List.tryFind (fun m -> m.Headline.Position = pos)
+                            |> Option.map (fun m -> m.OutlinePath)
+                            |> Option.defaultValue []
+
+                        let archiveFile = file + "_archive"
+
+                        let archiveContent =
+                            if File.Exists(archiveFile) then
+                                File.ReadAllText(archiveFile)
+                            else
+                                ""
+
+                        let (newSrc, newArchive) =
+                            Mutations.archive content pos archiveContent file outlinePath DateTime.Now
+
+                        File.WriteAllText(file, newSrc)
+                        File.WriteAllText(archiveFile, newArchive)
+                        tryAutoSyncIndex opts [ file ]
+                        tryAutoSyncRoam opts [ file ]
+
+                        if isJson then
+                            let obj = JsonObject()
+                            obj["archive_file"] <- JsonValue.Create(archiveFile)
+                            obj["source_file"] <- JsonValue.Create(file)
+                            printfn "%s" (JsonOutput.ok obj)
+                        else if not isQuiet then
+                            printfn "Archived to %s" archiveFile
+
+                        0
+                | Error e -> printError isJson e
             | "archive" :: _ ->
                 eprintfn "Error: 'archive' requires <file> and <headline> arguments."
                 printCommandHelp "archive"
@@ -985,7 +1396,7 @@ let main args =
             | "read" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "read"
                 0
-            | "read" :: file :: identifier :: _ ->
+            | "read" :: file :: identifier :: _ when looksLikeFile file ->
                 if not (File.Exists file) then
                     printError
                         isJson
@@ -1001,6 +1412,18 @@ let main args =
                         printfn "%s" subtree
                         0
                     | Error e -> printError isJson e
+            | "read" :: identifier :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    let content = File.ReadAllText(file)
+
+                    match Headlines.resolveHeadlinePos content identifier with
+                    | Ok pos ->
+                        let subtree = Subtree.extractSubtree content pos
+                        printfn "%s" subtree
+                        0
+                    | Error e -> printError isJson e
+                | Error e -> printError isJson e
             | "read" :: _ ->
                 eprintfn "Error: 'read' requires <file> and <headline> arguments."
                 printCommandHelp "read"
@@ -1030,23 +1453,29 @@ let main args =
                                      | Some h -> JsonValue.Create(h.Title) :> JsonNode
                                      | None -> null)
 
+                                obj["custom_id"] <- JsonOutput.jstr (r.Headline |> Option.bind headlineCustomId)
+
                                 obj["match"] <- JsonValue.Create(r.MatchLine)
                                 obj :> JsonNode)
 
                         printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
                     else
-                        for r in results do
-                            let headline =
-                                match r.Headline with
-                                | Some h -> h.Title
-                                | None -> "(file level)"
+                        let searchTableColumns: (string * (Search.SearchResult -> string)) list =
+                            [ "ID",
+                              (fun r ->
+                                  r.Headline
+                                  |> Option.bind headlineCustomId
+                                  |> Option.defaultValue "")
+                              "LINE", (fun r -> string r.LineNumber)
+                              "HEADLINE",
+                              (fun r ->
+                                  match r.Headline with
+                                  | Some h -> h.Title
+                                  | None -> "(file level)")
+                              "MATCH", (fun r -> r.MatchLine.Trim())
+                              "FILE", (fun r -> Path.GetFileName r.File) ]
 
-                            printfn
-                                "%s:%d  [%s]  %s"
-                                (Path.GetFileName r.File)
-                                r.LineNumber
-                                headline
-                                (r.MatchLine.Trim())
+                        printTable searchTableColumns results
 
                     0
             | "search" :: _ ->
@@ -1057,13 +1486,25 @@ let main args =
             | "clock" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "clock"
                 0
-            | "clock" :: "in" :: file :: identifier :: _ ->
+            | "clock" :: "in" :: file :: identifier :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Clock started" (fun c p ->
                     Mutations.clockIn c p DateTime.Now)
+            | "clock" :: "in" :: identifier :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Clock started" (fun c p ->
+                        Mutations.clockIn c p DateTime.Now)
+                | Error e -> printError isJson e
 
-            | "clock" :: "out" :: file :: identifier :: _ ->
+            | "clock" :: "out" :: file :: identifier :: _ when looksLikeFile file ->
                 executeMutation opts file identifier isJson isDryRun isQuiet "Clock stopped" (fun c p ->
                     Mutations.clockOut c p DateTime.Now)
+            | "clock" :: "out" :: identifier :: _ ->
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Clock stopped" (fun c p ->
+                        Mutations.clockOut c p DateTime.Now)
+                | Error e -> printError isJson e
 
             | "clock" :: _ ->
                 let files = resolveFiles opts
@@ -1079,17 +1520,29 @@ let main args =
                             obj["file"] <- JsonValue.Create(f)
                             obj["entries"] <- JsonValue.Create(entries.Length)
                             obj["total"] <- JsonValue.Create(sprintf "%d:%02d" (int dur.TotalHours) dur.Minutes)
+                            setCustomIdJson obj h
                             obj :> JsonNode)
 
                     printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
                 else
                     let mutable grandTotal = TimeSpan.Zero
 
-                    for (h, f, entries) in results do
-                        let dur = Clock.totalDuration entries
-                        grandTotal <- grandTotal.Add(dur)
-                        printfn "%d:%02d  %s  %s" (int dur.TotalHours) dur.Minutes h.Title (Path.GetFileName f)
+                    for (_, _, entries) in results do
+                        grandTotal <- grandTotal.Add(Clock.totalDuration entries)
 
+                    let clockTableColumns: (string * (Headline * string * ClockEntry list -> string)) list =
+                        [ "ID",
+                          (fun (h, _, _) ->
+                              headlineCustomId h
+                              |> Option.defaultValue "")
+                          "TIME",
+                          (fun (_, _, entries) ->
+                              let dur = Clock.totalDuration entries
+                              sprintf "%d:%02d" (int dur.TotalHours) dur.Minutes)
+                          "TITLE", (fun (h, _, _) -> h.Title)
+                          "FILE", (fun (_, f, _) -> Path.GetFileName f) ]
+
+                    printTable clockTableColumns results
                     printfn ""
                     printfn "Total: %d:%02d" (int grandTotal.TotalHours) grandTotal.Minutes
 
@@ -1197,6 +1650,15 @@ let main args =
                 printCommandHelp "fts"
                 1
 
+            | "custom-id" :: rest when hasHelpFlag opts rest ->
+                printCommandHelp "custom-id"
+                0
+            | "custom-id" :: "assign" :: _ -> handleCustomIdAssign opts isJson isDryRun isQuiet
+            | "custom-id" :: _ ->
+                eprintfn "Error: 'custom-id' requires a subcommand. Usage: custom-id assign"
+                printCommandHelp "custom-id"
+                1
+
             | "batch" :: _ ->
                 let input = System.Console.In.ReadToEnd()
                 let files = resolveFiles opts
@@ -1227,7 +1689,7 @@ let main args =
             | "completions" :: "bash" :: _ ->
                 printfn
                     """_org_completions() {
-    local commands="agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions"
+    local commands="today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts custom-id roam batch schema completions"
     local flags="--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help"
     if [ "${#COMP_WORDS[@]}" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$commands $flags" -- "${COMP_WORDS[1]}"))
@@ -1241,7 +1703,7 @@ complete -F _org_completions org"""
                 printfn
                     """#compdef org
 _org() {
-    local commands=(agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions)
+    local commands=(today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions)
     local flags=(--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help)
     _arguments '1:command:($commands)' '*:flags:($flags)'
 }
@@ -1251,7 +1713,7 @@ compdef _org org"""
 
             | "completions" :: "fish" :: _ ->
                 printfn
-                    """set -l commands agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions
+                    """set -l commands today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions
 complete -c org -f -n '__fish_use_subcommand' -a "$commands"
 complete -c org -l format -d 'Output format: text or json'
 complete -c org -l directory -s d -d 'Base directory'

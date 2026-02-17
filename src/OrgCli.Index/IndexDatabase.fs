@@ -135,6 +135,21 @@ type OrgIndexDb(dbPath: string) =
         ftsCmd.CommandText <- createFtsSql
         ftsCmd.ExecuteNonQuery() |> ignore
 
+        // Migrate: add custom_id column if not present
+        try
+            use alterCmd = conn.CreateCommand()
+            alterCmd.CommandText <- "ALTER TABLE index_headlines ADD COLUMN custom_id TEXT"
+            alterCmd.ExecuteNonQuery() |> ignore
+        with :? SqliteException ->
+            () // column already exists
+
+        use idxCmd = conn.CreateCommand()
+
+        idxCmd.CommandText <-
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_headlines_custom_id ON index_headlines(custom_id) WHERE custom_id IS NOT NULL"
+
+        idxCmd.ExecuteNonQuery() |> ignore
+
     member _.Close() =
         lock connectionLock (fun () ->
             match connection with
@@ -196,10 +211,10 @@ type OrgIndexDb(dbPath: string) =
             """
             INSERT INTO index_headlines (file, char_pos, level, title, todo, priority,
                 scheduled, scheduled_dt, deadline, deadline_dt, closed, closed_dt,
-                properties, body, outline_path)
+                properties, body, outline_path, custom_id)
             VALUES (@file, @charPos, @level, @title, @todo, @priority,
                 @scheduled, @scheduledDt, @deadline, @deadlineDt, @closed, @closedDt,
-                @properties, @body, @outlinePath)
+                @properties, @body, @outlinePath, @customId)
         """
 
         let optObj (v: string option) : obj =
@@ -223,7 +238,8 @@ type OrgIndexDb(dbPath: string) =
               "@closedDt", optObj h.ClosedDt
               "@properties", optObj h.Properties
               "@body", optObj h.Body
-              "@outlinePath", optObj h.OutlinePath ]
+              "@outlinePath", optObj h.OutlinePath
+              "@customId", optObj h.CustomId ]
         |> ignore
 
     member _.GetHeadlines(file: string) : IndexedHeadline list =
@@ -231,7 +247,7 @@ type OrgIndexDb(dbPath: string) =
             """
             SELECT file, char_pos, level, title, todo, priority,
                    scheduled, scheduled_dt, deadline, deadline_dt, closed, closed_dt,
-                   properties, body, outline_path
+                   properties, body, outline_path, custom_id
             FROM index_headlines WHERE file = @file ORDER BY char_pos
         """
 
@@ -250,14 +266,15 @@ type OrgIndexDb(dbPath: string) =
               ClosedDt = readOptString r 11
               Properties = readOptString r 12
               Body = readOptString r 13
-              OutlinePath = readOptString r 14 })
+              OutlinePath = readOptString r 14
+              CustomId = readOptString r 15 })
 
     member _.GetHeadline(file: string, charPos: int64) : IndexedHeadline option =
         let sql =
             """
             SELECT file, char_pos, level, title, todo, priority,
                    scheduled, scheduled_dt, deadline, deadline_dt, closed, closed_dt,
-                   properties, body, outline_path
+                   properties, body, outline_path, custom_id
             FROM index_headlines WHERE file = @file AND char_pos = @charPos
         """
 
@@ -276,12 +293,29 @@ type OrgIndexDb(dbPath: string) =
               ClosedDt = readOptString r 11
               Properties = readOptString r 12
               Body = readOptString r 13
-              OutlinePath = readOptString r 14 })
+              OutlinePath = readOptString r 14
+              CustomId = readOptString r 15 })
         |> List.tryHead
 
     member _.DeleteHeadlines(file: string) =
         executeNonQuery "DELETE FROM index_headlines WHERE file = @file" [ "@file", box file ]
         |> ignore
+
+    member _.FindByCustomId(customId: string) : (string * int64) option =
+        executeReader
+            "SELECT file, char_pos FROM index_headlines WHERE custom_id = @id"
+            [ "@id", box customId ]
+            (fun r -> (r.GetString(0), r.GetInt64(1)))
+        |> List.tryHead
+
+    member _.CountCustomIds() : int =
+        executeScalarObj "SELECT COUNT(*) FROM index_headlines WHERE custom_id IS NOT NULL" []
+        |> Option.map (fun o -> Convert.ToInt32(o))
+        |> Option.defaultValue 0
+
+    member _.CustomIdExists(customId: string) : bool =
+        executeScalarObj "SELECT 1 FROM index_headlines WHERE custom_id = @id LIMIT 1" [ "@id", box customId ]
+        |> Option.isSome
 
     // ── Tags ──
 
@@ -342,7 +376,7 @@ type OrgIndexDb(dbPath: string) =
             """
             SELECT h.file, h.char_pos, h.title, h.outline_path,
                    snippet(index_headlines_fts, -1, '>>>', '<<<', '...', 32) as context,
-                   rank
+                   rank, h.custom_id
             FROM index_headlines_fts
             JOIN index_headlines h ON index_headlines_fts.rowid = h.rowid
             WHERE index_headlines_fts MATCH @query
@@ -355,7 +389,8 @@ type OrgIndexDb(dbPath: string) =
               Title = r.GetString(2)
               OutlinePath = readOptString r 3
               Context = readOptString r 4
-              Rank = r.GetDouble(5) })
+              Rank = r.GetDouble(5)
+              CustomId = readOptString r 6 })
 
     // ── Query ──
 
@@ -399,7 +434,7 @@ type OrgIndexDb(dbPath: string) =
 
         let sql =
             sprintf
-                "SELECT DISTINCT h.file, h.char_pos, h.title, h.level, h.todo, h.priority, h.scheduled, h.deadline, h.closed, h.outline_path, h.properties FROM index_headlines h %s %s ORDER BY h.file, h.char_pos"
+                "SELECT DISTINCT h.file, h.char_pos, h.title, h.level, h.todo, h.priority, h.scheduled, h.deadline, h.closed, h.outline_path, h.properties, h.custom_id FROM index_headlines h %s %s ORDER BY h.file, h.char_pos"
                 joinClause
                 whereClause
 
@@ -414,13 +449,14 @@ type OrgIndexDb(dbPath: string) =
               Deadline = readOptString r 7
               Closed = readOptString r 8
               OutlinePath = readOptString r 9
-              Properties = readOptString r 10 })
+              Properties = readOptString r 10
+              CustomId = readOptString r 11 })
 
     member _.QueryAgendaNonRepeating(startDate: string, endDate: string) : AgendaQueryResult list =
         let sql =
             """
             SELECT file, char_pos, title, level, todo, priority,
-                   scheduled, scheduled_dt, deadline, deadline_dt, outline_path
+                   scheduled, scheduled_dt, deadline, deadline_dt, outline_path, custom_id
             FROM index_headlines
             WHERE (scheduled_dt BETWEEN @start AND @end AND (scheduled IS NULL OR scheduled NOT LIKE '%+%'))
                OR (deadline_dt BETWEEN @start AND @end AND (deadline IS NULL OR deadline NOT LIKE '%+%'))
@@ -437,13 +473,14 @@ type OrgIndexDb(dbPath: string) =
               ScheduledDt = readOptString r 7
               Deadline = readOptString r 8
               DeadlineDt = readOptString r 9
-              OutlinePath = readOptString r 10 })
+              OutlinePath = readOptString r 10
+              CustomId = readOptString r 11 })
 
     member _.QueryAgendaRepeating() : AgendaQueryResult list =
         let sql =
             """
             SELECT file, char_pos, title, level, todo, priority,
-                   scheduled, scheduled_dt, deadline, deadline_dt, outline_path
+                   scheduled, scheduled_dt, deadline, deadline_dt, outline_path, custom_id
             FROM index_headlines
             WHERE (scheduled IS NOT NULL AND scheduled LIKE '%+%')
                OR (deadline IS NOT NULL AND deadline LIKE '%+%')
@@ -460,7 +497,8 @@ type OrgIndexDb(dbPath: string) =
               ScheduledDt = readOptString r 7
               Deadline = readOptString r 8
               DeadlineDt = readOptString r 9
-              OutlinePath = readOptString r 10 })
+              OutlinePath = readOptString r 10
+              CustomId = readOptString r 11 })
 
     member _.ExecuteScalarInt64(sql: string) : int64 =
         let conn = ensureConnection ()

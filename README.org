@@ -26,42 +26,41 @@ dotnet build OrgCli.slnx
 * Quick start
 
 #+begin_src shell
-# List all headlines across org files in the current directory
-org headlines
+# What do I need to do today? (TODOs due today + overdue)
+org today -d ~/org
 
-# Filter by TODO state and tag
-org headlines --todo TODO --tag work
-
-# View today's agenda
+# View today's full agenda (all scheduled + deadlines)
 org agenda today -d ~/org
 
-# Set a headline to DONE (by title)
-org todo tasks.org "Buy groceries" DONE
+# List all headlines, filter by TODO state and tag
+org headlines --todo TODO --tag work -d ~/org
 
-# Set a headline to DONE (by position number)
-org todo tasks.org 42 DONE
+# Set a headline to DONE (by short ID -- no file needed)
+org todo k4t DONE
 
-# Add a new headline
+# Add a new headline (auto-assigns a short CUSTOM_ID)
 org add tasks.org "New task" --todo TODO --tag project --scheduled 2026-03-01
+
+# Assign short IDs to all existing headlines
+org custom-id assign -d ~/org
 
 # Search across files
 org search "meeting.*notes" -d ~/org
 
 # JSON output for scripting
-org headlines --todo TODO -f json
+org today -d ~/org -f json
 
 # Sync and query an org-roam database
 org roam sync -d ~/org
 org roam node list -d ~/org
-org roam backlinks <node-id> -d ~/org
 #+end_src
 
 * What it does
 
 ** Org file operations
 
-- *Headlines* -- list, filter by TODO state / tag / level / property, with tag and property inheritance
-- *Mutations* -- set TODO state, priority, tags, properties, SCHEDULED, DEADLINE; respects repeaters, per-keyword logging, LOGBOOK drawers
+- *Headlines* -- list, filter by TODO state / tag / level / property, with tag and property inheritance. Each headline shows its short CUSTOM_ID for easy reference.
+- *Mutations* -- set TODO state, priority, tags, properties, SCHEDULED, DEADLINE; respects repeaters, per-keyword logging, LOGBOOK drawers. Commands accept a bare CUSTOM_ID instead of =<file> <identifier>= when an index exists.
 - *Clock* -- clock in/out, clock reports with per-headline and grand totals
 - *Refile* -- move subtrees within or across files, with level adjustment
 - *Archive* -- move subtrees to =.org_archive= with metadata stamps
@@ -74,9 +73,12 @@ org roam backlinks <node-id> -d ~/org
 
 Queries org files directly (no database needed).
 
+- =org today= -- all non-done TODOs due today or overdue, split into sections
 - Today/week views with overdue detection
 - TODO list with state and tag filtering
+- Timed items (=SCHEDULED: <2026-03-01 Mon 14:00>=) sort before untimed
 - Timestamp range support (=<start>--<end>=)
+- All list output uses aligned columns (like =docker ps=)
 
 ** Org-roam
 
@@ -86,6 +88,15 @@ Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema v
 - Node CRUD (file-level and headline-level nodes)
 - Backlinks, tags, aliases, refs
 - Link management
+
+** Index and CUSTOM_ID
+
+=org index= builds a SQLite headline index for fast full-text search and CUSTOM_ID resolution.
+
+- =org add= auto-assigns a short base36 CUSTOM_ID (e.g. =k4t=) to new headlines when an index exists
+- =org custom-id assign= backfills CUSTOM_IDs on all existing headlines that lack one
+- With CUSTOM_IDs, most commands accept a bare ID instead of =<file> <identifier>=: =org todo k4t DONE=
+- =org fts= provides FTS5 full-text search over indexed headlines
 
 ** For AI agents
 
@@ -112,9 +123,10 @@ See [[file:docs/usage.org][docs/usage.org]] for the complete configuration refer
 * Project structure
 
 #+begin_example
-src/OrgCli.Org/   Parser library. Types, parsers, writer, mutations, agenda, config, batch mode.
-src/OrgCli.Roam/  Roam DB layer. Database, sync, node operations.
-src/OrgCli/       CLI entry point.
+src/OrgCli.Org/    Parser library. Types, parsers, writer, mutations, agenda, config, batch mode.
+src/OrgCli.Index/  Headline index. SQLite FTS5, CUSTOM_ID generation and resolution.
+src/OrgCli.Roam/   Roam DB layer. Database, sync, node operations.
+src/OrgCli/        CLI entry point.
 tests/OrgCli.Tests/
 #+end_example
 

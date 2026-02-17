@@ -30,12 +30,14 @@ OpenClaw's default memory (`MEMORY.md` + semantic search) works well for simple 
 
 | Capability | MEMORY.md | org-memory |
 |------------|-----------|------------|
-| Store facts about one person | ✓ Works great | Overkill |
+| Store facts about one person | Works great | Overkill |
 | Store 20+ entities (people, projects, companies) | Gets messy | Each entity = separate file |
 | "List all my clients" | Grep through text | `tag find client` → structured list |
 | Track relationships | Text references | Graph links with backlinks |
-| "What's due this week?" | ❌ Not possible | `agenda week` → parsed dates |
-| Task management | ❌ No date support | SCHEDULED, DEADLINE, repeaters |
+| "What do I need to do today?" | Not possible | `org today` → due + overdue TODOs |
+| "What's due this week?" | Not possible | `agenda week` → parsed dates |
+| Task management | No date support | SCHEDULED, DEADLINE, repeaters |
+| "Mark that task done" | Find file, find line | `org todo k4t DONE` |
 
 **Use MEMORY.md** for: personal preferences, key dates, simple facts (<100 items).
 
@@ -59,12 +61,13 @@ Both are linked knowledge graphs. Key differences:
 
 ### The killer feature
 
-The real differentiator is **agenda queries**. The moment you want:
-- "What's due today?"
+The real differentiator is **agenda queries** and **short IDs**. The moment you want:
+- "What's due today?" → `org today` shows all non-done TODOs due today or overdue
 - "Schedule this for next Monday"
-- "Show me overdue tasks"
+- "Show me overdue tasks" → `org today` catches these automatically
+- "Mark k4t as done" (no file path needed)
 
-...MEMORY.md and Obsidian can't help. org-memory handles this natively because org-mode was built for it.
+...MEMORY.md and Obsidian can't help. org-memory handles this natively because org-mode was built for it. Every headline gets a short CUSTOM_ID (like `k4t`) that works across files without remembering paths.
 
 ## What it does
 

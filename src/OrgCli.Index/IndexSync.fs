@@ -103,24 +103,48 @@ let private indexFileContent (db: IndexDatabase.OrgIndexDb) (filePath: string) (
         let body = extractBody content h.Position
         let props = serializeProperties h.Properties
         let priority = h.Priority |> Option.map (fun (Priority c) -> string c)
+        let customId = Types.tryGetProperty "CUSTOM_ID" h.Properties
 
-        db.InsertHeadline(
-            { File = filePath
-              CharPos = h.Position
-              Level = h.Level
-              Title = h.Title
-              Todo = h.TodoKeyword
-              Priority = priority
-              Scheduled = scheduledRaw
-              ScheduledDt = scheduledDt
-              Deadline = deadlineRaw
-              DeadlineDt = deadlineDt
-              Closed = closedRaw
-              ClosedDt = closedDt
-              Properties = props
-              Body = if String.IsNullOrWhiteSpace(body) then None else Some body
-              OutlinePath = Some outlinePath }
-        )
+        try
+            db.InsertHeadline(
+                { File = filePath
+                  CharPos = h.Position
+                  Level = h.Level
+                  Title = h.Title
+                  Todo = h.TodoKeyword
+                  Priority = priority
+                  Scheduled = scheduledRaw
+                  ScheduledDt = scheduledDt
+                  Deadline = deadlineRaw
+                  DeadlineDt = deadlineDt
+                  Closed = closedRaw
+                  ClosedDt = closedDt
+                  Properties = props
+                  Body = if String.IsNullOrWhiteSpace(body) then None else Some body
+                  OutlinePath = Some outlinePath
+                  CustomId = customId }
+            )
+        with :? Microsoft.Data.Sqlite.SqliteException when customId.IsSome ->
+            eprintfn "Warning: duplicate CUSTOM_ID '%s' in %s, indexing without it" customId.Value filePath
+
+            db.InsertHeadline(
+                { File = filePath
+                  CharPos = h.Position
+                  Level = h.Level
+                  Title = h.Title
+                  Todo = h.TodoKeyword
+                  Priority = priority
+                  Scheduled = scheduledRaw
+                  ScheduledDt = scheduledDt
+                  Deadline = deadlineRaw
+                  DeadlineDt = deadlineDt
+                  Closed = closedRaw
+                  ClosedDt = closedDt
+                  Properties = props
+                  Body = if String.IsNullOrWhiteSpace(body) then None else Some body
+                  OutlinePath = Some outlinePath
+                  CustomId = None }
+            )
 
         // Insert direct tags (inherited=0)
         for tag in h.Tags do

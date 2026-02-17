@@ -6,6 +6,45 @@ open System.Text.Json.Nodes
 open OrgCli.Roam
 open OrgCli.Org
 
+/// Print rows as an aligned table with uppercase headers.
+let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
+    if not (List.isEmpty rows) then
+        let headers = columns |> List.map fst
+        let extractors = columns |> List.map snd
+        let data = rows |> List.map (fun r -> extractors |> List.map (fun f -> f r))
+
+        let widths =
+            List.init columns.Length (fun i ->
+                let headerW = headers.[i].Length
+                let maxDataW = data |> List.map (fun row -> row.[i].Length) |> List.max
+                max headerW maxDataW)
+
+        let gap = 3
+
+        let formatRow (cells: string list) =
+            cells
+            |> List.mapi (fun i cell ->
+                if i = cells.Length - 1 then cell
+                else cell.PadRight(widths.[i] + gap))
+            |> String.concat ""
+
+        printfn "%s" (formatRow headers)
+        for row in data do
+            printfn "%s" (formatRow row)
+
+let nodeTableColumns: (string * (RoamNode -> string)) list =
+    [ "ID", (fun n -> n.Id)
+      "TITLE", (fun n -> n.Title)
+      "TAGS",
+      (fun n ->
+          if List.isEmpty n.Tags then ""
+          else sprintf ":%s:" (String.Join(":", n.Tags)))
+      "ALIASES",
+      (fun n ->
+          if List.isEmpty n.Aliases then ""
+          else String.Join(", ", n.Aliases))
+      "FILE", (fun n -> Path.GetFileName(n.File)) ]
+
 /// Format a node for text output
 let formatNodeText (node: RoamNode) =
     let tags =
@@ -115,8 +154,7 @@ let handleRoam
             if isJson then
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (nodes |> List.map formatNodeJson)))
             else
-                for node in nodes do
-                    printfn "%s\n" (formatNodeText node)
+                printTable nodeTableColumns nodes
 
             0)
 
@@ -265,8 +303,7 @@ let handleRoam
             if isJson then
                 printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray (nodes |> List.map formatNodeJson)))
             else
-                for node in nodes do
-                    printfn "%s\n" (formatNodeText node)
+                printTable nodeTableColumns nodes
 
             0)
 

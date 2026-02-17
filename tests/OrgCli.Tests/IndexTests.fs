@@ -105,6 +105,7 @@ let ``InsertHeadline stores all fields`` () =
               ClosedDt = None
               Properties = Some """{"ID":"abc-123"}"""
               Body = Some "Some body text here"
+              CustomId = None
               OutlinePath = Some "Projects\x1FBackend" }
 
         db.InsertHeadline(h)
@@ -151,6 +152,7 @@ let ``Headlines cascade delete when file deleted`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -184,6 +186,7 @@ let ``Primary key is file plus char_pos`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
 
         db.InsertHeadline(mkH 0L "First")
@@ -217,6 +220,7 @@ let ``InsertTag stores direct tag`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -256,6 +260,7 @@ let ``InsertTag stores inherited tag`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -294,6 +299,7 @@ let ``Tags cascade delete when headline deleted`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -332,6 +338,7 @@ let ``Direct tag wins over inherited via INSERT OR IGNORE`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
         )
         // Insert direct first
@@ -377,6 +384,7 @@ let ``Tag query by exact match`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = None }
 
         db.InsertHeadline(mkH 0L "H1")
@@ -434,6 +442,7 @@ let ``FTS insert and MATCH query returns results`` () =
               ClosedDt = None
               Properties = None
               Body = Some "Migrate the legacy API to the new framework"
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -466,6 +475,7 @@ let ``FTS delete command removes entries`` () =
               ClosedDt = None
               Properties = None
               Body = Some "Migrate the legacy API"
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -500,6 +510,7 @@ let ``FTS snippet returns context for body match`` () =
               ClosedDt = None
               Properties = None
               Body = Some "The migration of the API was completed successfully last week"
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -533,6 +544,7 @@ let ``FTS snippet returns context for title match`` () =
               ClosedDt = None
               Properties = None
               Body = Some "Just some text"
+              CustomId = None
               OutlinePath = None }
         )
 
@@ -569,6 +581,7 @@ let ``outline_path uses unit separator`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = Some path }
         )
 
@@ -601,6 +614,7 @@ let ``outline_path prefix query matches children`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = Some path }
 
         db.InsertHeadline(mkH 0L "A" "A")
@@ -634,6 +648,7 @@ let ``outline_path with slash in title does not match false prefix`` () =
               ClosedDt = None
               Properties = None
               Body = None
+              CustomId = None
               OutlinePath = Some path }
         // Title "B/C" contains a slash — should not be confused with hierarchy
         db.InsertHeadline(mkH 0L "B/C" ("A\x1FB/C"))

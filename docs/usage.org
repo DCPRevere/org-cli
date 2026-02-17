@@ -120,11 +120,20 @@ Recognized words: =logdone=, =lognotedone=, =nologdone=, =logrepeat=, =lognotere
 
 Wherever =<headline>= appears in the commands below, you can pass:
 
-- An integer character position (as shown in =headlines= output).
+- An integer character position.
 - An org-id (the value of an =:ID:= property on a headline).
+- A CUSTOM_ID (the value of a =:CUSTOM_ID:= property).
 - An exact headline title string (matched against parsed headlines in the file).
 
-Resolution is attempted in that order: number, then UUID-shaped org-id, then title match.
+Resolution is attempted in that order: number, then =:ID:=, then =:CUSTOM_ID:=, then title match.
+
+When an index exists (see =org index= below), most mutating commands also accept a bare CUSTOM_ID without a file argument. The index resolves the ID to its file automatically:
+
+#+begin_example
+org todo k4t DONE
+org schedule k4t 2026-03-15
+org tag add k4t urgent
+#+end_example
 
 * Org commands
 
@@ -134,7 +143,7 @@ Resolution is attempted in that order: number, then UUID-shaped org-id, then tit
 org headlines [-d dir] [--todo STATE] [--tag TAG] [--level N] [--property K=V]
 #+end_example
 
-Lists all headlines across org files. Filters are combinable. Output includes position, level stars, title, tags, outline path, and filename.
+Lists all headlines across org files. Filters are combinable. Output includes CUSTOM_ID (or position if none), level stars, title, tags, outline path, and filename. JSON output includes a =custom_id= field.
 
 Tag filtering respects tag inheritance when =tagInheritance= is enabled in config.
 
@@ -424,7 +433,7 @@ org roam ref remove <file> <node-id> <ref>
 
 Modifies the =ROAM_ALIASES= or =ROAM_REFS= property on the node, then syncs the database.
 
-* Index and full-text search
+* Index, CUSTOM_ID, and full-text search
 
 ** Build index
 
@@ -435,6 +444,39 @@ org index [-d <dir>] [--force] [--quiet]
 Scans all =.org= files under =-d= and builds (or updates) a SQLite headline index at =.org-index.db= in the target directory (or at the path given by =--db=). Without =--force=, only files modified since the last index are re-parsed. With =--force=, all files are re-indexed from scratch.
 
 The index is also updated automatically after mutations (=todo=, =add=, =refile=, etc.) when the database already exists. You must run =org index= once to create it; after that, incremental sync keeps it current.
+
+** CUSTOM_ID
+
+Headlines can be addressed by short CUSTOM_ID strings (e.g. =k4t=) stored in the standard =:CUSTOM_ID:= property. These are base36 (a-z, 0-9), starting at 3 characters and growing as needed to stay unique across the index.
+
+=org add= auto-assigns a CUSTOM_ID when an index database exists. To backfill IDs on existing headlines:
+
+#+begin_example
+org custom-id assign [-d <dir>] [--dry-run]
+#+end_example
+
+This scans all =.org= files, generates a unique CUSTOM_ID for every headline that lacks one, and writes the =:PROPERTIES:= drawers. Use =--dry-run= to preview without modifying files.
+
+Once headlines have CUSTOM_IDs, most mutating commands work without a file argument:
+
+#+begin_example
+org todo k4t DONE
+org priority k4t A
+org tag add k4t urgent
+org schedule k4t 2026-03-15
+org deadline k4t 2026-04-01
+org note k4t "Some note text"
+org clock in k4t
+org clock out k4t
+org archive k4t
+org read k4t
+org property set k4t EFFORT 2h
+org property remove k4t EFFORT
+#+end_example
+
+The CLI resolves the CUSTOM_ID via the index to find the file. It syncs the directory first to ensure freshness.
+
+CUSTOM_IDs appear in all output: =headlines=, =agenda=, =search=, =fts=, =clock= reports, and mutation responses. In text mode they appear as the leading identifier or in parentheses; in JSON mode as the =custom_id= field.
 
 ** Full-text search
 

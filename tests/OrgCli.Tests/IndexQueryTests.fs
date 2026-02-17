@@ -65,6 +65,7 @@ let private mkHeadline
       ClosedDt = None
       Properties = None
       Body = body
+      CustomId = None
       OutlinePath = outlinePath }
 
 // ── FTS query ──

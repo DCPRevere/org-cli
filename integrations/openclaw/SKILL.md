@@ -56,13 +56,15 @@ If `ORG_MEMORY_USE_FOR_AGENT` is not `true`, skip the Knowledge management secti
 
 Always pass `--db` to point at the correct database. The CLI auto-syncs the roam database after every mutation using the `--db` value. Without `--db`, the CLI defaults to the emacs org-roam database (`~/.emacs.d/org-roam.db`), which is not what you want.
 
-Initialize each enabled directory by creating a first node:
+Initialize each enabled directory by creating a first node and building the headline index:
 
 ```bash
 org roam node create "Index" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+org index -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION"
+org index -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
 ```
 
-The response includes the node's ID, file path, title, and tags. Use these values in subsequent commands.
+The roam response includes the node's ID, file path, title, and tags. The index enables CUSTOM_ID auto-assignment and file-less commands.
 
 ## Knowledge management
 
@@ -94,11 +96,12 @@ org roam node create "Sarah" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_
 Use the file path returned by create/find commands:
 
 ```bash
-# Add a headline to the node
+# Add a headline to the node (response includes auto-assigned custom_id)
 org add <file> "Unavailable March 2026" --tag scheduling --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+# → {"ok":true,"data":{"custom_id":"k4t","title":"Unavailable March 2026",...}}
 
-# Add a note to an existing headline (NOT to file-level nodes)
-org note <file> "Unavailable March 2026" "Out all of March per human." --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+# Use the custom_id for follow-up commands
+org note k4t "Out all of March per human." -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
 ```
 
 **Note:** `org note` attaches notes to *headlines*, not file-level nodes. If a roam node is file-level (no headlines yet), first add a headline with `org add`, then attach notes to it.
@@ -149,20 +152,33 @@ This section applies when `ORG_MEMORY_USE_FOR_HUMAN` is `true`.
 
 ### Read the human's state
 
+**Start here.** `org today` is the most useful query — it returns all non-done TODOs that are scheduled for today or overdue:
+
 ```bash
-org agenda today -d "$ORG_MEMORY_HUMAN_DIR" -f json
-org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json
-org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json
+org today -d "$ORG_MEMORY_HUMAN_DIR" -f json
+```
+
+For broader views:
+
+```bash
+org agenda today -d "$ORG_MEMORY_HUMAN_DIR" -f json   # all scheduled + deadlines for today
+org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json    # next 7 days
+org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json    # all TODOs
 org agenda todo --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json
 ```
 
 ### Make changes
 
 ```bash
-org add $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" --todo TODO --tag work --deadline 2026-02-10 --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
-org todo $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" DONE --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
-org schedule $ORG_MEMORY_HUMAN_DIR/projects.org "Quarterly review" 2026-03-15 --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
-org note $ORG_MEMORY_HUMAN_DIR/projects.org "Quarterly review" "Pushed back per manager request" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+# Add a headline (response includes the auto-assigned custom_id)
+org add $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" --todo TODO --tag work --deadline 2026-02-10 --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+
+# Subsequent commands use the custom_id — no file path needed
+org todo k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org schedule a1b 2026-03-15 -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org note a1b "Pushed back per manager request" -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+
+# Refile still requires explicit file paths
 org refile $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" $ORG_MEMORY_HUMAN_DIR/work.org "Code reviews" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
@@ -203,13 +219,25 @@ Check whether a node already exists before creating it. Use the returned data fr
 
 **Always report writes.** After every mutation to either directory, print `org-memory: <action> <file-path>`. Never silently write to either directory.
 
-## Stable identifiers
+## Stable identifiers (CUSTOM_ID)
 
-Always address headlines by org-id or exact title, not by position number. Positions change when files are edited. If you create a headline you'll refer to later, set an ID:
+Every headline created with `org add` is auto-assigned a short CUSTOM_ID (e.g. `k4t`) when an index database exists. This ID appears in the `custom_id` field of all JSON responses and as a column in text output.
+
+Use CUSTOM_IDs to refer to headlines in subsequent commands — they are stable across edits and don't require a file path:
 
 ```bash
-org property set file.org "My task" ID "$(uuidgen)" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org todo k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org schedule k4t 2026-03-15 -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org note k4t "Pushed back per manager request" -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
+
+To backfill CUSTOM_IDs on existing headlines that don't have them:
+
+```bash
+org custom-id assign -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+```
+
+Never address headlines by position number. Positions change when files are edited. Use CUSTOM_ID, org-id, or exact title.
 
 ## Error handling
 

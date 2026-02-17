@@ -22,7 +22,8 @@ type IndexedHeadline =
       ClosedDt: string option
       Properties: string option
       Body: string option
-      OutlinePath: string option }
+      OutlinePath: string option
+      CustomId: string option }
 
 type IndexedTag =
     { File: string
@@ -36,7 +37,8 @@ type FtsResult =
       Title: string
       OutlinePath: string option
       Context: string option
-      Rank: float }
+      Rank: float
+      CustomId: string option }
 
 type HeadlineQueryResult =
     { File: string
@@ -49,7 +51,8 @@ type HeadlineQueryResult =
       Deadline: string option
       Closed: string option
       OutlinePath: string option
-      Properties: string option }
+      Properties: string option
+      CustomId: string option }
 
 type AgendaQueryResult =
     { File: string
@@ -62,4 +65,5 @@ type AgendaQueryResult =
       ScheduledDt: string option
       Deadline: string option
       DeadlineDt: string option
-      OutlinePath: string option }
+      OutlinePath: string option
+      CustomId: string option }

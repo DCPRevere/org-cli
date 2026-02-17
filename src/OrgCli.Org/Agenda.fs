@@ -10,10 +10,11 @@ type AgendaItemType =
 type AgendaItem =
     { Type: AgendaItemType
       Date: DateTime
+      HasTime: bool
       Headline: Headline
       File: string }
 
-let private isDoneState (config: OrgConfig) (keyword: string option) : bool =
+let isDoneState (config: OrgConfig) (keyword: string option) : bool =
     match keyword with
     | None -> false
     | Some kw -> Types.isDoneState config.TodoKeywords kw
@@ -24,7 +25,8 @@ let private expandTimestamp (ts: Timestamp) (itemType: AgendaItemType) (h: Headl
     match ts.RangeEnd with
     | None ->
         [ { Type = itemType
-            Date = ts.Date.Date
+            Date = ts.Date
+            HasTime = ts.HasTime
             Headline = h
             File = file } ]
     | Some endTs ->
@@ -36,6 +38,7 @@ let private expandTimestamp (ts: Timestamp) (itemType: AgendaItemType) (h: Headl
               yield
                   { Type = itemType
                     Date = d
+                    HasTime = false
                     Headline = h
                     File = file }
 
@@ -86,18 +89,19 @@ let private collectTodoItemsCore (_config: OrgConfig) (headlines: (Headline * st
     |> List.choose (fun (h, file) ->
         match h.TodoKeyword with
         | Some _ ->
-            let date =
+            let date, hasTime =
                 h.Planning
                 |> Option.bind (fun p ->
                     match p.Scheduled, p.Deadline with
-                    | Some ts, _ -> Some ts.Date.Date
-                    | _, Some ts -> Some ts.Date.Date
+                    | Some ts, _ -> Some(ts.Date, ts.HasTime)
+                    | _, Some ts -> Some(ts.Date, ts.HasTime)
                     | _ -> None)
-                |> Option.defaultValue DateTime.MinValue
+                |> Option.defaultValue (DateTime.MinValue, false)
 
             Some
                 { Type = Scheduled
                   Date = date
+                  HasTime = hasTime
                   Headline = h
                   File = file }
         | None -> None)

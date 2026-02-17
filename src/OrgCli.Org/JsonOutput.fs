@@ -79,7 +79,13 @@ let globalFlagDefs: (string * string) list =
 
 /// Shared command definitions.
 let commandDefs: CommandDef list =
-    [ { Name = "agenda"
+    [ { Name = "today"
+        Description = "Show all TODOs due today or overdue"
+        Usage = "today [--tag TAG]"
+        Args = []
+        Flags = [ ("--tag", "Filter by tag") ]
+        HelpArgs = [ "--tag TAG   Filter by tag" ] }
+      { Name = "agenda"
         Description = "View scheduled items and deadlines"
         Usage = "agenda [today|week|todo] [--tag TAG] [--state STATE]"
         Args =
@@ -374,6 +380,17 @@ let commandDefs: CommandDef list =
           [ "<query>        FTS5 query: boolean (AND, OR, NOT), prefix (word*), phrase (\"exact phrase\")"
             "--no-sync      Skip pre-query sync"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
+      { Name = "custom-id"
+        Description = "Assign CUSTOM_ID properties to headlines"
+        Usage = "custom-id assign [-d dir] [--db path] [--dry-run]"
+        Args = []
+        Flags =
+          [ ("--dry-run", "Show what would be assigned without modifying files")
+            ("--db", "Database path (default: <dir>/.org-index.db)") ]
+        HelpArgs =
+          [ "assign         Assign CUSTOM_IDs to all headlines missing them"
+            "--dry-run      Preview without modifying files"
+            "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
       { Name = "batch"
         Description = "Execute multiple commands from JSON stdin"
         Usage = "batch"
@@ -454,6 +471,7 @@ let formatHeadlineState (state: HeadlineEdit.HeadlineState) : JsonNode =
     let obj = JsonObject()
     obj["pos"] <- JsonValue.Create(state.Pos)
     obj["id"] <- jstr state.Id
+    obj["custom_id"] <- jstr state.CustomId
     obj["title"] <- JsonValue.Create(state.Title)
     obj["todo"] <- jstr state.Todo
     obj["priority"] <- jchar state.Priority

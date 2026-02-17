@@ -1,3 +1,4 @@
+[<Xunit.Collection("ConsoleCapture")>]
 module OrgCli.Tests.CliHandlerTests
 
 open System

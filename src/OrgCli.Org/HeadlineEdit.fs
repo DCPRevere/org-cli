@@ -346,6 +346,7 @@ let formatInactiveTimestamp (now: DateTime) : string =
 type HeadlineState =
     { Pos: int64
       Id: string option
+      CustomId: string option
       Title: string
       Todo: string option
       Priority: char option
@@ -385,6 +386,9 @@ let private extractStateUsing (regex: Regex) (content: string) (pos: int64) : He
 
     let id = section.PropertyDrawer |> Option.bind (fun pd -> getProperty pd "ID")
 
+    let customId =
+        section.PropertyDrawer |> Option.bind (fun pd -> getProperty pd "CUSTOM_ID")
+
     let planningParts =
         section.PlanningLine
         |> Option.map parsePlanningParts
@@ -392,6 +396,7 @@ let private extractStateUsing (regex: Regex) (content: string) (pos: int64) : He
 
     { Pos = pos
       Id = id
+      CustomId = customId
       Title = title
       Todo = todo
       Priority = priority

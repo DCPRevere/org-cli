@@ -1,7 +1,7 @@
 module OrgCli.Org.Headlines
 
 /// Resolve a headline identifier to a byte position.
-/// Resolution order: (1) int64 → position, (2) :ID: property match, (3) exact title, (4) error.
+/// Resolution order: (1) int64 → position, (2) :ID: property match, (3) :CUSTOM_ID: match, (4) exact title, (5) error.
 let resolveHeadlinePos (content: string) (identifier: string) : Result<int64, CliError> =
     match System.Int64.TryParse(identifier) with
     | true, pos -> Ok pos
@@ -14,13 +14,19 @@ let resolveHeadlinePos (content: string) (identifier: string) : Result<int64, Cl
         with
         | Some h -> Ok h.Position
         | None ->
-            match doc.Headlines |> List.tryFind (fun h -> h.Title = identifier) with
+            match
+                doc.Headlines
+                |> List.tryFind (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties = Some identifier)
+            with
             | Some h -> Ok h.Position
             | None ->
-                Error
-                    { Type = CliErrorType.HeadlineNotFound
-                      Message = sprintf "Headline not found: %s" identifier
-                      Detail = None }
+                match doc.Headlines |> List.tryFind (fun h -> h.Title = identifier) with
+                | Some h -> Ok h.Position
+                | None ->
+                    Error
+                        { Type = CliErrorType.HeadlineNotFound
+                          Message = sprintf "Headline not found: %s" identifier
+                          Detail = None }
 
 type HeadlineMatch =
     { Headline: Headline

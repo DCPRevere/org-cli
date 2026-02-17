@@ -35,6 +35,7 @@
     <Compile Include="IndexIntegrationTests.fs" />
     <Compile Include="RoamComplianceTests.fs" />
     <Compile Include="CliHandlerTests.fs" />
+    <Compile Include="CustomIdTests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 
