@@ -34,8 +34,7 @@ let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
             List.init columns.Length (fun i ->
                 let headerW = headers.[i].Length
 
-                let maxDataW =
-                    data |> List.map (fun row -> row.[i].Length) |> List.max
+                let maxDataW = data |> List.map (fun row -> row.[i].Length) |> List.max
 
                 max headerW maxDataW)
 
@@ -51,6 +50,7 @@ let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
             |> String.concat ""
 
         printfn "%s" (formatRow headers)
+
         for row in data do
             printfn "%s" (formatRow row)
 
@@ -92,6 +92,7 @@ let formatAgendaItemJson (item: Agenda.AgendaItem) : JsonNode =
         | None -> ""
 
     let obj = JsonObject()
+
     let dateFmt =
         if item.HasTime then
             item.Date.ToString("yyyy-MM-dd HH:mm")
@@ -432,10 +433,7 @@ let printUsage () =
     printfn "  roam ref remove <file> <node-id> <ref> Remove a reference"
 
 let agendaTableColumns: (string * (Agenda.AgendaItem -> string)) list =
-    [ "ID",
-      (fun item ->
-          headlineCustomId item.Headline
-          |> Option.defaultValue "")
+    [ "ID", (fun item -> headlineCustomId item.Headline |> Option.defaultValue "")
       "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
       "TYPE",
       (fun item ->
@@ -465,10 +463,7 @@ let printAgendaDayText (date: DateTime) (items: Agenda.AgendaItem list) =
         printTable agendaTableColumns dayItems
 
 let todayTableColumns: (string * (Agenda.AgendaItem -> string)) list =
-    [ "ID",
-      (fun item ->
-          headlineCustomId item.Headline
-          |> Option.defaultValue "")
+    [ "ID", (fun item -> headlineCustomId item.Headline |> Option.defaultValue "")
       "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
       "DATE",
       (fun item ->
@@ -625,10 +620,7 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
             printfn "No TODO items found."
         else
             let todoTableColumns: (string * (Agenda.AgendaItem -> string)) list =
-                [ "ID",
-                  (fun item ->
-                      headlineCustomId item.Headline
-                      |> Option.defaultValue "")
+                [ "ID", (fun item -> headlineCustomId item.Headline |> Option.defaultValue "")
                   "STATE", (fun item -> item.Headline.TodoKeyword |> Option.defaultValue "")
                   "PRI",
                   (fun item ->
@@ -717,10 +709,7 @@ let handleHeadlines (config: OrgConfig) (opts: Map<string, string list>) (isJson
         printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
     else
         let headlineTableColumns: (string * (Headlines.HeadlineMatch -> string)) list =
-            [ "ID",
-              (fun m ->
-                  headlineCustomId m.Headline
-                  |> Option.defaultValue (string m.Headline.Position))
+            [ "ID", (fun m -> headlineCustomId m.Headline |> Option.defaultValue (string m.Headline.Position))
               "LVL", (fun m -> string m.Headline.Level)
               "STATE", (fun m -> m.Headline.TodoKeyword |> Option.defaultValue "")
               "TITLE", (fun m -> m.Headline.Title)
@@ -1461,11 +1450,7 @@ let main args =
                         printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
                     else
                         let searchTableColumns: (string * (Search.SearchResult -> string)) list =
-                            [ "ID",
-                              (fun r ->
-                                  r.Headline
-                                  |> Option.bind headlineCustomId
-                                  |> Option.defaultValue "")
+                            [ "ID", (fun r -> r.Headline |> Option.bind headlineCustomId |> Option.defaultValue "")
                               "LINE", (fun r -> string r.LineNumber)
                               "HEADLINE",
                               (fun r ->
@@ -1531,10 +1516,7 @@ let main args =
                         grandTotal <- grandTotal.Add(Clock.totalDuration entries)
 
                     let clockTableColumns: (string * (Headline * string * ClockEntry list -> string)) list =
-                        [ "ID",
-                          (fun (h, _, _) ->
-                              headlineCustomId h
-                              |> Option.defaultValue "")
+                        [ "ID", (fun (h, _, _) -> headlineCustomId h |> Option.defaultValue "")
                           "TIME",
                           (fun (_, _, entries) ->
                               let dur = Clock.totalDuration entries

@@ -24,11 +24,14 @@ let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
         let formatRow (cells: string list) =
             cells
             |> List.mapi (fun i cell ->
-                if i = cells.Length - 1 then cell
-                else cell.PadRight(widths.[i] + gap))
+                if i = cells.Length - 1 then
+                    cell
+                else
+                    cell.PadRight(widths.[i] + gap))
             |> String.concat ""
 
         printfn "%s" (formatRow headers)
+
         for row in data do
             printfn "%s" (formatRow row)
 
@@ -37,12 +40,16 @@ let nodeTableColumns: (string * (RoamNode -> string)) list =
       "TITLE", (fun n -> n.Title)
       "TAGS",
       (fun n ->
-          if List.isEmpty n.Tags then ""
-          else sprintf ":%s:" (String.Join(":", n.Tags)))
+          if List.isEmpty n.Tags then
+              ""
+          else
+              sprintf ":%s:" (String.Join(":", n.Tags)))
       "ALIASES",
       (fun n ->
-          if List.isEmpty n.Aliases then ""
-          else String.Join(", ", n.Aliases))
+          if List.isEmpty n.Aliases then
+              ""
+          else
+              String.Join(", ", n.Aliases))
       "FILE", (fun n -> Path.GetFileName(n.File)) ]
 
 /// Format a node for text output
