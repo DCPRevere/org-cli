@@ -514,6 +514,36 @@ let addNote (content: string) (pos: int64) (note: string) (now: DateTime) : stri
     let sectionWithLog = HeadlineEdit.insertEntry section entry
     HeadlineEdit.reassemble sectionWithLog
 
+// --- Append body ---
+
+let appendBody (content: string) (pos: int64) (text: string) : string =
+    let section = HeadlineEdit.split content pos
+    let body = section.Body
+    let childMatch = Regex.Match(body, @"^\*+ ", RegexOptions.Multiline)
+
+    let newBody =
+        if childMatch.Success then
+            let before = body.Substring(0, childMatch.Index)
+            let after = body.Substring(childMatch.Index)
+
+            let sep =
+                if before.Length > 0 && not (before.EndsWith("\n")) then
+                    "\n"
+                else
+                    ""
+
+            before + sep + text + "\n" + after
+        else
+            let sep =
+                if body.Length > 0 && not (body.EndsWith("\n")) then
+                    "\n"
+                else
+                    ""
+
+            body + sep + text
+
+    HeadlineEdit.reassemble { section with Body = newBody }
+
 // --- Add headline ---
 
 let formatNewHeadline

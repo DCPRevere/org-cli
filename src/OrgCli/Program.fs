@@ -1205,6 +1205,48 @@ let main args =
                 printCommandHelp "note"
                 1
 
+            | "append" :: rest when hasHelpFlag opts rest ->
+                printCommandHelp "append"
+                0
+            | "append" :: file :: identifier :: text :: _ when looksLikeFile file ->
+                let actualText =
+                    if Map.containsKey "stdin" opts then
+                        Console.In.ReadToEnd()
+                    else
+                        text
+
+                executeMutation opts file identifier isJson isDryRun isQuiet "Content appended" (fun c p ->
+                    Mutations.appendBody c p actualText)
+            | "append" :: file :: identifier :: _ when looksLikeFile file && Map.containsKey "stdin" opts ->
+                let text = Console.In.ReadToEnd()
+
+                executeMutation opts file identifier isJson isDryRun isQuiet "Content appended" (fun c p ->
+                    Mutations.appendBody c p text)
+            | "append" :: identifier :: text :: _ ->
+                let actualText =
+                    if Map.containsKey "stdin" opts then
+                        Console.In.ReadToEnd()
+                    else
+                        text
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Content appended" (fun c p ->
+                        Mutations.appendBody c p actualText)
+                | Error e -> printError isJson e
+            | "append" :: identifier :: _ when Map.containsKey "stdin" opts ->
+                let text = Console.In.ReadToEnd()
+
+                match resolveFileFromIndex opts identifier with
+                | Ok file ->
+                    executeMutation opts file identifier isJson isDryRun isQuiet "Content appended" (fun c p ->
+                        Mutations.appendBody c p text)
+                | Error e -> printError isJson e
+            | "append" :: _ ->
+                eprintfn "Error: 'append' requires <file>, <headline>, and <text> arguments."
+                printCommandHelp "append"
+                1
+
             | "refile" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "refile"
                 0

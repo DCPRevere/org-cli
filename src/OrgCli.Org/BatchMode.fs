@@ -92,6 +92,10 @@ let private applyCommand
         resolve ()
         |> Result.map (fun pos -> Mutations.addNote content pos (getArg "text") now, pos)
 
+    | "append" ->
+        resolve ()
+        |> Result.map (fun pos -> Mutations.appendBody content pos (getArg "text"), pos)
+
     | "clock-in" -> resolve () |> Result.map (fun pos -> Mutations.clockIn content pos now, pos)
 
     | "clock-out" -> resolve () |> Result.map (fun pos -> Mutations.clockOut content pos now, pos)

@@ -628,6 +628,47 @@ let ``mutation with --db auto-syncs roam database`` () =
     finally
         cleanup [ dir; dbPath ]
 
+// ── Append via CLI ──
+
+[<Fact>]
+let ``append command appends text to headline body`` () =
+    let dir = tempDir ()
+
+    try
+        let filePath = writeOrgFile dir "test.org" "* My Headline\nExisting body\n"
+
+        let _, _, exitCode =
+            captureBoth (fun () -> Program.main [| "append"; filePath; "My Headline"; "appended text"; "--quiet" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(filePath)
+        Assert.Contains("Existing body", content)
+        Assert.Contains("appended text", content)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``append command with --stdin reads from stdin`` () =
+    let dir = tempDir ()
+
+    try
+        let filePath = writeOrgFile dir "test.org" "* My Headline\nExisting body\n"
+        let oldIn = Console.In
+        use sr = new StringReader("stdin text")
+        Console.SetIn(sr)
+
+        try
+            let _, _, exitCode =
+                captureBoth (fun () -> Program.main [| "append"; filePath; "My Headline"; "--stdin"; "--quiet" |])
+
+            Assert.Equal(0, exitCode)
+            let content = File.ReadAllText(filePath)
+            Assert.Contains("stdin text", content)
+        finally
+            Console.SetIn(oldIn)
+    finally
+        cleanup [ dir ]
+
 // ── Refile without target via CLI ──
 
 [<Fact>]

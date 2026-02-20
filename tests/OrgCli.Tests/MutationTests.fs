@@ -859,6 +859,69 @@ let ``addNote inserts into existing logbook as first entry`` () =
     let oldIdx = result.IndexOf("Old entry")
     Assert.True(noteIdx < oldIdx)
 
+// --- Append body ---
+
+[<Fact>]
+let ``appendBody to empty body`` () =
+    let content = "* Headline\n"
+    let result = Mutations.appendBody content 0L "appended text"
+    Assert.Contains("appended text", result)
+    Assert.StartsWith("* Headline\n", result)
+
+[<Fact>]
+let ``appendBody to body with existing content`` () =
+    let content = "* Headline\nExisting body\n"
+    let result = Mutations.appendBody content 0L "appended text"
+    Assert.Contains("Existing body\n", result)
+    Assert.Contains("appended text", result)
+    let bodyIdx = result.IndexOf("Existing body")
+    let appendIdx = result.IndexOf("appended text")
+    Assert.True(appendIdx > bodyIdx)
+
+[<Fact>]
+let ``appendBody before first child`` () =
+    let content = "* Parent\nBody\n** Child\nChild body\n"
+    let result = Mutations.appendBody content 0L "appended text"
+    let appendIdx = result.IndexOf("appended text")
+    let childIdx = result.IndexOf("** Child")
+    Assert.True(appendIdx < childIdx, "Appended text should appear before child headline")
+    Assert.True(appendIdx > 0)
+
+[<Fact>]
+let ``appendBody preserves property drawer and logbook`` () =
+    let content =
+        "* TODO Task\n:PROPERTIES:\n:ID: abc\n:END:\n:LOGBOOK:\n- Note\n:END:\nBody text\n"
+
+    let result = Mutations.appendBody content 0L "new stuff"
+    Assert.Contains(":PROPERTIES:", result)
+    Assert.Contains(":ID: abc", result)
+    Assert.Contains(":LOGBOOK:", result)
+    Assert.Contains("Body text", result)
+    Assert.Contains("new stuff", result)
+
+[<Fact>]
+let ``appendBody adds separator when body lacks trailing newline`` () =
+    let content = "* Headline\nNo trailing newline"
+    let result = Mutations.appendBody content 0L "appended"
+    Assert.Contains("No trailing newline\nappended", result)
+
+[<Fact>]
+let ``appendBody with multi-line text`` () =
+    let content = "* Headline\nBody\n"
+    let result = Mutations.appendBody content 0L "line1\nline2\nline3"
+    Assert.Contains("line1\nline2\nline3", result)
+
+[<Fact>]
+let ``appendBody to second headline`` () =
+    let content = "* First\nFirst body\n* Second\nSecond body\n"
+    let doc = OrgCli.Org.Document.parse content
+    let secondPos = doc.Headlines.[1].Position
+    let result = Mutations.appendBody content secondPos "appended to second"
+    Assert.Contains("appended to second", result)
+    let firstBodyIdx = result.IndexOf("First body")
+    let appendIdx = result.IndexOf("appended to second")
+    Assert.True(appendIdx > firstBodyIdx)
+
 // --- Add headline ---
 
 [<Fact>]

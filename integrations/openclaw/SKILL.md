@@ -102,9 +102,17 @@ org add <file> "Unavailable March 2026" --tag scheduling --db "$ORG_MEMORY_AGENT
 
 # Use the custom_id for follow-up commands
 org note k4t "Out all of March per human." -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+
+# Append body text to an existing headline
+org append k4t "Confirmed by email on 2026-02-20." -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
+
+# Append multi-line text via stdin
+echo "First paragraph.\n\nSecond paragraph." | org append k4t --stdin -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json
 ```
 
-**Note:** `org note` attaches notes to *headlines*, not file-level nodes. If a roam node is file-level (no headlines yet), first add a headline with `org add`, then attach notes to it.
+**`org note` vs `org append`:** `note` adds a timestamped entry to the LOGBOOK drawer (metadata). `append` adds text to the headline body (visible content). Use `note` for audit trail, `append` for building up content.
+
+**Note:** Both commands attach to *headlines*, not file-level nodes. If a roam node is file-level (no headlines yet), first add a headline with `org add`, then use `note` or `append` on it.
 
 ### Link two nodes
 
@@ -177,6 +185,7 @@ org add $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" --todo TODO --tag work -
 org todo k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org schedule a1b 2026-03-15 -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org note a1b "Pushed back per manager request" -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
+org append a1b "Meeting notes from standup." -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 
 # Refile still requires explicit file paths
 org refile $ORG_MEMORY_HUMAN_DIR/inbox.org "Review PR #42" $ORG_MEMORY_HUMAN_DIR/work.org "Code reviews" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
@@ -200,7 +209,8 @@ Apply multiple mutations atomically. Commands execute sequentially against in-me
 echo '{"commands":[
   {"command":"todo","file":"tasks.org","identifier":"Buy groceries","args":{"state":"DONE"}},
   {"command":"tag-add","file":"tasks.org","identifier":"Write report","args":{"tag":"urgent"}},
-  {"command":"schedule","file":"tasks.org","identifier":"Write report","args":{"date":"2026-03-01"}}
+  {"command":"schedule","file":"tasks.org","identifier":"Write report","args":{"date":"2026-03-01"}},
+  {"command":"append","file":"tasks.org","identifier":"Write report","args":{"text":"Include Q1 metrics."}}
 ]}' | org batch -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
@@ -229,6 +239,7 @@ Use CUSTOM_IDs to refer to headlines in subsequent commands — they are stable 
 org todo k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org schedule k4t 2026-03-15 -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org note k4t "Pushed back per manager request" -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org append k4t "Updated scope per review." -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
 To backfill CUSTOM_IDs on existing headlines that don't have them:
