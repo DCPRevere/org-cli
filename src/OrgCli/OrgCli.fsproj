@@ -10,6 +10,7 @@
     <Description>CLI for org-mode file manipulation and org-roam database management</Description>
     <Authors>dcprevere</Authors>
 
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PackageProjectUrl>https://github.com/dcprevere/org-cli</PackageProjectUrl>
     <RepositoryUrl>https://github.com/dcprevere/org-cli</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
