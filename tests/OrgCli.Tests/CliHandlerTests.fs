@@ -669,6 +669,386 @@ let ``append command with --stdin reads from stdin`` () =
     finally
         cleanup [ dir ]
 
+// ── handleTodos ──
+
+[<Fact>]
+let ``handleTodos returns all TODO items across files`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "a.org" "* TODO Task A\n* DONE Finished A\n" |> ignore
+        writeOrgFile dir "b.org" "* TODO Task B\n* Not a todo\n" |> ignore
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        // Should find 3 TODO items: TODO Task A, DONE Finished A, TODO Task B
+        Assert.Equal(3, results.Count)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --state filters by TODO state`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO Active\n* DONE Finished\n* WAITING Blocked\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("state", "TODO") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("Active", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --tag filters by tag`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile
+            dir
+            "test.org"
+            "* TODO Task A                                        :work:\n* TODO Task B                                        :personal:\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("tag", "work") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("Task A", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --tag with multiple tags uses OR`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile
+            dir
+            "test.org"
+            "* TODO Task A                                        :work:\n* TODO Task B                                        :personal:\n* TODO Task C                                        :other:\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("tag", "work"); ("tag", "personal") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(2, results.Count)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --priority filters by priority`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO [#A] High\n* TODO [#C] Low\n* TODO Normal\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("priority", "A") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("High", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --scheduled filters to items with scheduled date`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO Scheduled\nSCHEDULED: <2026-03-01 Sun>\n* TODO No date\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("scheduled", "true") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("Scheduled", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --unscheduled filters to items without scheduled date`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO Scheduled\nSCHEDULED: <2026-03-01 Sun>\n* TODO No date\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("unscheduled", "true") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("No date", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --search filters by title substring`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO Buy groceries\n* TODO Clean house\n* TODO Buy milk\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("search", "buy") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(2, results.Count)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --file filters by filename`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "work.org" "* TODO Work task\n" |> ignore
+        writeOrgFile dir "personal.org" "* TODO Personal task\n" |> ignore
+        let opts = makeOpts [ ("directory", dir); ("file", "work") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("Work task", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos JSON output includes all required fields`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile
+            dir
+            "test.org"
+            "* TODO [#A] Important task                          :work:\nSCHEDULED: <2026-03-01 Sun> DEADLINE: <2026-03-15 Sun>\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let item = results.[0]
+        Assert.Equal("Important task", item["title"].GetValue<string>())
+        Assert.Equal("TODO", item["todo"].GetValue<string>())
+        Assert.Equal("A", item["priority"].GetValue<string>())
+        Assert.NotNull(item["tags"])
+        Assert.NotNull(item["file"])
+        Assert.NotNull(item["pos"])
+        Assert.Equal("2026-03-01", item["scheduled"].GetValue<string>())
+        Assert.Equal("2026-03-15", item["deadline"].GetValue<string>())
+        Assert.Equal(1, item["level"].GetValue<int>())
+        Assert.NotNull(item["path"])
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --sort priority sorts by priority`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO [#C] Low\n* TODO [#A] High\n* TODO [#B] Medium\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("sort", "priority") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        let r0 = results.[0]
+        let r1 = results.[1]
+        let r2 = results.[2]
+        Assert.Equal("High", r0["title"].GetValue<string>())
+        Assert.Equal("Medium", r1["title"].GetValue<string>())
+        Assert.Equal("Low", r2["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --reverse reverses sort order`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO [#A] High\n* TODO [#C] Low\n" |> ignore
+
+        let opts =
+            makeOpts [ ("directory", dir); ("sort", "priority"); ("reverse", "true") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        let r0 = results.[0]
+        let r1 = results.[1]
+        Assert.Equal("Low", r0["title"].GetValue<string>())
+        Assert.Equal("High", r1["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos text output shows No TODO items for empty`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* Just a headline\n" |> ignore
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts false)
+
+        Assert.Equal(0, exitCode)
+        Assert.Contains("No TODO items found.", stdout)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos text output shows table for results`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO My task\n" |> ignore
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts false)
+
+        Assert.Equal(0, exitCode)
+        Assert.Contains("My task", stdout)
+        Assert.Contains("STATE", stdout)
+        Assert.Contains("TITLE", stdout)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``main routes todos command`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* TODO Task\n" |> ignore
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.main [| "todos"; "--directory"; dir; "--format"; "json" |])
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        Assert.True(json["ok"].GetValue<bool>())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos --overdue filters overdue items`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile
+            dir
+            "test.org"
+            "* TODO Overdue\nSCHEDULED: <2020-01-01 Wed>\n* TODO Future\nSCHEDULED: <2099-01-01 Tue>\n* TODO No date\n"
+        |> ignore
+
+        let opts = makeOpts [ ("directory", dir); ("overdue", "true") ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        Assert.Equal("Overdue", first["title"].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``handleTodos JSON path field shows outline path`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "test.org" "* Parent\n** TODO Child task\n" |> ignore
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let first = results.[0]
+        let path = first["path"] :?> JsonArray
+        Assert.Equal(1, path.Count)
+        Assert.Equal("Parent", path.[0].GetValue<string>())
+    finally
+        cleanup [ dir ]
+
 // ── Refile without target via CLI ──
 
 [<Fact>]

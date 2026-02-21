@@ -372,6 +372,8 @@ let printUsage () =
     printfn "Org Commands:"
     printfn "  headlines [-d dir] [--todo STATE] [--tag TAG] [--level N] [--property K=V]"
     printfn "                                         List headlines with optional filters"
+    printfn "  todos [-d dir] [--state STATE] [--tag TAG] [--priority P] [--sort FIELD]"
+    printfn "                                         List and filter TODO items"
     printfn "  add <file> <title> [options]           Add a new headline"
     printfn "    --todo STATE  --priority P  --tag TAG  --scheduled DATE  --deadline DATE"
     printfn "    --under <title-or-pos>               Insert as child of headline"
@@ -520,6 +522,250 @@ let handleToday (config: OrgConfig) (opts: Map<string, string list>) (isJson: bo
         if not (List.isEmpty todayItems) then
             printfn "Today:"
             printTable todayTableColumns todayItems
+
+    0
+
+let handleTodos (config: OrgConfig) (opts: Map<string, string list>) (isJson: bool) =
+    let files = resolveFiles opts
+    let matches = Headlines.collectHeadlines files
+
+    // Only headlines with a TODO keyword
+    let todos = matches |> List.filter (fun m -> m.Headline.TodoKeyword.IsSome)
+
+    // Apply filters
+    let filtered =
+        todos
+        |> fun items ->
+            match Map.tryFind "state" opts |> Option.bind List.tryHead with
+            | Some s -> items |> List.filter (fun m -> m.Headline.TodoKeyword = Some s)
+            | None -> items
+        |> fun items ->
+            let tags = Map.tryFind "tag" opts |> Option.defaultValue []
+
+            match tags with
+            | [] -> items
+            | _ ->
+                items
+                |> List.filter (fun m -> tags |> List.exists (fun t -> List.contains t m.Headline.Tags))
+        |> fun items ->
+            match Map.tryFind "priority" opts |> Option.bind List.tryHead with
+            | Some p ->
+                let pChar = p.ToUpper().[0]
+
+                items
+                |> List.filter (fun m ->
+                    match m.Headline.Priority with
+                    | Some(Priority c) -> c = pChar
+                    | None -> false)
+            | None -> items
+        |> fun items ->
+            if Map.containsKey "scheduled" opts then
+                items
+                |> List.filter (fun m -> m.Headline.Planning |> Option.bind (fun p -> p.Scheduled) |> Option.isSome)
+            else
+                items
+        |> fun items ->
+            if Map.containsKey "unscheduled" opts then
+                items
+                |> List.filter (fun m -> m.Headline.Planning |> Option.bind (fun p -> p.Scheduled) |> Option.isNone)
+            else
+                items
+        |> fun items ->
+            if Map.containsKey "overdue" opts then
+                let today = DateTime.Today
+
+                items
+                |> List.filter (fun m ->
+                    let sched =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Scheduled)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let dead =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Deadline)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let earliest = [ sched; dead ] |> List.choose id |> List.sort |> List.tryHead
+
+                    match earliest with
+                    | Some d -> d < today
+                    | None -> false)
+            else
+                items
+        |> fun items ->
+            match Map.tryFind "due-before" opts |> Option.bind List.tryHead with
+            | Some dateStr ->
+                let cutoff = (Utils.parseDate dateStr).Date
+
+                items
+                |> List.filter (fun m ->
+                    let sched =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Scheduled)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let dead =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Deadline)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let earliest = [ sched; dead ] |> List.choose id |> List.sort |> List.tryHead
+
+                    match earliest with
+                    | Some d -> d <= cutoff
+                    | None -> false)
+            | None -> items
+        |> fun items ->
+            match Map.tryFind "due-after" opts |> Option.bind List.tryHead with
+            | Some dateStr ->
+                let cutoff = (Utils.parseDate dateStr).Date
+
+                items
+                |> List.filter (fun m ->
+                    let sched =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Scheduled)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let dead =
+                        m.Headline.Planning
+                        |> Option.bind (fun p -> p.Deadline)
+                        |> Option.map (fun ts -> ts.Date)
+
+                    let latest =
+                        [ sched; dead ] |> List.choose id |> List.sortDescending |> List.tryHead
+
+                    match latest with
+                    | Some d -> d >= cutoff
+                    | None -> false)
+            | None -> items
+        |> fun items ->
+            match Map.tryFind "file" opts |> Option.bind List.tryHead with
+            | Some pat ->
+                items
+                |> List.filter (fun m -> Path.GetFileName(m.File).Contains(pat, StringComparison.OrdinalIgnoreCase))
+            | None -> items
+        |> fun items ->
+            match Map.tryFind "search" opts |> Option.bind List.tryHead with
+            | Some text ->
+                items
+                |> List.filter (fun m -> m.Headline.Title.Contains(text, StringComparison.OrdinalIgnoreCase))
+            | None -> items
+
+    // Sort
+    let sortField =
+        Map.tryFind "sort" opts
+        |> Option.bind List.tryHead
+        |> Option.defaultValue "scheduled"
+
+    let reverseSort = Map.containsKey "reverse" opts
+
+    let getScheduledDate (m: Headlines.HeadlineMatch) =
+        m.Headline.Planning
+        |> Option.bind (fun p -> p.Scheduled)
+        |> Option.map (fun ts -> ts.Date)
+
+    let getDeadlineDate (m: Headlines.HeadlineMatch) =
+        m.Headline.Planning
+        |> Option.bind (fun p -> p.Deadline)
+        |> Option.map (fun ts -> ts.Date)
+
+    let sorted =
+        match sortField with
+        | "deadline" ->
+            filtered
+            |> List.sortBy (fun m ->
+                let d = getDeadlineDate m |> Option.defaultValue DateTime.MaxValue
+                (d, m.Headline.Title))
+        | "priority" ->
+            filtered
+            |> List.sortBy (fun m ->
+                let p =
+                    match m.Headline.Priority with
+                    | Some(Priority c) -> int c
+                    | None -> int 'Z' + 1
+
+                (p, m.Headline.Title))
+        | "title" -> filtered |> List.sortBy (fun m -> m.Headline.Title)
+        | "file" -> filtered |> List.sortBy (fun m -> Path.GetFileName(m.File), m.Headline.Title)
+        | _ -> // "scheduled" (default)
+            filtered
+            |> List.sortBy (fun m ->
+                let d = getScheduledDate m |> Option.defaultValue DateTime.MaxValue
+                (d, m.Headline.Title))
+
+    let sorted = if reverseSort then List.rev sorted else sorted
+
+    if isJson then
+        let json =
+            sorted
+            |> List.map (fun m ->
+                let obj = JsonObject()
+                obj["title"] <- JsonValue.Create(m.Headline.Title)
+                obj["todo"] <- JsonValue.Create(m.Headline.TodoKeyword |> Option.defaultValue "")
+
+                obj["priority"] <-
+                    (match m.Headline.Priority with
+                     | Some(Priority c) -> JsonValue.Create(string c) :> JsonNode
+                     | None -> JsonValue.Create("") :> JsonNode)
+
+                obj["tags"] <-
+                    JsonOutput.jsonArray (m.Headline.Tags |> List.map (fun t -> JsonValue.Create(t) :> JsonNode))
+
+                obj["file"] <- JsonValue.Create(m.File)
+                obj["pos"] <- JsonValue.Create(m.Headline.Position)
+
+                obj["scheduled"] <-
+                    (getScheduledDate m
+                     |> Option.map (fun d -> JsonValue.Create(d.ToString("yyyy-MM-dd")) :> JsonNode)
+                     |> Option.defaultValue null)
+
+                obj["deadline"] <-
+                    (getDeadlineDate m
+                     |> Option.map (fun d -> JsonValue.Create(d.ToString("yyyy-MM-dd")) :> JsonNode)
+                     |> Option.defaultValue null)
+
+                obj["level"] <- JsonValue.Create(m.Headline.Level)
+
+                obj["path"] <-
+                    JsonOutput.jsonArray (m.OutlinePath |> List.map (fun p -> JsonValue.Create(p) :> JsonNode))
+
+                setCustomIdJson obj m.Headline
+                obj :> JsonNode)
+
+        printfn "%s" (JsonOutput.ok (JsonOutput.jsonArray json))
+    else if List.isEmpty sorted then
+        printfn "No TODO items found."
+    else
+        let todosTableColumns: (string * (Headlines.HeadlineMatch -> string)) list =
+            [ "ID", (fun m -> headlineCustomId m.Headline |> Option.defaultValue "")
+              "STATE", (fun m -> m.Headline.TodoKeyword |> Option.defaultValue "")
+              "PRI",
+              (fun m ->
+                  match m.Headline.Priority with
+                  | Some(Priority c) -> string c
+                  | None -> "")
+              "TITLE", (fun m -> m.Headline.Title)
+              "SCHEDULED",
+              (fun m ->
+                  getScheduledDate m
+                  |> Option.map (fun d -> d.ToString("yyyy-MM-dd"))
+                  |> Option.defaultValue "")
+              "DEADLINE",
+              (fun m ->
+                  getDeadlineDate m
+                  |> Option.map (fun d -> d.ToString("yyyy-MM-dd"))
+                  |> Option.defaultValue "")
+              "TAGS",
+              (fun m ->
+                  if List.isEmpty m.Headline.Tags then
+                      ""
+                  else
+                      sprintf ":%s:" (String.Join(":", m.Headline.Tags)))
+              "FILE", (fun m -> Path.GetFileName m.File) ]
+
+        printTable todosTableColumns sorted
 
     0
 
@@ -967,6 +1213,11 @@ let main args =
                 printCommandHelp "headlines"
                 0
             | "headlines" :: _ -> handleHeadlines config opts isJson
+
+            | "todos" :: rest when hasHelpFlag opts rest ->
+                printCommandHelp "todos"
+                0
+            | "todos" :: _ -> handleTodos config opts isJson
 
             | "add" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "add"
@@ -1716,7 +1967,7 @@ let main args =
             | "completions" :: "bash" :: _ ->
                 printfn
                     """_org_completions() {
-    local commands="today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts custom-id roam batch schema completions"
+    local commands="today agenda headlines todos add todo priority tag property schedule deadline note clock refile archive read search links export index fts custom-id roam batch schema completions"
     local flags="--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help"
     if [ "${#COMP_WORDS[@]}" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$commands $flags" -- "${COMP_WORDS[1]}"))
@@ -1730,7 +1981,7 @@ complete -F _org_completions org"""
                 printfn
                     """#compdef org
 _org() {
-    local commands=(today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions)
+    local commands=(today agenda headlines todos add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions)
     local flags=(--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help)
     _arguments '1:command:($commands)' '*:flags:($flags)'
 }
@@ -1740,7 +1991,7 @@ compdef _org org"""
 
             | "completions" :: "fish" :: _ ->
                 printfn
-                    """set -l commands today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions
+                    """set -l commands today agenda headlines todos add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch schema completions
 complete -c org -f -n '__fish_use_subcommand' -a "$commands"
 complete -c org -l format -d 'Output format: text or json'
 complete -c org -l directory -s d -d 'Base directory'

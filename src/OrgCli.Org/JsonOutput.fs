@@ -406,6 +406,37 @@ let commandDefs: CommandDef list =
           [ "assign         Assign CUSTOM_IDs to all headlines missing them"
             "--dry-run      Preview without modifying files"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
+      { Name = "todos"
+        Description = "List and filter TODO items across org files"
+        Usage =
+          "todos [-d dir] [--state STATE] [--tag TAG] [--priority P] [--scheduled] [--unscheduled] [--overdue] [--due-before DATE] [--due-after DATE] [--file PATTERN] [--search TEXT] [--sort FIELD] [--reverse]"
+        Args = []
+        Flags =
+          [ ("--state", "Filter by TODO state (TODO, DONE, WAITING, etc.)")
+            ("--tag", "Filter by tag (repeatable for OR)")
+            ("--priority", "Filter by priority (A-Z)")
+            ("--scheduled", "Only show items with a scheduled date")
+            ("--unscheduled", "Only show items without a scheduled date")
+            ("--overdue", "Show items where scheduled/deadline < today")
+            ("--due-before", "Scheduled or deadline <= date")
+            ("--due-after", "Scheduled or deadline >= date")
+            ("--file", "Filter by filename pattern (substring)")
+            ("--search", "Filter by title substring (case-insensitive)")
+            ("--sort", "Sort by: scheduled, deadline, priority, title, file")
+            ("--reverse", "Reverse sort order") ]
+        HelpArgs =
+          [ "--state STATE       Filter by TODO state"
+            "--tag TAG           Filter by tag (repeatable for OR)"
+            "--priority P        Filter by priority (A-Z)"
+            "--scheduled         Only items with a scheduled date"
+            "--unscheduled       Only items without a scheduled date"
+            "--overdue           Items where scheduled/deadline < today"
+            "--due-before DATE   Scheduled or deadline <= date (yyyy-MM-dd)"
+            "--due-after DATE    Scheduled or deadline >= date (yyyy-MM-dd)"
+            "--file PATTERN      Filter by filename substring"
+            "--search TEXT       Filter by title substring (case-insensitive)"
+            "--sort FIELD        Sort by: scheduled, deadline, priority, title, file"
+            "--reverse           Reverse sort order" ] }
       { Name = "batch"
         Description = "Execute multiple commands from JSON stdin"
         Usage = "batch"
