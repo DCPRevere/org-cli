@@ -10,26 +10,45 @@ Use the `org` CLI to maintain structured, linked, human-readable knowledge in or
 
 ## Shortcuts
 
-When your human uses these patterns, act immediately:
+When your human uses these patterns, act immediately — no confirmation needed.
 
-| Pattern | Action |
-|---------|--------|
-| `Remember: <info>` | Save to your knowledge base (`$ORG_MEMORY_AGENT_DIR`). Create or update a node. This is for *your* future recall. |
-| `Note: <task or info>` | Add to the human's org files (`$ORG_MEMORY_HUMAN_DIR/inbox.org`). This is for *them* to act on. |
+### NOTE — for the human
+
+`Note: <text>` means "add this to MY org files." It is always a task or reminder for the *human*, not for the agent.
+
+Action: `org add $ORG_MEMORY_HUMAN_DIR/inbox.org "<text>" --todo TODO -f json`
+
+If the note includes a date or deadline, add `--scheduled <date>` or `--deadline <date>`. If there's no date, add it without one (the human will schedule it themselves, or ask you to).
 
 Examples:
-- "Remember: Sarah prefers morning meetings" → Create/update a node for Sarah in your repo
-- "Note: Buy groceries" → Add a TODO to the human's inbox
-- "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in your repo
-- "Note: Review PR #42 by Friday" → Add a TODO with deadline to the human's inbox
+- "Note: Buy groceries" → `org add .../inbox.org "Buy groceries" --todo TODO`
+- "Note: Review PR #42 by Friday" → `org add .../inbox.org "Review PR #42" --todo TODO --deadline 2026-02-28`
+- "Note: we could add feature X to the app" → `org add .../inbox.org "Add feature X to the app" --todo TODO`
+- "Note: send email to Donna about safeguarding" → `org add .../inbox.org "Send email to Donna about safeguarding" --todo TODO`
 
-Don't ask for confirmation on shortcuts — just do it. After every write, print a line in this exact format:
+**Edge case — ideas and observations:** If the human says "Note: we could do X" or "Note: idea for Y", it's still a NOTE. They're telling you to write it down for them. Add it as a TODO. Don't create a roam node, don't put it in the agent's knowledge base.
+
+### REMEMBER — for the agent
+
+`Remember: <info>` means "store this in YOUR knowledge base for future recall." This is information the agent should retain across sessions.
+
+Action: Search for an existing node first (`org roam node find`), then create or update.
+
+Examples:
+- "Remember: Sarah prefers morning meetings" → Create/update a node for Sarah in `$ORG_MEMORY_AGENT_DIR`
+- "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in `$ORG_MEMORY_AGENT_DIR`
+
+### After every write — confirm
+
+After every mutation to either directory, print a line in this exact format:
 
 ```
 org-memory: <action> <file-path>
 ```
 
 Examples: `org-memory: added TODO to ~/org/human/inbox.org`, `org-memory: created node ~/org/agent/sarah.org`, `org-memory: updated ~/org/agent/sarah.org`.
+
+**This is mandatory.** Never silently write to either directory. The human should always see what you did and where.
 
 ## Output format
 
@@ -265,7 +284,17 @@ To backfill CUSTOM_IDs on existing headlines that don't have them:
 org custom-id assign -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
 ```
 
-Never address headlines by position number. Positions change when files are edited. Use CUSTOM_ID, org-id, or exact title.
+**Never address headlines by position number (`pos`).** Positions change when files are edited — a mutation on one headline shifts the byte positions of everything after it. This WILL corrupt your file if you use stale `pos` values for subsequent mutations.
+
+Safe identifiers (in order of preference):
+1. **CUSTOM_ID** (e.g. `k4t`) — stable, short, unique
+2. **org-id** (UUID) — stable, unique
+3. **Exact title** — stable as long as the title doesn't change
+
+If you need to mutate multiple headlines in the same file, either:
+- Use `org batch` for atomic multi-step operations (recommended)
+- Use CUSTOM_IDs or titles, never `pos`
+- If you must use `pos`, re-query after each mutation to get fresh positions
 
 ## Error handling
 
@@ -289,3 +318,30 @@ The `--description` parameter sets relationship metadata, not display text. The 
 
 ### Database out of sync
 Run `org roam sync -d <dir> --db <db-path>` to rebuild the database from files.
+
+## Common mistakes
+
+These are real errors agents have made. Read them and don't repeat them.
+
+### Confusing NOTE and REMEMBER
+- `Note:` → human's org files, always a TODO for them
+- `Remember:` → agent's knowledge base, information for agent's recall
+- If in doubt: does the human need to *do* something? → NOTE. Is this something the agent should *know*? → REMEMBER.
+- "Note: we could add X" is still a NOTE — the human is dictating a task/idea for their own list.
+
+### Using `pos` after mutations
+Position values (`pos`) are byte offsets. They shift after every edit. If you add a SCHEDULED line to headline at pos 100, the next headline's pos has changed. Using the old pos will target the wrong headline or corrupt the file (e.g. inserting duplicate SCHEDULED lines inside a headline body).
+
+**Fix:** Use CUSTOM_ID, org-id, or exact title. Or use `org batch` for multiple mutations.
+
+### Not confirming writes
+After every write, print `org-memory: <action> <file-path>`. This is not optional. The human needs to know what you changed and where.
+
+### Creating duplicate roam nodes
+Always `org roam node find` before `org roam node create`. If you skip the search and create duplicates, you fragment the knowledge graph.
+
+### Putting human tasks in the agent's knowledge base (or vice versa)
+- Human says "Note: buy milk" → `$ORG_MEMORY_HUMAN_DIR/inbox.org`, NOT the agent's roam
+- Human says "Remember: the WiFi password is X" → `$ORG_MEMORY_AGENT_DIR`, NOT the human's inbox
+- An idea for a feature the human wants to track → human's org (NOTE)
+- A fact the agent learned that might be useful later → agent's roam (REMEMBER)
