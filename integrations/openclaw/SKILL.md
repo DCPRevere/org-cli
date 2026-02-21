@@ -342,7 +342,7 @@ The agent's knowledge base has two layers, mirroring how OpenClaw uses MEMORY.md
 
 ```
 $ORG_MEMORY_AGENT_DIR/
-├── index.org          # Curated long-term memory (read every session)
+├── memory.org          # Curated long-term memory (read every session)
 ├── daily/
 │   ├── 2026-02-21.org # Today's raw log
 │   ├── 2026-02-20.org # Yesterday's raw log
@@ -350,14 +350,14 @@ $ORG_MEMORY_AGENT_DIR/
 └── *.org              # Entity nodes (people, projects, etc.)
 ```
 
-**`index.org`** — the agent's permanent memory. Curated, concise, always loaded. Contains:
+**`memory.org`** — the agent's permanent memory. Curated, concise, always loaded. Contains:
 - Who the human is (name, role, preferences, key relationships)
 - Active projects and their status
 - Important lessons learned
 - Current conventions and workflows
 - Anything you need to know every session
 
-Keep it tight. If index.org grows beyond what's useful in a context window, distil it — move detail into entity nodes and keep index.org as a summary with links.
+Keep it tight. If memory.org grows beyond what's useful in a context window, distil it — move detail into entity nodes and keep memory.org as a summary with links.
 
 **`daily/YYYY-MM-DD.org`** — raw daily logs. What happened, decisions made, ambient facts captured, things learned. These are working notes, not curated. Write freely.
 
@@ -367,7 +367,7 @@ Keep it tight. If index.org grows beyond what's useful in a context window, dist
 
 At the start of every session:
 
-1. **Read `index.org`** — your permanent memory, always relevant
+1. **Read `memory.org`** — your permanent memory, always relevant
 2. **Read today and yesterday's daily files** (`daily/YYYY-MM-DD.org`) — recent context
 3. **Load today's agenda**: `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json`
 
@@ -378,26 +378,26 @@ That's it. Don't load everything. Query entity nodes on demand when the conversa
 - **Ambient facts** → append to today's daily file (`daily/YYYY-MM-DD.org`)
 - **New entity** → create a roam node, then link from today's daily file
 - **Update to existing entity** → `org roam node find`, then `org append` to the node
-- **Something worth keeping permanently** → also update `index.org`
+- **Something worth keeping permanently** → also update `memory.org`
 
 ### Memory maintenance
 
 Periodically (every few days, during a quiet heartbeat):
 
 1. Review recent daily files
-2. Promote important facts to entity nodes or `index.org`
-3. Remove outdated info from `index.org`
+2. Promote important facts to entity nodes or `memory.org`
+3. Remove outdated info from `memory.org`
 4. Daily files can accumulate — they're cheap and searchable via `org fts`
 
-This is like a human reviewing their journal and updating their mental model. Daily files are raw notes; index.org is curated wisdom; entity nodes are structured knowledge.
+This is like a human reviewing their journal and updating their mental model. Daily files are raw notes; memory.org is curated wisdom; entity nodes are structured knowledge.
 
 ### What to store where
 
 | Information | Where | Why |
 |---|---|---|
-| Human's profile, key preferences | `index.org` | Need it every session |
-| Active projects summary | `index.org` | Quick reference |
-| Lessons learned | `index.org` + entity node tagged `lesson` | In index for visibility, in node for detail |
+| Human's profile, key preferences | `memory.org` | Need it every session |
+| Active projects summary | `memory.org` | Quick reference |
+| Lessons learned | `memory.org` + entity node tagged `lesson` | In index for visibility, in node for detail |
 | Person details (birthday, role, preferences) | Entity node tagged `person` | Structured, linkable |
 | Project architecture and decisions | Entity node tagged `project` | Detailed, linked to people |
 | What happened today | `daily/YYYY-MM-DD.org` | Raw log, searchable later |
