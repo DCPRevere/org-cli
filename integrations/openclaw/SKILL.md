@@ -10,26 +10,60 @@ Use the `org` CLI to maintain structured, linked, human-readable knowledge in or
 
 ## Shortcuts
 
-When your human uses these patterns, act immediately:
+When your human uses these patterns, act immediately — no confirmation needed.
 
-| Pattern | Action |
-|---------|--------|
-| `Remember: <info>` | Save to your knowledge base (`$ORG_MEMORY_AGENT_DIR`). Create or update a node. This is for *your* future recall. |
-| `Note: <task or info>` | Add to the human's org files (`$ORG_MEMORY_HUMAN_DIR/inbox.org`). This is for *them* to act on. |
+### NOTE — for the human
+
+`Note: <text>` means "add this to MY org files." It is always a task or reminder for the *human*, not for the agent.
+
+Action: `org add $ORG_MEMORY_HUMAN_DIR/inbox.org "<text>" --todo TODO -f json`
+
+If the note includes a date or deadline, add `--scheduled <date>` or `--deadline <date>`. If there's no date, add it without one (the human will schedule it themselves, or ask you to).
 
 Examples:
-- "Remember: Sarah prefers morning meetings" → Create/update a node for Sarah in your repo
-- "Note: Buy groceries" → Add a TODO to the human's inbox
-- "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in your repo
-- "Note: Review PR #42 by Friday" → Add a TODO with deadline to the human's inbox
+- "Note: Buy groceries" → `org add .../inbox.org "Buy groceries" --todo TODO`
+- "Note: Review PR #42 by Friday" → `org add .../inbox.org "Review PR #42" --todo TODO --deadline 2026-02-28`
+- "Note: we could add feature X to the app" → `org add .../inbox.org "Add feature X to the app" --todo TODO`
+- "Note: send email to Donna about safeguarding" → `org add .../inbox.org "Send email to Donna about safeguarding" --todo TODO`
 
-Don't ask for confirmation on shortcuts — just do it. After every write, print a line in this exact format:
+**Edge case — ideas and observations:** If the human says "Note: we could do X" or "Note: idea for Y", it's still a NOTE. They're telling you to write it down for them. Add it as a TODO. Don't create a roam node, don't put it in the agent's knowledge base.
+
+### DONE — mark complete
+
+`Done: <text>` or `Finished: <text>` means "mark this task as DONE." Search for the matching TODO and set its state.
+
+Action:
+1. Search: `org todos --state TODO --search "<text>" -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+2. If exactly one match: `org todo <file> "<title>" DONE -f json`
+3. If multiple matches: show them to the human and ask which one
+4. If no match: tell the human you couldn't find it
+
+Examples:
+- "Done: pay Nigel Kerry" → find and mark DONE
+- "Finished: the PR review" → find and mark DONE
+- "Done: groceries" → search for "groceries", mark DONE
+
+### REMEMBER — for the agent
+
+`Remember: <info>` means "store this in YOUR knowledge base for future recall." This is information the agent should retain across sessions.
+
+Action: Search for an existing node first (`org roam node find`), then create or update.
+
+Examples:
+- "Remember: Sarah prefers morning meetings" → Create/update a node for Sarah in `$ORG_MEMORY_AGENT_DIR`
+- "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in `$ORG_MEMORY_AGENT_DIR`
+
+### After every write — confirm
+
+After every mutation to either directory, print a line in this exact format:
 
 ```
 org-memory: <action> <file-path>
 ```
 
 Examples: `org-memory: added TODO to ~/org/human/inbox.org`, `org-memory: created node ~/org/agent/sarah.org`, `org-memory: updated ~/org/agent/sarah.org`.
+
+**This is mandatory.** Never silently write to either directory. The human should always see what you did and where.
 
 ## Output format
 
@@ -171,9 +205,26 @@ For broader views:
 ```bash
 org agenda today -d "$ORG_MEMORY_HUMAN_DIR" -f json   # all scheduled + deadlines for today
 org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json    # next 7 days
-org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json    # all TODOs
+org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json    # all TODOs with scheduled dates
 org agenda todo --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json
 ```
+
+For rich filtering across all TODOs (scheduled or not):
+
+```bash
+org todos --state TODO -d "$ORG_MEMORY_HUMAN_DIR" -f json                    # all open TODOs
+org todos --state TODO --unscheduled -d "$ORG_MEMORY_HUMAN_DIR" -f json      # unscheduled only
+org todos --state TODO --overdue -d "$ORG_MEMORY_HUMAN_DIR" -f json          # overdue items
+org todos --state TODO --due-before 2026-03-01 -d "$ORG_MEMORY_HUMAN_DIR" -f json  # due before date
+org todos --search "meeting" -d "$ORG_MEMORY_HUMAN_DIR" -f json              # search by title
+org todos --state TODO --file "work" -d "$ORG_MEMORY_HUMAN_DIR" -f json      # filter by file
+org todos --state TODO --tag urgent -d "$ORG_MEMORY_HUMAN_DIR" -f json       # filter by tag
+org todos --state TODO --priority A -d "$ORG_MEMORY_HUMAN_DIR" -f json       # filter by priority
+org todos --state TODO --sort priority -d "$ORG_MEMORY_HUMAN_DIR" -f json    # sort by priority
+org todos --state TODO --sort scheduled --reverse -d "$ORG_MEMORY_HUMAN_DIR" -f json  # reverse sort
+```
+
+The `todos` command returns full data in JSON: title, todo state, priority, tags, file, pos, scheduled, deadline, level, path (parent headlines), and custom_id. All filters are combinable.
 
 ### Make changes
 
@@ -214,20 +265,154 @@ echo '{"commands":[
 ]}' | org batch -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
-## When to record knowledge
+## Query shortcuts
 
-When both features are enabled and the human tells you something, distinguish between requests and ambient information. Fulfill requests in `$ORG_MEMORY_HUMAN_DIR`. Record what you learned in `$ORG_MEMORY_AGENT_DIR`.
+When the human asks about their tasks or your knowledge, map natural language to the right query. Don't ask "what do you mean?" — just run the query.
+
+| Human says | Action |
+|---|---|
+| "What do I need to do?" / "What's on my plate?" | `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json` (today + overdue) |
+| "What's overdue?" | `org todos --state TODO --overdue -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What's coming up this week?" | `org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "Show me everything tagged work" | `org todos --state TODO --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What do I have unscheduled?" | `org todos --state TODO --unscheduled -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "Find all tasks about X" | `org todos --search "X" -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What do you know about Sarah?" | `org roam node find "Sarah" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json`, then `org roam node read` and `org roam backlinks` |
+| "What's the status of project X?" | Search both human TODOs and agent knowledge for X |
+
+Present results in a clean, readable format. Don't dump raw JSON at the human — summarise it.
+
+## Ambient capture
+
+Not everything the human tells you is a command. Sometimes they mention facts in passing — a person's preference, a date, a technical detail, a relationship. These are valuable and should be captured in `$ORG_MEMORY_AGENT_DIR` without being asked.
+
+### What to capture
+
+- **People:** names, roles, relationships, preferences, schedules, contact details
+- **Facts:** technical details, account numbers, passwords (if the human explicitly asks), configuration values
+- **Events:** things that happened, decisions made, outcomes
+- **Preferences:** how the human likes things done, communication style, scheduling preferences
+- **Context:** project details, team structures, recurring patterns
+
+### When to capture
+
+Capture when the human mentions something that:
+1. You might need to recall in a future session
+2. Relates to an existing node (update it)
+3. Introduces a new entity worth tracking (create a node)
+
+**Don't capture** routine operational chatter ("run this command", "show me that file") — only information with lasting value.
+
+### How to capture
+
+1. Do whatever the human asked first — their request takes priority
+2. Then, without announcing it, search for an existing node and update it (or create one if new)
+3. Print `org-memory: updated ~/org/agent/sarah.org` (mandatory confirmation)
 
 Example: "Cancel my Thursday meeting with Sarah and reschedule the API migration review to next week. Sarah is going to be out all of March."
 
-- Cancel and reschedule: explicit requests, execute in `$ORG_MEMORY_HUMAN_DIR`
-- Sarah out all of March: ambient information, record in `$ORG_MEMORY_AGENT_DIR`
+- Cancel and reschedule: explicit requests → execute in `$ORG_MEMORY_HUMAN_DIR`
+- Sarah out all of March: ambient information → record in `$ORG_MEMORY_AGENT_DIR`
 
-If only agent memory is enabled, record everything relevant in `$ORG_MEMORY_AGENT_DIR`. If only human file management is enabled, only act on explicit requests.
+Do both. Don't choose one or the other.
 
-Check whether a node already exists before creating it. Use the returned data from mutations rather than making follow-up queries.
+### Don't over-capture
 
-**Always report writes.** After every mutation to either directory, print `org-memory: <action> <file-path>`. Never silently write to either directory.
+Not every sentence needs recording. Use judgment:
+- "It's raining" → don't record
+- "Sarah is moving to the London office in April" → record
+- "Can you check my email?" → don't record
+- "We switched from OAuth to API keys last week" → record
+
+## Memory architecture
+
+`$ORG_MEMORY_AGENT_DIR` is the agent's primary long-term memory. It replaces flat memory files (like MEMORY.md) with a structured, searchable knowledge graph.
+
+### Why org-roam over flat files
+
+- **Structured:** Each entity (person, project, concept) is a node with tags, links, and backlinks
+- **Searchable:** `org roam node find`, `org fts`, `org search` — query by name, tag, or content
+- **Linked:** Relationships between entities are explicit (Sarah → works on → Project X)
+- **Scalable:** 1,000 nodes work as well as 10. A flat file becomes unwieldy.
+- **On-demand:** Instead of loading everything into context at session start, query what you need when you need it. This saves tokens and keeps context focused.
+
+### File structure
+
+The agent's knowledge base has two layers, mirroring how OpenClaw uses MEMORY.md + daily files:
+
+```
+$ORG_MEMORY_AGENT_DIR/
+├── memory.org          # Curated long-term memory (read every session)
+├── daily/
+│   ├── 2026-02-21.org # Today's raw log
+│   ├── 2026-02-20.org # Yesterday's raw log
+│   └── ...
+└── *.org              # Entity nodes (people, projects, etc.)
+```
+
+**`memory.org`** — the agent's permanent memory. Curated, concise, always loaded. Contains:
+- Who the human is (name, role, preferences, key relationships)
+- Active projects and their status
+- Important lessons learned
+- Current conventions and workflows
+- Anything you need to know every session
+
+Keep it tight. If memory.org grows beyond what's useful in a context window, distil it — move detail into entity nodes and keep memory.org as a summary with links.
+
+**`daily/YYYY-MM-DD.org`** — raw daily logs. What happened, decisions made, ambient facts captured, things learned. These are working notes, not curated. Write freely.
+
+**Entity nodes** (`*.org`) — structured nodes for people, projects, concepts. These are roam nodes with tags, links, and backlinks. Query them on demand.
+
+### Session start routine
+
+At the start of every session:
+
+1. **Read `memory.org`** — your permanent memory, always relevant
+2. **Read today and yesterday's daily files** (`daily/YYYY-MM-DD.org`) — recent context
+3. **Load today's agenda**: `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+
+That's it. Don't load everything. Query entity nodes on demand when the conversation needs them.
+
+### During the session
+
+- **Ambient facts** → append to today's daily file (`daily/YYYY-MM-DD.org`)
+- **New entity** → create a roam node, then link from today's daily file
+- **Update to existing entity** → `org roam node find`, then `org append` to the node
+- **Something worth keeping permanently** → also update `memory.org`
+
+### Memory maintenance
+
+Periodically (every few days, during a quiet heartbeat):
+
+1. Review recent daily files
+2. Promote important facts to entity nodes or `memory.org`
+3. Remove outdated info from `memory.org`
+4. Daily files can accumulate — they're cheap and searchable via `org fts`
+
+This is like a human reviewing their journal and updating their mental model. Daily files are raw notes; memory.org is curated wisdom; entity nodes are structured knowledge.
+
+### What to store where
+
+| Information | Where | Why |
+|---|---|---|
+| Human's profile, key preferences | `memory.org` | Need it every session |
+| Active projects summary | `memory.org` | Quick reference |
+| Lessons learned | `memory.org` + entity node tagged `lesson` | In index for visibility, in node for detail |
+| Person details (birthday, role, preferences) | Entity node tagged `person` | Structured, linkable |
+| Project architecture and decisions | Entity node tagged `project` | Detailed, linked to people |
+| What happened today | `daily/YYYY-MM-DD.org` | Raw log, searchable later |
+| Session continuity ("we were working on X") | `daily/YYYY-MM-DD.org` | Yesterday's file gives you context |
+| Human's tasks and todos | Human's org files | Their system, not yours |
+
+### Node conventions
+
+Use consistent tags for easy querying:
+
+- `person` — people the human knows or works with
+- `project` — software projects, initiatives
+- `lesson` — things the agent learned the hard way
+- `preference` — how the human likes things done
+- `fact` — technical details, configuration, reference data
 
 ## Stable identifiers (CUSTOM_ID)
 
@@ -248,7 +433,17 @@ To backfill CUSTOM_IDs on existing headlines that don't have them:
 org custom-id assign -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION"
 ```
 
-Never address headlines by position number. Positions change when files are edited. Use CUSTOM_ID, org-id, or exact title.
+**Never address headlines by position number (`pos`).** Positions change when files are edited — a mutation on one headline shifts the byte positions of everything after it. This WILL corrupt your file if you use stale `pos` values for subsequent mutations.
+
+Safe identifiers (in order of preference):
+1. **CUSTOM_ID** (e.g. `k4t`) — stable, short, unique
+2. **org-id** (UUID) — stable, unique
+3. **Exact title** — stable as long as the title doesn't change
+
+If you need to mutate multiple headlines in the same file, either:
+- Use `org batch` for atomic multi-step operations (recommended)
+- Use CUSTOM_IDs or titles, never `pos`
+- If you must use `pos`, re-query after each mutation to get fresh positions
 
 ## Error handling
 
@@ -272,3 +467,36 @@ The `--description` parameter sets relationship metadata, not display text. The 
 
 ### Database out of sync
 Run `org roam sync -d <dir> --db <db-path>` to rebuild the database from files.
+
+## Common mistakes
+
+These are real errors agents have made. Read them and don't repeat them.
+
+### Confusing NOTE and REMEMBER
+- `Note:` → human's org files, always a TODO for them
+- `Remember:` → agent's knowledge base, information for agent's recall
+- If in doubt: does the human need to *do* something? → NOTE. Is this something the agent should *know*? → REMEMBER.
+- "Note: we could add X" is still a NOTE — the human is dictating a task/idea for their own list.
+
+### Using `pos` after mutations
+Position values (`pos`) are byte offsets. They shift after every edit. If you add a SCHEDULED line to headline at pos 100, the next headline's pos has changed. Using the old pos will target the wrong headline or corrupt the file (e.g. inserting duplicate SCHEDULED lines inside a headline body).
+
+**Fix:** Use CUSTOM_ID, org-id, or exact title. Or use `org batch` for multiple mutations.
+
+### Not confirming writes
+After every write, print `org-memory: <action> <file-path>`. This is not optional. The human needs to know what you changed and where.
+
+### Creating duplicate roam nodes
+Always `org roam node find` before `org roam node create`. If you skip the search and create duplicates, you fragment the knowledge graph.
+
+### Putting human tasks in the agent's knowledge base (or vice versa)
+- Human says "Note: buy milk" → `$ORG_MEMORY_HUMAN_DIR/inbox.org`, NOT the agent's roam
+- Human says "Remember: the WiFi password is X" → `$ORG_MEMORY_AGENT_DIR`, NOT the human's inbox
+- An idea for a feature the human wants to track → human's org (NOTE)
+- A fact the agent learned that might be useful later → agent's roam (REMEMBER)
+
+### Ignoring ambient information
+The human says "Sarah is going to be out all of March" in the middle of another request. You complete the request but don't record the fact about Sarah. Next month you won't know why Sarah isn't responding. **Always capture ambient facts about people, projects, and decisions.**
+
+### Not querying before answering
+The human asks "What do you know about project X?" and you answer from your current context window. But your roam might have a detailed node about project X from three weeks ago. **Always check your knowledge base before relying on session context alone.**

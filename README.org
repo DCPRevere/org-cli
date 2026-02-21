@@ -44,6 +44,16 @@ org add tasks.org "New task" --todo TODO --tag project --scheduled 2026-03-01
 # Assign short IDs to all existing headlines
 org custom-id assign -d ~/org
 
+# View all TODOs with filters
+org todos --state TODO -d ~/org
+org todos --state TODO --unscheduled -d ~/org
+org todos --state TODO --overdue -d ~/org
+org todos --search "meeting" --due-before 2026-03-01 -d ~/org
+
+# Change a TODO state
+org todo k4t DONE
+org todo tasks.org "Pay rent" DONE
+
 # Search across files
 org search "meeting.*notes" -d ~/org
 
@@ -68,6 +78,23 @@ org roam node list -d ~/org
 - *Links* -- resolve =id:=, =file:=, fuzzy, and abbreviated links across the document set
 - *Export* -- convert via pandoc to any supported format
 - *Batch mode* -- execute multiple mutations atomically from JSON on stdin
+
+** Todos
+
+View and filter all TODO headlines across your org files.
+
+- =org todos= -- list all headlines with a TODO state
+- =--state TODO= / =--state DONE= -- filter by state
+- =--scheduled= / =--unscheduled= -- filter by presence of SCHEDULED date
+- =--overdue= -- items where SCHEDULED date is before today
+- =--due-before <date>= / =--due-after <date>= -- date range filtering
+- =--priority A= -- filter by priority
+- =--tag work= -- filter by tag
+- =--file "personal"= -- filter by filename substring
+- =--search "meeting"= -- case-insensitive title search
+- =--sort scheduled|deadline|priority|title|file= -- sort output (default: scheduled)
+- =--reverse= -- reverse sort order
+- All filters are combinable
 
 ** Agenda
 
