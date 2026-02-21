@@ -171,9 +171,26 @@ For broader views:
 ```bash
 org agenda today -d "$ORG_MEMORY_HUMAN_DIR" -f json   # all scheduled + deadlines for today
 org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json    # next 7 days
-org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json    # all TODOs
+org agenda todo -d "$ORG_MEMORY_HUMAN_DIR" -f json    # all TODOs with scheduled dates
 org agenda todo --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json
 ```
+
+For rich filtering across all TODOs (scheduled or not):
+
+```bash
+org todos --state TODO -d "$ORG_MEMORY_HUMAN_DIR" -f json                    # all open TODOs
+org todos --state TODO --unscheduled -d "$ORG_MEMORY_HUMAN_DIR" -f json      # unscheduled only
+org todos --state TODO --overdue -d "$ORG_MEMORY_HUMAN_DIR" -f json          # overdue items
+org todos --state TODO --due-before 2026-03-01 -d "$ORG_MEMORY_HUMAN_DIR" -f json  # due before date
+org todos --search "meeting" -d "$ORG_MEMORY_HUMAN_DIR" -f json              # search by title
+org todos --state TODO --file "work" -d "$ORG_MEMORY_HUMAN_DIR" -f json      # filter by file
+org todos --state TODO --tag urgent -d "$ORG_MEMORY_HUMAN_DIR" -f json       # filter by tag
+org todos --state TODO --priority A -d "$ORG_MEMORY_HUMAN_DIR" -f json       # filter by priority
+org todos --state TODO --sort priority -d "$ORG_MEMORY_HUMAN_DIR" -f json    # sort by priority
+org todos --state TODO --sort scheduled --reverse -d "$ORG_MEMORY_HUMAN_DIR" -f json  # reverse sort
+```
+
+The `todos` command returns full data in JSON: title, todo state, priority, tags, file, pos, scheduled, deadline, level, path (parent headlines), and custom_id. All filters are combinable.
 
 ### Make changes
 
