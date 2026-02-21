@@ -28,6 +28,21 @@ Examples:
 
 **Edge case — ideas and observations:** If the human says "Note: we could do X" or "Note: idea for Y", it's still a NOTE. They're telling you to write it down for them. Add it as a TODO. Don't create a roam node, don't put it in the agent's knowledge base.
 
+### DONE — mark complete
+
+`Done: <text>` or `Finished: <text>` means "mark this task as DONE." Search for the matching TODO and set its state.
+
+Action:
+1. Search: `org todos --state TODO --search "<text>" -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+2. If exactly one match: `org todo <file> "<title>" DONE -f json`
+3. If multiple matches: show them to the human and ask which one
+4. If no match: tell the human you couldn't find it
+
+Examples:
+- "Done: pay Nigel Kerry" → find and mark DONE
+- "Finished: the PR review" → find and mark DONE
+- "Done: groceries" → search for "groceries", mark DONE
+
 ### REMEMBER — for the agent
 
 `Remember: <info>` means "store this in YOUR knowledge base for future recall." This is information the agent should retain across sessions.
@@ -250,20 +265,106 @@ echo '{"commands":[
 ]}' | org batch -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 ```
 
-## When to record knowledge
+## Query shortcuts
 
-When both features are enabled and the human tells you something, distinguish between requests and ambient information. Fulfill requests in `$ORG_MEMORY_HUMAN_DIR`. Record what you learned in `$ORG_MEMORY_AGENT_DIR`.
+When the human asks about their tasks or your knowledge, map natural language to the right query. Don't ask "what do you mean?" — just run the query.
+
+| Human says | Action |
+|---|---|
+| "What do I need to do?" / "What's on my plate?" | `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json` (today + overdue) |
+| "What's overdue?" | `org todos --state TODO --overdue -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What's coming up this week?" | `org agenda week -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "Show me everything tagged work" | `org todos --state TODO --tag work -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What do I have unscheduled?" | `org todos --state TODO --unscheduled -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "Find all tasks about X" | `org todos --search "X" -d "$ORG_MEMORY_HUMAN_DIR" -f json` |
+| "What do you know about Sarah?" | `org roam node find "Sarah" -d "$ORG_MEMORY_AGENT_DIR" --db "$ORG_MEMORY_AGENT_DATABASE_LOCATION" -f json`, then `org roam node read` and `org roam backlinks` |
+| "What's the status of project X?" | Search both human TODOs and agent knowledge for X |
+
+Present results in a clean, readable format. Don't dump raw JSON at the human — summarise it.
+
+## Ambient capture
+
+Not everything the human tells you is a command. Sometimes they mention facts in passing — a person's preference, a date, a technical detail, a relationship. These are valuable and should be captured in `$ORG_MEMORY_AGENT_DIR` without being asked.
+
+### What to capture
+
+- **People:** names, roles, relationships, preferences, schedules, contact details
+- **Facts:** technical details, account numbers, passwords (if the human explicitly asks), configuration values
+- **Events:** things that happened, decisions made, outcomes
+- **Preferences:** how the human likes things done, communication style, scheduling preferences
+- **Context:** project details, team structures, recurring patterns
+
+### When to capture
+
+Capture when the human mentions something that:
+1. You might need to recall in a future session
+2. Relates to an existing node (update it)
+3. Introduces a new entity worth tracking (create a node)
+
+**Don't capture** routine operational chatter ("run this command", "show me that file") — only information with lasting value.
+
+### How to capture
+
+1. Do whatever the human asked first — their request takes priority
+2. Then, without announcing it, search for an existing node and update it (or create one if new)
+3. Print `org-memory: updated ~/org/agent/sarah.org` (mandatory confirmation)
 
 Example: "Cancel my Thursday meeting with Sarah and reschedule the API migration review to next week. Sarah is going to be out all of March."
 
-- Cancel and reschedule: explicit requests, execute in `$ORG_MEMORY_HUMAN_DIR`
-- Sarah out all of March: ambient information, record in `$ORG_MEMORY_AGENT_DIR`
+- Cancel and reschedule: explicit requests → execute in `$ORG_MEMORY_HUMAN_DIR`
+- Sarah out all of March: ambient information → record in `$ORG_MEMORY_AGENT_DIR`
 
-If only agent memory is enabled, record everything relevant in `$ORG_MEMORY_AGENT_DIR`. If only human file management is enabled, only act on explicit requests.
+Do both. Don't choose one or the other.
 
-Check whether a node already exists before creating it. Use the returned data from mutations rather than making follow-up queries.
+### Don't over-capture
 
-**Always report writes.** After every mutation to either directory, print `org-memory: <action> <file-path>`. Never silently write to either directory.
+Not every sentence needs recording. Use judgment:
+- "It's raining" → don't record
+- "Sarah is moving to the London office in April" → record
+- "Can you check my email?" → don't record
+- "We switched from OAuth to API keys last week" → record
+
+## Memory architecture
+
+`$ORG_MEMORY_AGENT_DIR` is the agent's primary long-term memory. It replaces flat memory files (like MEMORY.md) with a structured, searchable knowledge graph.
+
+### Why org-roam over flat files
+
+- **Structured:** Each entity (person, project, concept) is a node with tags, links, and backlinks
+- **Searchable:** `org roam node find`, `org fts`, `org search` — query by name, tag, or content
+- **Linked:** Relationships between entities are explicit (Sarah → works on → Project X)
+- **Scalable:** 1,000 nodes work as well as 10. A flat file becomes unwieldy.
+- **On-demand:** Instead of loading everything into context at session start, query what you need when you need it. This saves tokens and keeps context focused.
+
+### Session start routine
+
+At the start of a session, don't try to load everything. Instead:
+
+1. Query for the human's profile node if you need personal context
+2. Load today's agenda: `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+3. If the conversation mentions a specific person/project, query for their node then
+
+This is **pull-based memory** — you recall what's relevant when it's relevant, rather than loading everything upfront and hoping the right bits are in context.
+
+### What to store where
+
+| Information | Where | Why |
+|---|---|---|
+| Person details (birthday, role, preferences) | Agent roam node | Structured, linkable, searchable |
+| Project status and architecture decisions | Agent roam node | Links to people and other projects |
+| Lessons learned (e.g. "don't use pos after mutations") | Agent roam node tagged `lesson` | Searchable by tag |
+| Session continuity ("we were working on X") | Agent roam node tagged `session` | Query at session start if needed |
+| Human's tasks and todos | Human's org files | That's their system, not yours |
+
+### Node conventions
+
+Use consistent tags for easy querying:
+
+- `person` — people the human knows or works with
+- `project` — software projects, initiatives
+- `lesson` — things you learned the hard way
+- `preference` — how the human likes things done
+- `fact` — technical details, configuration, reference data
 
 ## Stable identifiers (CUSTOM_ID)
 
@@ -345,3 +446,9 @@ Always `org roam node find` before `org roam node create`. If you skip the searc
 - Human says "Remember: the WiFi password is X" → `$ORG_MEMORY_AGENT_DIR`, NOT the human's inbox
 - An idea for a feature the human wants to track → human's org (NOTE)
 - A fact the agent learned that might be useful later → agent's roam (REMEMBER)
+
+### Ignoring ambient information
+The human says "Sarah is going to be out all of March" in the middle of another request. You complete the request but don't record the fact about Sarah. Next month you won't know why Sarah isn't responding. **Always capture ambient facts about people, projects, and decisions.**
+
+### Not querying before answering
+The human asks "What do you know about project X?" and you answer from your current context window. But your roam might have a detailed node about project X from three weeks ago. **Always check your knowledge base before relying on session context alone.**
