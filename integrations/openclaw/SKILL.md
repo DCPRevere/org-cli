@@ -336,25 +336,73 @@ Not every sentence needs recording. Use judgment:
 - **Scalable:** 1,000 nodes work as well as 10. A flat file becomes unwieldy.
 - **On-demand:** Instead of loading everything into context at session start, query what you need when you need it. This saves tokens and keeps context focused.
 
+### File structure
+
+The agent's knowledge base has two layers, mirroring how OpenClaw uses MEMORY.md + daily files:
+
+```
+$ORG_MEMORY_AGENT_DIR/
+├── index.org          # Curated long-term memory (read every session)
+├── daily/
+│   ├── 2026-02-21.org # Today's raw log
+│   ├── 2026-02-20.org # Yesterday's raw log
+│   └── ...
+└── *.org              # Entity nodes (people, projects, etc.)
+```
+
+**`index.org`** — the agent's permanent memory. Curated, concise, always loaded. Contains:
+- Who the human is (name, role, preferences, key relationships)
+- Active projects and their status
+- Important lessons learned
+- Current conventions and workflows
+- Anything you need to know every session
+
+Keep it tight. If index.org grows beyond what's useful in a context window, distil it — move detail into entity nodes and keep index.org as a summary with links.
+
+**`daily/YYYY-MM-DD.org`** — raw daily logs. What happened, decisions made, ambient facts captured, things learned. These are working notes, not curated. Write freely.
+
+**Entity nodes** (`*.org`) — structured nodes for people, projects, concepts. These are roam nodes with tags, links, and backlinks. Query them on demand.
+
 ### Session start routine
 
-At the start of a session, don't try to load everything. Instead:
+At the start of every session:
 
-1. Query for the human's profile node if you need personal context
-2. Load today's agenda: `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json`
-3. If the conversation mentions a specific person/project, query for their node then
+1. **Read `index.org`** — your permanent memory, always relevant
+2. **Read today and yesterday's daily files** (`daily/YYYY-MM-DD.org`) — recent context
+3. **Load today's agenda**: `org today -d "$ORG_MEMORY_HUMAN_DIR" -f json`
 
-This is **pull-based memory** — you recall what's relevant when it's relevant, rather than loading everything upfront and hoping the right bits are in context.
+That's it. Don't load everything. Query entity nodes on demand when the conversation needs them.
+
+### During the session
+
+- **Ambient facts** → append to today's daily file (`daily/YYYY-MM-DD.org`)
+- **New entity** → create a roam node, then link from today's daily file
+- **Update to existing entity** → `org roam node find`, then `org append` to the node
+- **Something worth keeping permanently** → also update `index.org`
+
+### Memory maintenance
+
+Periodically (every few days, during a quiet heartbeat):
+
+1. Review recent daily files
+2. Promote important facts to entity nodes or `index.org`
+3. Remove outdated info from `index.org`
+4. Daily files can accumulate — they're cheap and searchable via `org fts`
+
+This is like a human reviewing their journal and updating their mental model. Daily files are raw notes; index.org is curated wisdom; entity nodes are structured knowledge.
 
 ### What to store where
 
 | Information | Where | Why |
 |---|---|---|
-| Person details (birthday, role, preferences) | Agent roam node | Structured, linkable, searchable |
-| Project status and architecture decisions | Agent roam node | Links to people and other projects |
-| Lessons learned (e.g. "don't use pos after mutations") | Agent roam node tagged `lesson` | Searchable by tag |
-| Session continuity ("we were working on X") | Agent roam node tagged `session` | Query at session start if needed |
-| Human's tasks and todos | Human's org files | That's their system, not yours |
+| Human's profile, key preferences | `index.org` | Need it every session |
+| Active projects summary | `index.org` | Quick reference |
+| Lessons learned | `index.org` + entity node tagged `lesson` | In index for visibility, in node for detail |
+| Person details (birthday, role, preferences) | Entity node tagged `person` | Structured, linkable |
+| Project architecture and decisions | Entity node tagged `project` | Detailed, linked to people |
+| What happened today | `daily/YYYY-MM-DD.org` | Raw log, searchable later |
+| Session continuity ("we were working on X") | `daily/YYYY-MM-DD.org` | Yesterday's file gives you context |
+| Human's tasks and todos | Human's org files | Their system, not yours |
 
 ### Node conventions
 
@@ -362,7 +410,7 @@ Use consistent tags for easy querying:
 
 - `person` — people the human knows or works with
 - `project` — software projects, initiatives
-- `lesson` — things you learned the hard way
+- `lesson` — things the agent learned the hard way
 - `preference` — how the human likes things done
 - `fact` — technical details, configuration, reference data
 
