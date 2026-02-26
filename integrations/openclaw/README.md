@@ -4,22 +4,28 @@ An [OpenClaw](https://github.com/openclaw/openclaw) skill that gives your agent 
 
 ## Install
 
-1. Put `org` on your PATH ([releases](https://github.com/dcprevere/org-cli/releases)).
-
-2. Copy the skill into your OpenClaw skills directory:
+From [ClawHub](https://clawhub.ai/):
 
 ```sh
-cp -r integrations/openclaw ~/.openclaw/skills/org-memory
+openclaw skill install org-memory
 ```
 
-3. Ask your agent to "refresh skills" or restart the gateway.
+Or manually from a repo checkout:
+
+1. Put `org` on your PATH ([releases](https://github.com/dcprevere/org-cli/releases)).
+2. Copy the skill: `cp -r integrations/openclaw ~/.openclaw/skills/org-memory`
+3. Refresh skills or restart the gateway.
 
 ## Quick start
 
+On first use, the agent will ask whether you want org-memory to replace OpenClaw's default memory system (MEMORY.md). If you say yes, it migrates your existing memory and daily files to org format and disables the default memory plugin. If you say no, both systems coexist — org-memory handles knowledge graph and tasks while MEMORY.md stays as your agent's primary memory.
+
 Once installed, just talk to your agent naturally:
 
-- **"Remember: Sarah prefers morning meetings"** → Agent saves to its knowledge base
+- **"Know: Sarah prefers morning meetings"** → Agent saves to its knowledge base
+- **"Todo: submit taxes in 3 weeks"** → Agent adds scheduled TODO to your inbox
 - **"Note: Buy groceries"** → Agent adds TODO to your inbox
+- **"Done: groceries"** → Agent marks the task complete
 - **"What do you know about Sarah?"** → Agent queries its knowledge
 
 ## When to use org-memory
