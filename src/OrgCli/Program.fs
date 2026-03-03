@@ -1364,7 +1364,7 @@ let main args =
                         Mutations.setTodoState fileCfg c p newState DateTime.Now)
                 | Error e -> printError isJson e
             | "todo" :: _ ->
-                eprintfn "Error: 'todo' requires <file>, <headline>, and <state> arguments."
+                eprintfn "Error: 'todo' requires <headline> and <state> arguments."
                 printCommandHelp "todo"
                 1
 

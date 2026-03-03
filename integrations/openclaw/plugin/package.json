@@ -1,0 +1,14 @@
+{
+  "name": "org-memory",
+  "version": "0.3.1",
+  "description": "Structured knowledge base and task management using org-mode files and the org CLI.",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48"
+  }
+}

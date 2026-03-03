@@ -1,0 +1,64 @@
+{
+  "id": "org-memory",
+  "kind": "memory",
+  "name": "org-memory",
+  "description": "Structured knowledge base and task management using org-mode files and the org CLI.",
+  "version": "0.3.1",
+  "skills": ["../"],
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "agentDir": {
+        "type": "string",
+        "description": "Agent's org directory"
+      },
+      "humanDir": {
+        "type": "string",
+        "description": "Human's org directory"
+      },
+      "agentDb": {
+        "type": "string",
+        "description": "Path to the agent's database"
+      },
+      "humanDb": {
+        "type": "string",
+        "description": "Path to the human's database"
+      },
+      "orgBin": {
+        "type": "string",
+        "description": "Path to the org CLI binary"
+      },
+      "inboxFile": {
+        "type": "string",
+        "description": "Filename for new tasks (relative to humanDir)"
+      }
+    }
+  },
+  "uiHints": {
+    "agentDir": {
+      "label": "Agent Directory",
+      "placeholder": "~/org/alcuin"
+    },
+    "humanDir": {
+      "label": "Human Directory",
+      "placeholder": "~/org/human"
+    },
+    "agentDb": {
+      "label": "Agent Database",
+      "placeholder": "~/.local/share/org-memory/agent/.org.db"
+    },
+    "humanDb": {
+      "label": "Human Database",
+      "placeholder": "~/.local/share/org-memory/human/.org.db"
+    },
+    "orgBin": {
+      "label": "org CLI Binary",
+      "placeholder": "org"
+    },
+    "inboxFile": {
+      "label": "Inbox File",
+      "placeholder": "inbox.org"
+    }
+  }
+}

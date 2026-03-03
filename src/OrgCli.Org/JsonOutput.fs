@@ -140,66 +140,71 @@ let commandDefs: CommandDef list =
             "--under ID        Insert as child of headline" ] }
       { Name = "todo"
         Description = "Set TODO state"
-        Usage = "todo <file> <headline> <state>"
+        Usage = "todo [<file>] <headline> <state>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "state"
               Description = "New TODO state or empty to clear"
               Required = true } ]
         Flags = []
         HelpArgs =
-          [ "<headline>  Position number, org-id, or exact title"
-            "<state>     TODO state (TODO, DONE, NEXT, etc.) or \"\" to clear" ] }
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "<state>     TODO state (TODO, DONE, NEXT, etc.) or \"\" to clear"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "priority"
         Description = "Set or clear priority"
-        Usage = "priority <file> <headline> <A-Z|\"\">"
+        Usage = "priority [<file>] <headline> <A-Z|\"\">"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "priority"
               Description = "Priority A-Z or empty to clear"
               Required = true } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "tag"
         Description = "Add or remove a tag"
-        Usage = "tag add|remove <file> <headline> <tag>"
+        Usage = "tag add|remove [<file>] <headline> <tag>"
         Args =
           [ { Name = "subcommand"
               Description = "add or remove"
               Required = true }
             { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "tag"
               Description = "Tag name"
               Required = true } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "property"
         Description = "Set or remove a property"
-        Usage = "property set|remove <file> <headline> <key> [<value>]"
+        Usage = "property set|remove [<file>] <headline> <key> [<value>]"
         Args =
           [ { Name = "subcommand"
               Description = "set or remove"
               Required = true }
             { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "key"
               Description = "Property key"
@@ -208,83 +213,92 @@ let commandDefs: CommandDef list =
               Description = "Property value (set only)"
               Required = false } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "schedule"
         Description = "Set SCHEDULED timestamp"
-        Usage = "schedule <file> <headline> <date>"
+        Usage = "schedule [<file>] <headline> <date>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "date"
               Description = "Date yyyy-MM-dd or empty to clear"
               Required = true } ]
         Flags = []
         HelpArgs =
-          [ "<headline>  Position number, org-id, or exact title"
-            "<date>      yyyy-MM-dd or \"\" to clear" ] }
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "<date>      yyyy-MM-dd or \"\" to clear"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "deadline"
         Description = "Set DEADLINE timestamp"
-        Usage = "deadline <file> <headline> <date>"
+        Usage = "deadline [<file>] <headline> <date>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "date"
               Description = "Date yyyy-MM-dd or empty to clear"
               Required = true } ]
         Flags = []
         HelpArgs =
-          [ "<headline>  Position number, org-id, or exact title"
-            "<date>      yyyy-MM-dd or \"\" to clear" ] }
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "<date>      yyyy-MM-dd or \"\" to clear"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "note"
         Description = "Add a note to the logbook"
-        Usage = "note <file> <headline> <text>"
+        Usage = "note [<file>] <headline> <text>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "text"
               Description = "Note text"
               Required = true } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "append"
         Description = "Append text to a headline body"
-        Usage = "append <file> <headline> <text>"
+        Usage = "append [<file>] <headline> <text>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true }
             { Name = "text"
               Description = "Text to append"
               Required = true } ]
         Flags = [ ("--stdin", "Read text from stdin") ]
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "clock"
         Description = "Clock time tracking"
-        Usage = "clock in|out <file> <headline> | clock [report]"
+        Usage = "clock in|out [<file>] <headline> | clock [report]"
         Args =
           [ { Name = "subcommand"
               Description = "in, out, or report"
               Required = true } ]
         Flags = []
         HelpArgs =
-          [ "in <file> <headline>    Start clock"
-            "out <file> <headline>   Stop clock"
-            "[report] [-d dir]       Show clock report" ] }
+          [ "in [<file>] <headline>    Start clock"
+            "out [<file>] <headline>   Stop clock"
+            "[report] [-d dir]         Show clock report"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "refile"
         Description = "Move a subtree to another location"
         Usage = "refile <src-file> <src-headline> <tgt-file> [<tgt-headline>]"
@@ -305,28 +319,32 @@ let commandDefs: CommandDef list =
         HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
       { Name = "archive"
         Description = "Archive a subtree to .org_archive"
-        Usage = "archive <file> <headline>"
+        Usage = "archive [<file>] <headline>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "read"
         Description = "Read subtree content"
-        Usage = "read <file> <headline>"
+        Usage = "read [<file>] <headline>"
         Args =
           [ { Name = "file"
-              Description = "Target file"
-              Required = true }
+              Description = "Target file (omit when using CUSTOM_ID)"
+              Required = false }
             { Name = "identifier"
-              Description = "Position, org-id, or title"
+              Description = "Position, org-id, CUSTOM_ID, or title"
               Required = true } ]
         Flags = []
-        HelpArgs = [ "<headline>  Position number, org-id, or exact title" ] }
+        HelpArgs =
+          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
+            "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "search"
         Description = "Search org files for a regex pattern"
         Usage = "search <pattern> [-d dir]"

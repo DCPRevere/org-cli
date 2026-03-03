@@ -1,0 +1,668 @@
+import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
+import { Type } from "@sinclair/typebox";
+import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+
+// ---------------------------------------------------------------------------
+// Config resolution: env vars > plugin config > defaults
+// ---------------------------------------------------------------------------
+
+type OrgMemoryConfig = {
+  agentDir: string;
+  humanDir: string;
+  agentDb: string;
+  humanDb: string;
+  orgBin: string;
+  inboxFile: string;
+};
+
+function resolveConfig(pluginConfig?: Record<string, unknown>): OrgMemoryConfig {
+  const home = homedir();
+  const cfg = pluginConfig ?? {};
+
+  return {
+    agentDir:
+      process.env.ORG_MEMORY_AGENT_DIR ??
+      (cfg.agentDir as string | undefined) ??
+      join(home, "org/alcuin"),
+    humanDir:
+      process.env.ORG_MEMORY_HUMAN_DIR ??
+      (cfg.humanDir as string | undefined) ??
+      join(home, "org/human"),
+    agentDb:
+      process.env.ORG_MEMORY_AGENT_DATABASE_LOCATION ??
+      (cfg.agentDb as string | undefined) ??
+      join(home, ".local/share/org-memory/agent/.org.db"),
+    humanDb:
+      process.env.ORG_MEMORY_HUMAN_DATABASE_LOCATION ??
+      (cfg.humanDb as string | undefined) ??
+      join(home, ".local/share/org-memory/human/.org.db"),
+    orgBin:
+      process.env.ORG_MEMORY_ORG_BIN ??
+      (cfg.orgBin as string | undefined) ??
+      "org",
+    inboxFile:
+      process.env.ORG_MEMORY_INBOX_FILE ??
+      (cfg.inboxFile as string | undefined) ??
+      "inbox.org",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function runOrg(
+  bin: string,
+  args: string[],
+  timeoutMs = 10_000,
+): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(bin, args, { timeout: timeoutMs }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(`org ${args[0]} failed: ${stderr || err.message}`));
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+  });
+}
+
+async function readOrgFile(path: string): Promise<string | null> {
+  try {
+    return await readFile(path, "utf-8");
+  } catch {
+    return null;
+  }
+}
+
+function todayStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function yesterdayStr(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// ---------------------------------------------------------------------------
+// Plugin
+// ---------------------------------------------------------------------------
+
+const orgMemoryPlugin = {
+  id: "org-memory",
+  name: "org-memory",
+  description:
+    "Structured knowledge base and task management using org-mode files and the org CLI.",
+  kind: "memory" as const,
+
+  register(api: OpenClawPluginApi) {
+    const cfg = resolveConfig(api.pluginConfig);
+
+    api.logger.info(`org-memory: agentDir=${cfg.agentDir}, orgBin=${cfg.orgBin}`);
+
+    // ======================================================================
+    // Session-start hook: inject memory.org + daily files as context
+    // ======================================================================
+
+    api.on("before_agent_start", async () => {
+      const parts: string[] = [];
+
+      const memoryOrg = await readOrgFile(join(cfg.agentDir, "memory.org"));
+      if (memoryOrg) {
+        parts.push(`<org-memory-file path="memory.org">\n${memoryOrg}\n</org-memory-file>`);
+      }
+
+      const today = todayStr();
+      const yesterday = yesterdayStr();
+
+      const todayContent = await readOrgFile(
+        join(cfg.agentDir, "daily", `${today}.org`),
+      );
+      if (todayContent) {
+        parts.push(
+          `<org-memory-file path="daily/${today}.org">\n${todayContent}\n</org-memory-file>`,
+        );
+      }
+
+      const yesterdayContent = await readOrgFile(
+        join(cfg.agentDir, "daily", `${yesterday}.org`),
+      );
+      if (yesterdayContent) {
+        parts.push(
+          `<org-memory-file path="daily/${yesterday}.org">\n${yesterdayContent}\n</org-memory-file>`,
+        );
+      }
+
+      if (parts.length === 0) {
+        return;
+      }
+
+      return {
+        prependContext: `<org-memory>\n${parts.join("\n")}\n</org-memory>`,
+      };
+    });
+
+    // ======================================================================
+    // Tool: org_memory_search — full-text search across org files
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_memory_search",
+        label: "Org Memory Search",
+        description:
+          "Full-text search across org files in the agent's knowledge base. Returns matching headlines and snippets.",
+        parameters: Type.Object({
+          query: Type.String({ description: "FTS5 search query" }),
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory to search: "agent" or "human" (default: "agent")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { query, dir = "agent" } = params as {
+            query: string;
+            dir?: "agent" | "human";
+          };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, [
+              "fts",
+              query,
+              "-d",
+              d,
+              "--db",
+              db,
+              "-f",
+              "json",
+            ]);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { dir },
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Search failed: ${String(err)}` },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_memory_read_node — read a roam node by title or id
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_memory_read_node",
+        label: "Org Memory Read Node",
+        description:
+          "Read a roam node by title or ID from the agent's knowledge base. Returns the full node content.",
+        parameters: Type.Object({
+          identifier: Type.String({
+            description: "Node title, org-id (UUID), or CUSTOM_ID",
+          }),
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory: "agent" or "human" (default: "agent")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { identifier, dir = "agent" } = params as {
+            identifier: string;
+            dir?: "agent" | "human";
+          };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          try {
+            // First find the node to get its file path
+            const { stdout: findOut } = await runOrg(cfg.orgBin, [
+              "roam",
+              "node",
+              "find",
+              identifier,
+              "-d",
+              d,
+              "--db",
+              db,
+              "-f",
+              "json",
+            ]);
+
+            const result = JSON.parse(findOut);
+            if (!result.ok || !result.data) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `Node not found: ${identifier}`,
+                  },
+                ],
+                details: { found: false },
+              };
+            }
+
+            // Use `org read` to get just the subtree (or full file for file-level nodes)
+            const filePath = result.data.file;
+            if (filePath) {
+              const { stdout: readOut } = await runOrg(cfg.orgBin, [
+                "read",
+                filePath,
+                identifier,
+                "-d",
+                d,
+                "--db",
+                db,
+                "-f",
+                "json",
+              ]);
+              return {
+                content: [{ type: "text" as const, text: readOut }],
+                details: { node: result.data },
+              };
+            }
+
+            return {
+              content: [{ type: "text" as const, text: findOut }],
+              details: { node: result.data },
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Read node failed: ${String(err)}`,
+                },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_todo_add — add a TODO to the human's inbox
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_todo_add",
+        label: "Org Todo Add",
+        description:
+          "Add a TODO headline to the human's inbox.org. Optionally schedule or set a deadline.",
+        parameters: Type.Object({
+          title: Type.String({ description: "TODO title" }),
+          scheduled: Type.Optional(
+            Type.String({ description: "Scheduled date (YYYY-MM-DD)" }),
+          ),
+          deadline: Type.Optional(
+            Type.String({ description: "Deadline date (YYYY-MM-DD)" }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { title, scheduled, deadline } = params as {
+            title: string;
+            scheduled?: string;
+            deadline?: string;
+          };
+
+          const args = [
+            "add",
+            join(cfg.humanDir, cfg.inboxFile),
+            title,
+            "--todo",
+            "TODO",
+            "--db",
+            cfg.humanDb,
+            "-f",
+            "json",
+          ];
+          if (scheduled) {
+            args.push("--scheduled", scheduled);
+          }
+          if (deadline) {
+            args.push("--deadline", deadline);
+          }
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, args);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { action: "added" },
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Failed to add TODO: ${String(err)}`,
+                },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_todo_done — mark a TODO done by CUSTOM_ID
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_todo_done",
+        label: "Org Todo Done",
+        description:
+          "Mark a TODO as DONE by its CUSTOM_ID. Use org_memory_search to find the ID first if needed.",
+        parameters: Type.Object({
+          customId: Type.String({
+            description: "The CUSTOM_ID of the headline to mark DONE",
+          }),
+        }),
+        async execute(_id, params) {
+          const { customId } = params as { customId: string };
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, [
+              "todo",
+              customId,
+              "DONE",
+              "-d",
+              cfg.humanDir,
+              "--db",
+              cfg.humanDb,
+              "-f",
+              "json",
+            ]);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { action: "done", customId },
+            };
+          } catch (err) {
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Failed to mark DONE: ${String(err)}`,
+                },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_todo_list — show today's agenda / upcoming tasks
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_todo_list",
+        label: "Org Todo List",
+        description:
+          "Show today's agenda and upcoming tasks. Returns scheduled, deadline, and active TODO items.",
+        parameters: Type.Object({
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory: "agent" or "human" (default: "human")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { dir = "human" } = params as { dir?: "agent" | "human" };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, [
+              "today",
+              "-d",
+              d,
+              "--db",
+              db,
+              "-f",
+              "json",
+            ]);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { dir },
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Todo list failed: ${String(err)}` },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_memory_append — append text to a headline body
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_memory_append",
+        label: "Org Memory Append",
+        description:
+          "Append text to a headline's body by its CUSTOM_ID. Use for adding notes, observations, or content to existing knowledge nodes.",
+        parameters: Type.Object({
+          customId: Type.String({
+            description: "The CUSTOM_ID of the headline to append to",
+          }),
+          text: Type.String({ description: "Text to append to the headline body" }),
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory: "agent" or "human" (default: "agent")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { customId, text, dir = "agent" } = params as {
+            customId: string;
+            text: string;
+            dir?: "agent" | "human";
+          };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, [
+              "append",
+              customId,
+              text,
+              "-d",
+              d,
+              "--db",
+              db,
+              "-f",
+              "json",
+            ]);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { action: "appended", customId },
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Append failed: ${String(err)}` },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_roam_create — create a new roam node
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_roam_create",
+        label: "Org Roam Create",
+        description:
+          "Create a new roam node (org file) with the given title and optional tags.",
+        parameters: Type.Object({
+          title: Type.String({ description: "Title for the new node" }),
+          tags: Type.Optional(
+            Type.Array(Type.String(), {
+              description: "Tags to apply to the node",
+            }),
+          ),
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory: "agent" or "human" (default: "agent")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { title, tags, dir = "agent" } = params as {
+            title: string;
+            tags?: string[];
+            dir?: "agent" | "human";
+          };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          const args = ["roam", "node", "create", title];
+          if (tags) {
+            for (const tag of tags) {
+              args.push("-t", tag);
+            }
+          }
+          args.push("-d", d, "--db", db, "-f", "json");
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, args);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { action: "created", title },
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Create node failed: ${String(err)}` },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Tool: org_todo_reschedule — reschedule a TODO by CUSTOM_ID
+    // ======================================================================
+
+    api.registerTool(
+      {
+        name: "org_todo_reschedule",
+        label: "Org Todo Reschedule",
+        description:
+          'Reschedule a TODO by its CUSTOM_ID. Pass a date in YYYY-MM-DD format, or "" to clear the schedule.',
+        parameters: Type.Object({
+          customId: Type.String({
+            description: "The CUSTOM_ID of the headline to reschedule",
+          }),
+          date: Type.String({
+            description: 'New scheduled date (YYYY-MM-DD) or "" to clear',
+          }),
+          dir: Type.Optional(
+            Type.Union([Type.Literal("agent"), Type.Literal("human")], {
+              description: 'Which directory: "agent" or "human" (default: "human")',
+            }),
+          ),
+        }),
+        async execute(_id, params) {
+          const { customId, date, dir = "human" } = params as {
+            customId: string;
+            date: string;
+            dir?: "agent" | "human";
+          };
+          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
+
+          try {
+            const { stdout } = await runOrg(cfg.orgBin, [
+              "schedule",
+              customId,
+              date,
+              "-d",
+              d,
+              "--db",
+              db,
+              "-f",
+              "json",
+            ]);
+            return {
+              content: [{ type: "text" as const, text: stdout }],
+              details: { action: "rescheduled", customId, date },
+            };
+          } catch (err) {
+            return {
+              content: [
+                { type: "text" as const, text: `Reschedule failed: ${String(err)}` },
+              ],
+              details: { error: true },
+            };
+          }
+        },
+      },
+      { optional: true },
+    );
+
+    // ======================================================================
+    // Service
+    // ======================================================================
+
+    api.registerService({
+      id: "org-memory",
+      start: () => {
+        api.logger.info(
+          `org-memory: started (agent: ${cfg.agentDir}, human: ${cfg.humanDir})`,
+        );
+      },
+      stop: () => {
+        api.logger.info("org-memory: stopped");
+      },
+    });
+  },
+};
+
+export default orgMemoryPlugin;
