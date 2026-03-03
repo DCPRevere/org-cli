@@ -1,8 +1,17 @@
 {
-  "name": "org-memory",
+  "name": "@dcprevere/org-memory",
   "version": "0.4.0",
   "description": "Structured knowledge base and task management using org-mode files and the org CLI.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DCPRevere/org-cli.git",
+    "directory": "integrations/openclaw/plugin"
+  },
+  "files": [
+    "index.ts",
+    "openclaw.plugin.json"
+  ],
   "openclaw": {
     "extensions": [
       "./index.ts"

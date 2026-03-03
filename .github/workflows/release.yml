@@ -8,6 +8,11 @@
 #                    Add it as a repository secret under Settings > Secrets > Actions.
 #                    If the secret is absent, the nuget push step is skipped.
 #
+#   NPM_TOKEN      — npm access token for publishing @dcprevere/org-memory.
+#                    Generate at https://www.npmjs.com/settings/tokens (Automation type).
+#                    Add it as a repository secret under Settings > Secrets > Actions.
+#                    If the secret is absent, the npm publish step is skipped.
+#
 #   CLAWHUB_TOKEN  — Auth token for ClawHub (https://clawhub.ai).
 #                    Log in with GitHub, go to Settings, generate a token.
 #                    Add it as a repository secret under Settings > Secrets > Actions.
@@ -156,6 +161,16 @@ jobs:
         run: dotnet nuget push artifacts/nupkg/*.nupkg --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+      - name: Publish OpenClaw plugin to npm
+        if: env.NPM_TOKEN != ''
+        continue-on-error: true
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+          npm publish --access public
+        working-directory: integrations/openclaw/plugin
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish to ClawHub
         if: env.CLAWHUB_TOKEN != ''
