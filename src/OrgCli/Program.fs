@@ -150,12 +150,59 @@ let getOptAll (opts: Map<string, string list>) (key: string) (altKey: string opt
 
     primary @ alt
 
+/// Read ORG_CLI_DIRECTORY env var, split by platform path separator, expand ~.
+let loadDirectoriesFromEnv () : string list =
+    match Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY") with
+    | null
+    | "" -> []
+    | v ->
+        v.Split(Path.PathSeparator)
+        |> Array.map Utils.expandHome
+        |> Array.toList
+
+/// Read "directories" array from the org-cli config JSON, expand ~.
+let loadDirectoriesFromConfig () : string list =
+    let configPath = Utils.orgCliConfigFile ()
+
+    if not (File.Exists(configPath)) then
+        []
+    else
+        try
+            let json = File.ReadAllText(configPath)
+            use doc = System.Text.Json.JsonDocument.Parse(json)
+
+            match doc.RootElement.TryGetProperty("directories") with
+            | true, arr when arr.ValueKind = System.Text.Json.JsonValueKind.Array ->
+                [ for item in arr.EnumerateArray() do
+                      match item.GetString() with
+                      | null -> ()
+                      | s -> yield Utils.expandHome s ]
+            | _ -> []
+        with _ ->
+            []
+
 let resolveFiles (opts: Map<string, string list>) : string list =
     match getOptAll opts "files" None with
     | _ :: _ as explicit -> explicit
     | [] ->
-        let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
-        Utils.listOrgFiles dir
+        match Map.tryFind "directory" opts, Map.tryFind "d" opts with
+        | Some(_ :: _), _
+        | _, Some(_ :: _) ->
+            let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+            Utils.listOrgFiles dir
+        | _ ->
+            let dirs =
+                match loadDirectoriesFromEnv () with
+                | _ :: _ as envDirs -> envDirs
+                | [] ->
+                    match loadDirectoriesFromConfig () with
+                    | _ :: _ as cfgDirs -> cfgDirs
+                    | [] -> [ Directory.GetCurrentDirectory() ]
+
+            dirs
+            |> List.collect Utils.listOrgFiles
+            |> List.map Path.GetFullPath
+            |> List.distinct
 
 /// Print a CliError in the appropriate format and return exit code 1.
 let printError (isJson: bool) (e: CliError) : int =

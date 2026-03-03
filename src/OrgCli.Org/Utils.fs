@@ -89,16 +89,35 @@ let parseDate (s: string) : Timestamp =
       Delay = None
       RangeEnd = None }
 
+/// Expand a leading ~/ (or bare ~) to the user's home directory.
+let expandHome (path: string) : string =
+    let home =
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+
+    if path = "~" then
+        home
+    elif path.StartsWith("~/") || path.StartsWith("~\\") then
+        Path.Combine(home, path.Substring(2))
+    else
+        path
+
 /// Check if a file is an org file
 let isOrgFile (filePath: string) : bool =
     let ext = Path.GetExtension(filePath).ToLowerInvariant()
     ext = ".org" || ext = ".org.gpg" || ext = ".org.age"
 
-/// List all org files in a directory recursively
+/// List all org files in a directory recursively.
+/// Silently skips inaccessible subdirectories.
 let listOrgFiles (directory: string) : string list =
     if not (Directory.Exists(directory)) then
         []
     else
+        let opts =
+            EnumerationOptions(
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true
+            )
+
         let filter (f: string) =
             let fileName = Path.GetFileName(f)
 
@@ -107,15 +126,15 @@ let listOrgFiles (directory: string) : string list =
             && not (f.Contains("\\.git\\"))
 
         let orgFiles =
-            Directory.EnumerateFiles(directory, "*.org", SearchOption.AllDirectories)
+            Directory.EnumerateFiles(directory, "*.org", opts)
             |> Seq.filter filter
 
         let gpgFiles =
-            Directory.EnumerateFiles(directory, "*.org.gpg", SearchOption.AllDirectories)
+            Directory.EnumerateFiles(directory, "*.org.gpg", opts)
             |> Seq.filter filter
 
         let ageFiles =
-            Directory.EnumerateFiles(directory, "*.org.age", SearchOption.AllDirectories)
+            Directory.EnumerateFiles(directory, "*.org.age", opts)
             |> Seq.filter filter
 
         Seq.concat [ orgFiles; gpgFiles; ageFiles ] |> Seq.toList

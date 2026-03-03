@@ -22,7 +22,7 @@ The binary name is =org=. All examples below assume it is on your PATH.
 | =--version=                     |       | Print version and exit                             |
 | =--help=                        | =-h=  | Print help text (global or per-command)             |
 
-When no =--files= are given, the tool recursively finds all =.org= files under =--directory=.
+When no =--files= are given, the tool recursively finds all =.org= files under =--directory=. If neither =--files= nor =--directory= is given, the tool checks =ORG_CLI_DIRECTORY=, then the =directories= config key, then falls back to the current working directory.
 
 Every subcommand supports =--help= for its own usage.
 
@@ -42,6 +42,7 @@ The config file is JSON. All keys are optional; unset keys fall back to defaults
 
 #+begin_src json
 {
+  "directories": ["~/org", "~/notes"],
   "todoKeywords": {
     "activeStates": [
       {"keyword": "TODO"},
@@ -68,6 +69,7 @@ The config file is JSON. All keys are optional; unset keys fall back to defaults
 
 | Variable                         | Effect                              |
 |----------------------------------+-------------------------------------|
+| =ORG_CLI_DIRECTORY=              | Directories to scan, separated by =:= (or =;= on Windows). Supports =~/=. |
 | =ORG_CLI_LOG_DONE=               | =none=, =time=, or =note=           |
 | =ORG_CLI_LOG_INTO_DRAWER=        | Drawer name, or empty to disable    |
 | =ORG_CLI_DEADLINE_WARNING_DAYS=  | Integer                              |
