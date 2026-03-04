@@ -110,8 +110,9 @@ let handleRoam
     (printUsage: unit -> unit)
     (getOpt: Map<string, string list> -> string -> string option -> string -> string)
     (getOptAll: Map<string, string list> -> string -> string option -> string list)
+    (resolveDirectory: Map<string, string list> -> string)
     =
-    let roamDir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let roamDir = resolveDirectory opts
 
     let dbPath =
         match Map.tryFind "db" opts with

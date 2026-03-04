@@ -166,6 +166,105 @@ let ``loadDirectoriesFromConfig returns empty when key is missing`` () =
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", old)
 
 [<Fact>]
+let ``resolveDirectory prefers CLI directory flag over env and config`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+    let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", "/tmp/env-dir")
+
+        let tmpConfig =
+            Path.Combine(Path.GetTempPath(), sprintf "org-dirconfig-test-%s" (Guid.NewGuid().ToString("N")))
+
+        let configDir = Path.Combine(tmpConfig, "org-cli")
+        Directory.CreateDirectory(configDir) |> ignore
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
+
+        File.WriteAllText(
+            Path.Combine(configDir, "config.json"),
+            """{"directories": ["/tmp/config-dir"]}"""
+        )
+
+        let opts = Map.ofList [ "directory", [ "/tmp/cli-dir" ] ]
+        let result = Program.resolveDirectory opts
+        Assert.Equal("/tmp/cli-dir", result)
+
+        Directory.Delete(tmpConfig, true)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", oldXdg)
+
+[<Fact>]
+let ``resolveDirectory uses env var when no CLI flag`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", "/tmp/env-dir")
+        let opts = Map.empty
+        let result = Program.resolveDirectory opts
+        Assert.Equal("/tmp/env-dir", result)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+
+[<Fact>]
+let ``resolveDirectory uses config when no CLI flag or env var`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+    let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", null)
+
+        let tmpConfig =
+            Path.Combine(Path.GetTempPath(), sprintf "org-dirconfig-test-%s" (Guid.NewGuid().ToString("N")))
+
+        let configDir = Path.Combine(tmpConfig, "org-cli")
+        Directory.CreateDirectory(configDir) |> ignore
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
+
+        File.WriteAllText(
+            Path.Combine(configDir, "config.json"),
+            """{"directories": ["/tmp/config-dir", "/tmp/other"]}"""
+        )
+
+        let opts = Map.empty
+        let result = Program.resolveDirectory opts
+        Assert.Equal("/tmp/config-dir", result)
+
+        Directory.Delete(tmpConfig, true)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", oldXdg)
+
+[<Fact>]
+let ``resolveDirectory falls back to cwd when nothing configured`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+    let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", null)
+        let fake = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", fake)
+
+        let opts = Map.empty
+        let result = Program.resolveDirectory opts
+        Assert.Equal(Directory.GetCurrentDirectory(), result)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", oldXdg)
+
+[<Fact>]
+let ``resolveDirectory accepts short -d flag`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", "/tmp/env-dir")
+        let opts = Map.ofList [ "d", [ "/tmp/short-flag" ] ]
+        let result = Program.resolveDirectory opts
+        Assert.Equal("/tmp/short-flag", result)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+
+[<Fact>]
 let ``resolveFiles prefers CLI directory flag over env and config`` () =
     let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
     let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")

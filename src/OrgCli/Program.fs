@@ -181,6 +181,19 @@ let loadDirectoriesFromConfig () : string list =
         with _ ->
             []
 
+/// Resolve a single directory from CLI flags, env var, or config.json.
+let resolveDirectory (opts: Map<string, string list>) : string =
+    match Map.tryFind "directory" opts, Map.tryFind "d" opts with
+    | Some(v :: _), _
+    | _, Some(v :: _) -> v
+    | _ ->
+        match loadDirectoriesFromEnv () with
+        | dir :: _ -> dir
+        | [] ->
+            match loadDirectoriesFromConfig () with
+            | dir :: _ -> dir
+            | [] -> Directory.GetCurrentDirectory()
+
 let resolveFiles (opts: Map<string, string list>) : string list =
     match getOptAll opts "files" None with
     | _ :: _ as explicit -> explicit
@@ -223,7 +236,7 @@ let applyMutation
     |> Result.map (fun pos -> transform content pos, pos)
 
 let resolveIndexDbPath (opts: Map<string, string list>) : string =
-    let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let dir = resolveDirectory opts
     getOpt opts "db" None (Path.Combine(dir, ".org-index.db"))
 
 let tryAutoSyncIndex (opts: Map<string, string list>) (filePaths: string list) =
@@ -280,7 +293,7 @@ let resolveFileFromIndex (opts: Map<string, string list>) (identifier: string) :
         try
             use db = new IndexDatabase.OrgIndexDb(dbPath)
             db.Initialize()
-            let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+            let dir = resolveDirectory opts
             IndexSync.syncDirectory db dir
 
             match db.FindByCustomId(identifier) with
@@ -1028,7 +1041,7 @@ let handleHeadlines (config: OrgConfig) (opts: Map<string, string list>) (isJson
     0
 
 let handleCustomIdAssign (opts: Map<string, string list>) (isJson: bool) (isDryRun: bool) (isQuiet: bool) : int =
-    let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let dir = resolveDirectory opts
     let dbPath = resolveIndexDbPath opts
     use db = new IndexDatabase.OrgIndexDb(dbPath)
     db.Initialize()
@@ -1108,7 +1121,7 @@ let handleCustomIdAssign (opts: Map<string, string list>) (isJson: bool) (isDryR
     0
 
 let handleIndex (opts: Map<string, string list>) (isJson: bool) (isQuiet: bool) : int =
-    let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let dir = resolveDirectory opts
     let dbPath = resolveIndexDbPath opts
     let force = Map.containsKey "force" opts
     use db = new IndexDatabase.OrgIndexDb(dbPath)
@@ -1138,7 +1151,7 @@ let handleIndex (opts: Map<string, string list>) (isJson: bool) (isQuiet: bool) 
     0
 
 let handleFts (opts: Map<string, string list>) (isJson: bool) (query: string) : int =
-    let dir = getOpt opts "directory" (Some "d") (Directory.GetCurrentDirectory())
+    let dir = resolveDirectory opts
     let dbPath = resolveIndexDbPath opts
 
     if not (File.Exists(dbPath)) then
@@ -1211,7 +1224,7 @@ let handleFts (opts: Map<string, string list>) (isJson: bool) (query: string) : 
             0
 
 let handleRoam (opts: Map<string, string list>) (isJson: bool) (roamRest: string list) =
-    OrgCli.RoamCommands.handleRoam printError opts isJson roamRest printUsage getOpt getOptAll
+    OrgCli.RoamCommands.handleRoam printError opts isJson roamRest printUsage getOpt getOptAll resolveDirectory
 
 [<EntryPoint>]
 let main args =

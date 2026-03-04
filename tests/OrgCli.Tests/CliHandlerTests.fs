@@ -449,6 +449,124 @@ let ``handleFts text output shows No results for no match`` () =
     finally
         cleanup [ dir; dbPath ]
 
+// ── Config-based directory resolution in handlers ──
+
+/// Helper: set up a temp config.json with directories pointing to dir, clear env var.
+let private withConfigDir (dir: string) (dbPath: string) (f: Map<string, string list> -> 'a) : 'a =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+    let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", null)
+
+        let tmpConfig =
+            Path.Combine(Path.GetTempPath(), sprintf "org-cli-cfg-test-%s" (Guid.NewGuid().ToString("N")))
+
+        let configDir = Path.Combine(tmpConfig, "org-cli")
+        Directory.CreateDirectory(configDir) |> ignore
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
+
+        File.WriteAllText(
+            Path.Combine(configDir, "config.json"),
+            sprintf """{"directories": ["%s"]}""" (dir.Replace("\\", "\\\\"))
+        )
+
+        try
+            let opts = makeOpts [ ("db", dbPath) ]
+            f opts
+        finally
+            Directory.Delete(tmpConfig, true)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", oldXdg)
+
+[<Fact>]
+let ``handleIndex uses directory from config.json when no -d flag`` () =
+    let dir = tempDir ()
+    let dbPath = tempDbPath ()
+
+    try
+        writeOrgFile dir "cfg.org" "* From Config\n" |> ignore
+
+        withConfigDir dir dbPath (fun opts ->
+            let _, _, exitCode = captureBoth (fun () -> Program.handleIndex opts false true)
+            Assert.Equal(0, exitCode)
+
+            use db = new IndexDatabase.OrgIndexDb(dbPath)
+            db.Initialize()
+            let files = db.GetAllFiles()
+            Assert.Equal(1, files.Length)
+            Assert.Contains("cfg.org", files.[0].Path))
+    finally
+        cleanup [ dir; dbPath ]
+
+[<Fact>]
+let ``handleFts uses directory from config.json when no -d flag`` () =
+    let dir = tempDir ()
+    let dbPath = tempDbPath ()
+
+    try
+        writeOrgFile dir "cfg.org" "* Config Topic\nConfig body text\n" |> ignore
+
+        withConfigDir dir dbPath (fun opts ->
+            captureBoth (fun () -> Program.handleIndex opts false true) |> ignore
+
+            let stdout, _, exitCode =
+                captureBoth (fun () -> Program.handleFts opts true "config")
+
+            Assert.Equal(0, exitCode)
+            let json = JsonNode.Parse(stdout.Trim())
+            let results = json["data"] :?> JsonArray
+            Assert.True(results.Count > 0))
+    finally
+        cleanup [ dir; dbPath ]
+
+[<Fact>]
+let ``handleCustomIdAssign uses directory from config.json when no -d flag`` () =
+    let dir = tempDir ()
+    let dbPath = tempDbPath ()
+
+    try
+        writeOrgFile dir "cfg.org" "* Needs ID\n" |> ignore
+
+        withConfigDir dir dbPath (fun opts ->
+            let _, _, exitCode =
+                captureBoth (fun () -> Program.handleCustomIdAssign opts true true false)
+
+            Assert.Equal(0, exitCode))
+    finally
+        cleanup [ dir; dbPath ]
+
+[<Fact>]
+let ``resolveIndexDbPath uses directory from config.json for default db location`` () =
+    let oldEnv = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
+    let oldXdg = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
+
+    try
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", null)
+
+        let tmpConfig =
+            Path.Combine(Path.GetTempPath(), sprintf "org-cli-cfg-test-%s" (Guid.NewGuid().ToString("N")))
+
+        let configDir = Path.Combine(tmpConfig, "org-cli")
+        Directory.CreateDirectory(configDir) |> ignore
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
+
+        File.WriteAllText(
+            Path.Combine(configDir, "config.json"),
+            """{"directories": ["/tmp/my-org-dir"]}"""
+        )
+
+        try
+            let opts = Map.empty
+            let path = Program.resolveIndexDbPath opts
+            Assert.Equal(Path.Combine("/tmp/my-org-dir", ".org-index.db"), path)
+        finally
+            Directory.Delete(tmpConfig, true)
+    finally
+        Environment.SetEnvironmentVariable("ORG_CLI_DIRECTORY", oldEnv)
+        Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", oldXdg)
+
 // ── CLI entry point argument routing ──
 
 [<Fact>]
