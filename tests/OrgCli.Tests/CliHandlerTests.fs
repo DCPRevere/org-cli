@@ -987,6 +987,28 @@ let ``handleTodos --file filters by filename`` () =
         cleanup [ dir ]
 
 [<Fact>]
+let ``handleTodos file field is relative path`` () =
+    let dir = tempDir ()
+
+    try
+        let subDir = Path.Combine(dir, "sub")
+        Directory.CreateDirectory(subDir) |> ignore
+        writeOrgFile subDir "deep.org" "* TODO Deep task\n" |> ignore
+        let opts = makeOpts [ ("directory", dir) ]
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.handleTodos OrgCli.Org.Types.defaultConfig opts true)
+
+        Assert.Equal(0, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        let results = json["data"] :?> JsonArray
+        Assert.Equal(1, results.Count)
+        let filePath = results.[0].["file"].GetValue<string>()
+        Assert.Equal("sub/deep.org", filePath)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
 let ``handleTodos JSON output includes all required fields`` () =
     let dir = tempDir ()
 
@@ -1103,20 +1125,54 @@ let ``handleTodos text output shows table for results`` () =
         cleanup [ dir ]
 
 [<Fact>]
-let ``main routes todos command`` () =
+let ``main routes todo list command`` () =
     let dir = tempDir ()
 
     try
         writeOrgFile dir "test.org" "* TODO Task\n" |> ignore
 
         let stdout, _, exitCode =
-            captureBoth (fun () -> Program.main [| "todos"; "--directory"; dir; "--format"; "json" |])
+            captureBoth (fun () -> Program.main [| "todo"; "list"; "--directory"; dir; "--format"; "json" |])
 
         Assert.Equal(0, exitCode)
         let json = JsonNode.Parse(stdout.Trim())
         Assert.True(json["ok"].GetValue<bool>())
         let results = json["data"] :?> JsonArray
         Assert.Equal(1, results.Count)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``main routes todo set command`` () =
+    let dir = tempDir ()
+
+    try
+        let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
+
+        let _, _, exitCode =
+            captureBoth (fun () ->
+                Program.main [| "todo"; "set"; file; "0"; "DONE"; "--quiet" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(file)
+        Assert.Contains("DONE", content)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``main routes implicit todo set (without subcommand)`` () =
+    let dir = tempDir ()
+
+    try
+        let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
+
+        let _, _, exitCode =
+            captureBoth (fun () ->
+                Program.main [| "todo"; file; "0"; "DONE"; "--quiet" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(file)
+        Assert.Contains("DONE", content)
     finally
         cleanup [ dir ]
 
@@ -1186,5 +1242,85 @@ let ``refile without target headline appends at level 1`` () =
         let doc = OrgCli.Org.Document.parse tgtContent
         let source = doc.Headlines |> List.find (fun h -> h.Title = "Source")
         Assert.Equal(1, source.Level)
+    finally
+        cleanup [ dir ]
+
+// ── Schedule/Deadline with repeater via CLI ──
+
+[<Fact>]
+let ``schedule with repeater flag writes repeater to file`` () =
+    let dir = tempDir ()
+
+    try
+        let file = writeOrgFile dir "test.org" "* TODO My task\nBody\n"
+
+        let stdout, _, exitCode =
+            captureBoth (fun () ->
+                Program.main
+                    [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "+1w"; "-f"; "json" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(file)
+        Assert.Contains("+1w", content)
+        let json = JsonNode.Parse(stdout.Trim())
+        Assert.True(json["ok"].GetValue<bool>())
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``deadline with repeater and delay flags writes both to file`` () =
+    let dir = tempDir ()
+
+    try
+        let file = writeOrgFile dir "test.org" "* TODO My task\nBody\n"
+
+        let stdout, _, exitCode =
+            captureBoth (fun () ->
+                Program.main
+                    [| "deadline"; file; "0"; "2026-04-01"; "--repeater"; "++1m"; "--delay"; "2d"; "-f"; "json" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(file)
+        Assert.Contains("++1m", content)
+        Assert.Contains("-2d", content)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``schedule with invalid repeater returns error`` () =
+    let dir = tempDir ()
+
+    try
+        let file = writeOrgFile dir "test.org" "* TODO My task\nBody\n"
+
+        let stdout, _, exitCode =
+            captureBoth (fun () ->
+                Program.main
+                    [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "bad"; "-f"; "json" |])
+
+        Assert.Equal(1, exitCode)
+        let json = JsonNode.Parse(stdout.Trim())
+        Assert.False(json["ok"].GetValue<bool>())
+        let errObj = json["error"]
+        let msg = errObj["message"].GetValue<string>()
+        Assert.Contains("Invalid repeater", msg)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``schedule clear ignores repeater flag`` () =
+    let dir = tempDir ()
+
+    try
+        let file =
+            writeOrgFile dir "test.org" "* TODO My task\nSCHEDULED: <2026-03-10 Tue +1w>\nBody\n"
+
+        let _, _, exitCode =
+            captureBoth (fun () ->
+                Program.main [| "schedule"; file; "0"; ""; "--repeater"; "+1w"; "--quiet" |])
+
+        Assert.Equal(0, exitCode)
+        let content = File.ReadAllText(file)
+        Assert.DoesNotContain("SCHEDULED:", content)
     finally
         cleanup [ dir ]

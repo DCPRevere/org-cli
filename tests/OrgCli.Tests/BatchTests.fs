@@ -89,6 +89,39 @@ let ``batch with schedule command`` () =
     Assert.Contains("SCHEDULED:", files.["test.org"])
 
 [<Fact>]
+let ``batch schedule with repeater`` () =
+    let content = "* TODO My task\nBody\n"
+
+    let json =
+        """{"commands":[{"command":"schedule","file":"test.org","identifier":"My task","args":{"date":"2026-03-01","repeater":"+1w"}}]}"""
+
+    let (results, files) = executeBatch json (Map.ofList [ ("test.org", content) ])
+    Assert.True(Result.isOk results.[0])
+    Assert.Contains("+1w", files.["test.org"])
+
+[<Fact>]
+let ``batch deadline with repeater and delay`` () =
+    let content = "* TODO My task\nBody\n"
+
+    let json =
+        """{"commands":[{"command":"deadline","file":"test.org","identifier":"My task","args":{"date":"2026-04-01","repeater":"++1m","delay":"2d"}}]}"""
+
+    let (results, files) = executeBatch json (Map.ofList [ ("test.org", content) ])
+    Assert.True(Result.isOk results.[0])
+    Assert.Contains("++1m", files.["test.org"])
+    Assert.Contains("-2d", files.["test.org"])
+
+[<Fact>]
+let ``batch schedule with invalid repeater returns error`` () =
+    let content = "* TODO My task\nBody\n"
+
+    let json =
+        """{"commands":[{"command":"schedule","file":"test.org","identifier":"My task","args":{"date":"2026-03-01","repeater":"bad"}}]}"""
+
+    let (results, _) = executeBatch json (Map.ofList [ ("test.org", content) ])
+    Assert.True(Result.isError results.[0])
+
+[<Fact>]
 let ``batch with property-set command`` () =
     let content = "* My task\nBody\n"
 

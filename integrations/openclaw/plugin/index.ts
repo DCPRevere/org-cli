@@ -603,6 +603,17 @@ const orgMemoryPlugin = {
           date: Type.String({
             description: 'New scheduled date (YYYY-MM-DD) or "" to clear',
           }),
+          repeater: Type.Optional(
+            Type.String({
+              description:
+                "Repeater: +N[hdwmy], ++N[hdwmy], or .+N[hdwmy] (e.g. +1w, .+1d)",
+            }),
+          ),
+          delay: Type.Optional(
+            Type.String({
+              description: "Warning delay: N[hdwmy] (e.g. 2d for -2d)",
+            }),
+          ),
           dir: Type.Optional(
             Type.Union([Type.Literal("agent"), Type.Literal("human")], {
               description: 'Which directory: "agent" or "human" (default: "human")',
@@ -610,16 +621,18 @@ const orgMemoryPlugin = {
           ),
         }),
         async execute(_id, params) {
-          const { customId, date, dir = "human" } = params as {
+          const { customId, date, repeater, delay, dir = "human" } = params as {
             customId: string;
             date: string;
+            repeater?: string;
+            delay?: string;
             dir?: "agent" | "human";
           };
           const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
           const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
 
           try {
-            const { stdout } = await runOrg(cfg.orgBin, [
+            const args = [
               "schedule",
               customId,
               date,
@@ -629,7 +642,14 @@ const orgMemoryPlugin = {
               db,
               "-f",
               "json",
-            ]);
+            ];
+            if (repeater) {
+              args.push("--repeater", repeater);
+            }
+            if (delay) {
+              args.push("--delay", delay);
+            }
+            const { stdout } = await runOrg(cfg.orgBin, args);
             return {
               content: [{ type: "text" as const, text: stdout }],
               details: { action: "rescheduled", customId, date },

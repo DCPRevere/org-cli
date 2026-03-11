@@ -179,6 +179,105 @@ let ``set both scheduled and deadline`` () =
     Assert.Contains("SCHEDULED:", result)
     Assert.Contains("DEADLINE:", result)
 
+// --- parseDateWithRepeat ---
+
+[<Fact>]
+let ``parseDateWithRepeat with no repeater or delay`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" None None
+    match result with
+    | Ok ts ->
+        Assert.Equal(DateTime(2026, 3, 10), ts.Date)
+        Assert.Equal(None, ts.Repeater)
+        Assert.Equal(None, ts.Delay)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with +1w repeater`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" (Some "+1w") None
+    match result with
+    | Ok ts ->
+        Assert.Equal(Some "+1w", ts.Repeater)
+        Assert.Equal(None, ts.Delay)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with .+1d repeater`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" (Some ".+1d") None
+    match result with
+    | Ok ts -> Assert.Equal(Some ".+1d", ts.Repeater)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with ++1m repeater`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" (Some "++1m") None
+    match result with
+    | Ok ts -> Assert.Equal(Some "++1m", ts.Repeater)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with delay including dash`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "-2d")
+    match result with
+    | Ok ts ->
+        Assert.Equal(None, ts.Repeater)
+        Assert.Equal(Some "-2d", ts.Delay)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with delay without dash`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "2d")
+    match result with
+    | Ok ts ->
+        Assert.Equal(None, ts.Repeater)
+        Assert.Equal(Some "-2d", ts.Delay)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat with repeater and delay`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" (Some ".+1d") (Some "2d")
+    match result with
+    | Ok ts ->
+        Assert.Equal(Some ".+1d", ts.Repeater)
+        Assert.Equal(Some "-2d", ts.Delay)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``parseDateWithRepeat rejects invalid repeater`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" (Some "bad") None
+    match result with
+    | Ok _ -> failwith "Expected Error"
+    | Error msg -> Assert.Contains("Invalid repeater", msg)
+
+[<Fact>]
+let ``parseDateWithRepeat rejects invalid delay`` () =
+    let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "bad")
+    match result with
+    | Ok _ -> failwith "Expected Error"
+    | Error msg -> Assert.Contains("Invalid delay", msg)
+
+// --- Schedule with repeater round-trip ---
+
+[<Fact>]
+let ``setScheduled with repeater produces correct output`` () =
+    match Utils.parseDateWithRepeat "2026-03-10" (Some "+1w") None with
+    | Ok ts ->
+        let content = "* TODO My task\nBody\n"
+        let result = Mutations.setScheduled Types.defaultConfig content 0L (Some ts) now
+        Assert.Contains("SCHEDULED:", result)
+        Assert.Contains("+1w", result)
+    | Error e -> failwith e
+
+[<Fact>]
+let ``setDeadline with repeater and delay produces correct output`` () =
+    match Utils.parseDateWithRepeat "2026-04-01" (Some "++1m") (Some "-2d") with
+    | Ok ts ->
+        let content = "* TODO My task\nBody\n"
+        let result = Mutations.setDeadline Types.defaultConfig content 0L (Some ts) now
+        Assert.Contains("DEADLINE:", result)
+        Assert.Contains("++1m", result)
+        Assert.Contains("-2d", result)
+    | Error e -> failwith e
+
 // --- Refile ---
 
 [<Fact>]

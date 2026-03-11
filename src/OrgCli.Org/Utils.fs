@@ -3,6 +3,7 @@ module OrgCli.Org.Utils
 open System
 open System.IO
 open System.Security.Cryptography
+open System.Text.RegularExpressions
 
 /// Generate a UUID in the format org-id uses
 let generateId () : string =
@@ -88,6 +89,36 @@ let parseDate (s: string) : Timestamp =
       Repeater = None
       Delay = None
       RangeEnd = None }
+
+let private repeaterPattern = Regex(@"^(\.\+|\+\+|\+)(\d+)([hdwmy])$")
+let private delayPattern = Regex(@"^-(\d+)([hdwmy])$")
+
+/// Parse a date with optional repeater and delay into an Active Timestamp.
+/// Delay may be given with or without leading '-' (e.g. "2d" or "-2d").
+/// Returns Error if repeater or delay format is invalid.
+let parseDateWithRepeat (date: string) (repeater: string option) (delay: string option) : Result<Timestamp, string> =
+    let d = DateTime.ParseExact(date, "yyyy-MM-dd", null)
+
+    // Normalize delay: prepend '-' if not already present
+    let normalizedDelay =
+        delay
+        |> Option.map (fun dl -> if dl.StartsWith("-") then dl else "-" + dl)
+
+    match repeater with
+    | Some r when not (repeaterPattern.IsMatch(r)) ->
+        Error(sprintf "Invalid repeater format: '%s'. Expected +N[hdwmy], ++N[hdwmy], or .+N[hdwmy]." r)
+    | _ ->
+        match normalizedDelay with
+        | Some dl when not (delayPattern.IsMatch(dl)) ->
+            Error(sprintf "Invalid delay format: '%s'. Expected -N[hdwmy]." dl)
+        | _ ->
+            Ok
+                { Type = TimestampType.Active
+                  Date = d
+                  HasTime = false
+                  Repeater = repeater
+                  Delay = normalizedDelay
+                  RangeEnd = None }
 
 /// Expand a leading ~/ (or bare ~) to the user's home directory.
 let expandHome (path: string) : string =

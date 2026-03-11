@@ -69,16 +69,44 @@ let private applyCommand
             Mutations.setPriority content pos pri, pos)
 
     | "schedule" ->
-        resolve ()
-        |> Result.map (fun pos ->
-            let ts = let s = getArg "date" in if s = "" then None else Some(Utils.parseDate s)
-            Mutations.setScheduled config content pos ts now, pos)
+        let s = getArg "date"
+
+        if s = "" then
+            resolve ()
+            |> Result.map (fun pos -> Mutations.setScheduled config content pos None now, pos)
+        else
+            let repeater = Map.tryFind "repeater" cmd.Args |> Option.map (fun v -> v)
+            let delay = Map.tryFind "delay" cmd.Args |> Option.map (fun v -> v)
+
+            match Utils.parseDateWithRepeat s repeater delay with
+            | Error msg ->
+                Error
+                    { Type = CliErrorType.InvalidArgs
+                      Message = msg
+                      Detail = None }
+            | Ok ts ->
+                resolve ()
+                |> Result.map (fun pos -> Mutations.setScheduled config content pos (Some ts) now, pos)
 
     | "deadline" ->
-        resolve ()
-        |> Result.map (fun pos ->
-            let ts = let s = getArg "date" in if s = "" then None else Some(Utils.parseDate s)
-            Mutations.setDeadline config content pos ts now, pos)
+        let s = getArg "date"
+
+        if s = "" then
+            resolve ()
+            |> Result.map (fun pos -> Mutations.setDeadline config content pos None now, pos)
+        else
+            let repeater = Map.tryFind "repeater" cmd.Args |> Option.map (fun v -> v)
+            let delay = Map.tryFind "delay" cmd.Args |> Option.map (fun v -> v)
+
+            match Utils.parseDateWithRepeat s repeater delay with
+            | Error msg ->
+                Error
+                    { Type = CliErrorType.InvalidArgs
+                      Message = msg
+                      Detail = None }
+            | Ok ts ->
+                resolve ()
+                |> Result.map (fun pos -> Mutations.setDeadline config content pos (Some ts) now, pos)
 
     | "property-set" ->
         resolve ()

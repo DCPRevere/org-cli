@@ -139,22 +139,40 @@ let commandDefs: CommandDef list =
             "--deadline DATE   Set DEADLINE (yyyy-MM-dd)"
             "--under ID        Insert as child of headline" ] }
       { Name = "todo"
-        Description = "Set TODO state"
-        Usage = "todo [<file>] <headline> <state>"
+        Description = "TODO item commands: list and filter, or set state"
+        Usage = "todo list [filters...] | todo set [<file>] <headline> <state>"
         Args =
-          [ { Name = "file"
-              Description = "Target file (omit when using CUSTOM_ID)"
-              Required = false }
-            { Name = "identifier"
-              Description = "Position, org-id, CUSTOM_ID, or title"
-              Required = true }
-            { Name = "state"
-              Description = "New TODO state or empty to clear"
+          [ { Name = "subcommand"
+              Description = "list or set"
               Required = true } ]
-        Flags = []
+        Flags =
+          [ ("--state", "Filter by TODO state (list) or new state (set)")
+            ("--tag", "Filter by tag (repeatable for OR)")
+            ("--priority", "Filter by priority (A-Z)")
+            ("--scheduled", "Only show items with a scheduled date")
+            ("--unscheduled", "Only show items without a scheduled date")
+            ("--overdue", "Show items where scheduled/deadline < today")
+            ("--due-before", "Scheduled or deadline <= date")
+            ("--due-after", "Scheduled or deadline >= date")
+            ("--file", "Filter by filename pattern (substring)")
+            ("--search", "Filter by title substring (case-insensitive)")
+            ("--sort", "Sort by: scheduled, deadline, priority, title, file")
+            ("--reverse", "Reverse sort order") ]
         HelpArgs =
-          [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
-            "<state>     TODO state (TODO, DONE, NEXT, etc.) or \"\" to clear"
+          [ "list [filters...]              List and filter TODO items"
+            "set [<file>] <headline> <state> Set TODO state"
+            "--state STATE       Filter by TODO state (list)"
+            "--tag TAG           Filter by tag (repeatable for OR)"
+            "--priority P        Filter by priority (A-Z)"
+            "--scheduled         Only items with a scheduled date"
+            "--unscheduled       Only items without a scheduled date"
+            "--overdue           Items where scheduled/deadline < today"
+            "--due-before DATE   Scheduled or deadline <= date (yyyy-MM-dd)"
+            "--due-after DATE    Scheduled or deadline >= date (yyyy-MM-dd)"
+            "--file PATTERN      Filter by filename substring"
+            "--search TEXT       Filter by title substring (case-insensitive)"
+            "--sort FIELD        Sort by: scheduled, deadline, priority, title, file"
+            "--reverse           Reverse sort order"
             "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "priority"
         Description = "Set or clear priority"
@@ -218,7 +236,7 @@ let commandDefs: CommandDef list =
             "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "schedule"
         Description = "Set SCHEDULED timestamp"
-        Usage = "schedule [<file>] <headline> <date>"
+        Usage = "schedule [<file>] <headline> <date> [--repeater R] [--delay D]"
         Args =
           [ { Name = "file"
               Description = "Target file (omit when using CUSTOM_ID)"
@@ -229,14 +247,18 @@ let commandDefs: CommandDef list =
             { Name = "date"
               Description = "Date yyyy-MM-dd or empty to clear"
               Required = true } ]
-        Flags = []
+        Flags =
+          [ ("--repeater", "Repeater: +N[hdwmy], ++N[hdwmy], or .+N[hdwmy]")
+            ("--delay", "Warning delay: N[hdwmy] (e.g. 2d for -2d)") ]
         HelpArgs =
           [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
             "<date>      yyyy-MM-dd or \"\" to clear"
+            "--repeater  Repeater (+1w, .+1d, ++1m, etc.)"
+            "--delay     Warning delay (2d, 1w, etc.)"
             "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "deadline"
         Description = "Set DEADLINE timestamp"
-        Usage = "deadline [<file>] <headline> <date>"
+        Usage = "deadline [<file>] <headline> <date> [--repeater R] [--delay D]"
         Args =
           [ { Name = "file"
               Description = "Target file (omit when using CUSTOM_ID)"
@@ -247,10 +269,14 @@ let commandDefs: CommandDef list =
             { Name = "date"
               Description = "Date yyyy-MM-dd or empty to clear"
               Required = true } ]
-        Flags = []
+        Flags =
+          [ ("--repeater", "Repeater: +N[hdwmy], ++N[hdwmy], or .+N[hdwmy]")
+            ("--delay", "Warning delay: N[hdwmy] (e.g. 2d for -2d)") ]
         HelpArgs =
           [ "<headline>  Position number, org-id, CUSTOM_ID, or exact title"
             "<date>      yyyy-MM-dd or \"\" to clear"
+            "--repeater  Repeater (+1w, .+1d, ++1m, etc.)"
+            "--delay     Warning delay (2d, 1w, etc.)"
             "File may be omitted when addressing by CUSTOM_ID (requires index)" ] }
       { Name = "note"
         Description = "Add a note to the logbook"
@@ -425,9 +451,8 @@ let commandDefs: CommandDef list =
             "--dry-run      Preview without modifying files"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
       { Name = "todos"
-        Description = "List and filter TODO items across org files"
-        Usage =
-          "todos [-d dir] [--state STATE] [--tag TAG] [--priority P] [--scheduled] [--unscheduled] [--overdue] [--due-before DATE] [--due-after DATE] [--file PATTERN] [--search TEXT] [--sort FIELD] [--reverse]"
+        Description = "Alias for 'todo list' (deprecated)"
+        Usage = "todos [filters...] — use 'todo list' instead"
         Args = []
         Flags =
           [ ("--state", "Filter by TODO state (TODO, DONE, WAITING, etc.)")
@@ -443,18 +468,7 @@ let commandDefs: CommandDef list =
             ("--sort", "Sort by: scheduled, deadline, priority, title, file")
             ("--reverse", "Reverse sort order") ]
         HelpArgs =
-          [ "--state STATE       Filter by TODO state"
-            "--tag TAG           Filter by tag (repeatable for OR)"
-            "--priority P        Filter by priority (A-Z)"
-            "--scheduled         Only items with a scheduled date"
-            "--unscheduled       Only items without a scheduled date"
-            "--overdue           Items where scheduled/deadline < today"
-            "--due-before DATE   Scheduled or deadline <= date (yyyy-MM-dd)"
-            "--due-after DATE    Scheduled or deadline >= date (yyyy-MM-dd)"
-            "--file PATTERN      Filter by filename substring"
-            "--search TEXT       Filter by title substring (case-insensitive)"
-            "--sort FIELD        Sort by: scheduled, deadline, priority, title, file"
-            "--reverse           Reverse sort order" ] }
+          [ "DEPRECATED: use 'todo list' instead" ] }
       { Name = "batch"
         Description = "Execute multiple commands from JSON stdin"
         Usage = "batch"
