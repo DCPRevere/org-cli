@@ -3,7 +3,7 @@
   "kind": "memory",
   "name": "org-memory",
   "description": "Structured knowledge base and task management using org-mode files and the org CLI.",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "skills": ["../"],
   "configSchema": {
     "type": "object",
