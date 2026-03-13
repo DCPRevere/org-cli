@@ -48,7 +48,7 @@ sed -i '1,10 s|"version": "[^"]*"|"version": "'"$version"'"|' \
   "$plugin/package-lock.json"
 
 echo "Building ..."
-dotnet build --warnaserror -q
+dotnet build --warnaserror
 
 echo "Testing ..."
 dotnet test --no-build -q
