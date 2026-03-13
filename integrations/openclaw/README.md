@@ -18,7 +18,7 @@ Or manually from a repo checkout:
 
 ## Quick start
 
-On first use, the agent will ask whether you want org-memory to replace OpenClaw's default memory system (MEMORY.md). If you say yes, it migrates your existing memory and daily files to org format and disables the default memory plugin. If you say no, both systems coexist — org-memory handles knowledge graph and tasks while MEMORY.md stays as your agent's primary memory.
+If you ask, the agent can migrate OpenClaw's default memory (MEMORY.md) to org format and disable the default memory plugin. This is optional — if you don't migrate, both systems coexist (org-memory handles knowledge graph and tasks while MEMORY.md stays as your agent's primary memory).
 
 Once installed, just talk to your agent naturally:
 

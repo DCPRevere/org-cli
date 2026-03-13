@@ -166,7 +166,7 @@ These shortcuts trigger org-cli actions. Act on them immediately, confirm briefl
 **Important:** Roam nodes are ONLY created in the roam directories, never in the workspace root. The plugin tools handle this automatically.
 
 ### Ambient Capture
-When the human mentions facts in passing (a person's preference, a date, a relationship), capture them in the agent's knowledge base without being asked — but only when the info has lasting value. Complete the explicit request first, then silently update/create the relevant node.
+When the human mentions facts in passing (a person's preference, a date, a relationship) that have lasting value, offer to save them to the agent's knowledge base. Complete the explicit request first, then tell the human what you'd like to capture and confirm before writing. Always print \`org-memory: <action> <file-path>\` after every write.
 </org-memory-instructions>`);
 
       const memoryOrg = await readOrgFile(join(cfg.agentDir, "memory.org"));

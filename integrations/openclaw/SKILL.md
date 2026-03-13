@@ -2,7 +2,7 @@
 name: org-memory
 version: 0.5.0
 description: "Structured knowledge base and task management using org-mode files. Query, mutate, link, and search org files and org-roam databases with the `org` CLI."
-metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_AGENT_DIR","ORG_MEMORY_HUMAN_DIR","ORG_MEMORY_AGENT_DATABASE_LOCATION","ORG_MEMORY_HUMAN_DATABASE_LOCATION"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}]}}
+metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_AGENT_DIR","ORG_MEMORY_HUMAN_DIR","ORG_MEMORY_AGENT_DATABASE_LOCATION","ORG_MEMORY_HUMAN_DATABASE_LOCATION","ORG_MEMORY_USE_FOR_AGENT","ORG_MEMORY_USE_FOR_HUMAN","ORG_MEMORY_ORG_BIN","ORG_MEMORY_INBOX_FILE"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"writes":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"migrationReads":["~/.openclaw/workspace/MEMORY.md","~/.openclaw/workspace/memory/"],"migrationWrites":["~/.openclaw/openclaw.json"]}}}
 ---
 
 # org-memory
@@ -237,4 +237,4 @@ Read these on demand when the conversation requires them:
 
 - **Knowledge management** (`{baseDir}/references/knowledge-management.md`): Read when `ORG_MEMORY_USE_FOR_AGENT=true` and you need to create/query/link roam nodes in the agent's knowledge base.
 - **Task management** (`{baseDir}/references/task-management.md`): Read when `ORG_MEMORY_USE_FOR_HUMAN=true` and you need to query or mutate the human's tasks, use batch operations, or map natural-language queries to commands.
-- **Memory architecture** (`{baseDir}/references/memory-architecture.md`): Read on first use (memory migration) and at session start (file structure, session routine, ambient capture guidelines).
+- **Memory architecture** (`{baseDir}/references/memory-architecture.md`): Read at session start (file structure, session routine, ambient capture guidelines). Also contains optional memory migration instructions — only follow those if the user explicitly asks to migrate from MEMORY.md to org-mode. Migration reads/writes files outside the declared directories (see reference for details).
