@@ -112,20 +112,27 @@ By default the agent maintains two directories: its own knowledge base and the h
 
 ## Configuration
 
+Set these to match your directory layout:
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
 | `ORG_MEMORY_AGENT_DIR` | `~/org/alcuin` | Agent's org workspace directory |
 | `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/alcuin/roam` | Agent's roam node directory |
 | `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/alcuin/roam/.org.db` | Agent's database |
-| `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
 | `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org workspace directory |
 | `ORG_MEMORY_HUMAN_ROAM_DIR` | `~/org/human/roam` | Human's roam node directory |
 | `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/roam/.org.db` | Human's database |
 
-All are optional. If unset, the defaults apply. Set `ORG_MEMORY_USE_FOR_AGENT` or `ORG_MEMORY_USE_FOR_HUMAN` to anything other than `true` to disable that feature.
+Optional:
 
-Workspace dirs (`*_DIR`) hold tasks, inbox, and daily files. Roam dirs (`*_ROAM_DIR`) hold knowledge graph nodes. Databases are collocated with roam dirs by default. Roam dirs default to `<workspace>/roam` — roam nodes are never created in the workspace root.
+| Variable | Default | Purpose |
+|---|---|---|
+| `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
+| `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
+| `ORG_MEMORY_ORG_BIN` | `org` | Path to the org CLI binary |
+| `ORG_MEMORY_INBOX_FILE` | `inbox.org` | Filename for new tasks (relative to humanDir) |
+
+Workspace dirs (`*_DIR`) hold tasks, inbox, and daily files. Roam dirs (`*_ROAM_DIR`) hold knowledge graph nodes. Databases are collocated with roam dirs by default. Roam dirs default to `<workspace>/roam` — roam nodes are never created in the workspace root. Set `ORG_MEMORY_USE_FOR_AGENT` or `ORG_MEMORY_USE_FOR_HUMAN` to anything other than `true` to disable that feature.
 
 To override, set them in `~/.openclaw/openclaw.json`:
 

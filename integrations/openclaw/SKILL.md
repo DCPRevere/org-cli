@@ -2,7 +2,7 @@
 name: org-memory
 version: 0.5.0
 description: "Structured knowledge base and task management using org-mode files. Query, mutate, link, and search org files and org-roam databases with the `org` CLI."
-metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_AGENT_DIR","ORG_MEMORY_HUMAN_DIR","ORG_MEMORY_AGENT_DATABASE_LOCATION","ORG_MEMORY_HUMAN_DATABASE_LOCATION","ORG_MEMORY_USE_FOR_AGENT","ORG_MEMORY_USE_FOR_HUMAN","ORG_MEMORY_ORG_BIN","ORG_MEMORY_INBOX_FILE"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"writes":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"migrationReads":["~/.openclaw/workspace/MEMORY.md","~/.openclaw/workspace/memory/"],"migrationWrites":["~/.openclaw/openclaw.json"]}}}
+metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_AGENT_DIR","ORG_MEMORY_HUMAN_DIR","ORG_MEMORY_AGENT_DATABASE_LOCATION","ORG_MEMORY_HUMAN_DATABASE_LOCATION","ORG_MEMORY_AGENT_ROAM_DIR","ORG_MEMORY_HUMAN_ROAM_DIR"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"writes":["$ORG_MEMORY_AGENT_DIR","$ORG_MEMORY_HUMAN_DIR"],"migrationReads":["~/.openclaw/workspace/MEMORY.md","~/.openclaw/workspace/memory/"],"migrationWrites":["~/.openclaw/openclaw.json"]}}}
 ---
 
 # org-memory
@@ -157,16 +157,25 @@ Run `org schema` once to get a machine-readable description of all commands, arg
 
 Configuration is via environment variables. Set them in `openclaw.json` so they are injected into every command automatically.
 
+Required — set these to match your directory layout:
+
 | Variable | Default | Purpose |
 |---|---|---|
-| `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
 | `ORG_MEMORY_AGENT_DIR` | `~/org/alcuin` | Agent's org workspace directory |
 | `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/alcuin/roam` | Agent's roam node directory |
 | `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/alcuin/roam/.org.db` | Agent's database |
-| `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
 | `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org workspace directory |
 | `ORG_MEMORY_HUMAN_ROAM_DIR` | `~/org/human/roam` | Human's roam node directory |
 | `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/roam/.org.db` | Human's database |
+
+Optional — these have sensible defaults:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
+| `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
+| `ORG_MEMORY_ORG_BIN` | `org` | Path to the org CLI binary |
+| `ORG_MEMORY_INBOX_FILE` | `inbox.org` | Filename for new tasks (relative to humanDir) |
 
 Workspace dirs (`*_DIR`) hold tasks, inbox, and daily files. Roam dirs (`*_ROAM_DIR`) hold knowledge graph nodes. Databases are collocated with roam dirs by default. Roam dirs default to `<workspace>/roam` — roam nodes are never created in the workspace root.
 
