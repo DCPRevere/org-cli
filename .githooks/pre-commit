@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only check staged F# files
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.fs' '*.fsx' '*.fsi')
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+echo "Running Fantomas format check on staged F# files..."
+if ! dotnet fantomas --check $staged; then
+  echo ""
+  echo "Fix formatting with: dotnet fantomas ."
+  exit 1
+fi
