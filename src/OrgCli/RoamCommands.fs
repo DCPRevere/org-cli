@@ -80,8 +80,7 @@ let formatNodeJson (node: RoamNode) : JsonNode =
     obj
 
 /// Default roam database path: <directory>/.org.db
-let defaultDbPath (directory: string) =
-    Path.Combine(directory, ".org.db")
+let defaultDbPath (directory: string) = Path.Combine(directory, ".org.db")
 
 let ensureDbDirectory (dbPath: string) =
     let dir = Path.GetDirectoryName(dbPath)

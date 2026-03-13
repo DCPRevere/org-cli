@@ -55,8 +55,7 @@ let printTable (columns: (string * ('a -> string)) list) (rows: 'a list) =
             printfn "%s" (formatRow row)
 
 /// Make an absolute path relative to a base directory.
-let relativePath (baseDir: string) (filePath: string) =
-    Path.GetRelativePath(baseDir, filePath)
+let relativePath (baseDir: string) (filePath: string) = Path.GetRelativePath(baseDir, filePath)
 
 /// Format an agenda item for text output
 let formatAgendaItemText (item: Agenda.AgendaItem) =
@@ -159,10 +158,7 @@ let loadDirectoriesFromEnv () : string list =
     match Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY") with
     | null
     | "" -> []
-    | v ->
-        v.Split(Path.PathSeparator)
-        |> Array.map Utils.expandHome
-        |> Array.toList
+    | v -> v.Split(Path.PathSeparator) |> Array.map Utils.expandHome |> Array.toList
 
 /// Read "directories" array from the org-cli config JSON, expand ~.
 let loadDirectoriesFromConfig () : string list =
@@ -448,8 +444,7 @@ let printUsage () =
     printfn "  --dry-run               Preview mutation without writing to file"
     printfn "  -q, --quiet             Suppress informational text output"
 
-    printfn
-        "  --db <path>             Database path (default: <dir>/.org.db for roam, <dir>/.org-index.db for index)"
+    printfn "  --db <path>             Database path (default: <dir>/.org.db for roam, <dir>/.org-index.db for index)"
 
     printfn ""
     printfn "Org Commands:"

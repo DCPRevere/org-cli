@@ -184,6 +184,7 @@ let ``set both scheduled and deadline`` () =
 [<Fact>]
 let ``parseDateWithRepeat with no repeater or delay`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" None None
+
     match result with
     | Ok ts ->
         Assert.Equal(DateTime(2026, 3, 10), ts.Date)
@@ -194,6 +195,7 @@ let ``parseDateWithRepeat with no repeater or delay`` () =
 [<Fact>]
 let ``parseDateWithRepeat with +1w repeater`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" (Some "+1w") None
+
     match result with
     | Ok ts ->
         Assert.Equal(Some "+1w", ts.Repeater)
@@ -203,6 +205,7 @@ let ``parseDateWithRepeat with +1w repeater`` () =
 [<Fact>]
 let ``parseDateWithRepeat with .+1d repeater`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" (Some ".+1d") None
+
     match result with
     | Ok ts -> Assert.Equal(Some ".+1d", ts.Repeater)
     | Error e -> failwith e
@@ -210,6 +213,7 @@ let ``parseDateWithRepeat with .+1d repeater`` () =
 [<Fact>]
 let ``parseDateWithRepeat with ++1m repeater`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" (Some "++1m") None
+
     match result with
     | Ok ts -> Assert.Equal(Some "++1m", ts.Repeater)
     | Error e -> failwith e
@@ -217,6 +221,7 @@ let ``parseDateWithRepeat with ++1m repeater`` () =
 [<Fact>]
 let ``parseDateWithRepeat with delay including dash`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "-2d")
+
     match result with
     | Ok ts ->
         Assert.Equal(None, ts.Repeater)
@@ -226,6 +231,7 @@ let ``parseDateWithRepeat with delay including dash`` () =
 [<Fact>]
 let ``parseDateWithRepeat with delay without dash`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "2d")
+
     match result with
     | Ok ts ->
         Assert.Equal(None, ts.Repeater)
@@ -235,6 +241,7 @@ let ``parseDateWithRepeat with delay without dash`` () =
 [<Fact>]
 let ``parseDateWithRepeat with repeater and delay`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" (Some ".+1d") (Some "2d")
+
     match result with
     | Ok ts ->
         Assert.Equal(Some ".+1d", ts.Repeater)
@@ -244,6 +251,7 @@ let ``parseDateWithRepeat with repeater and delay`` () =
 [<Fact>]
 let ``parseDateWithRepeat rejects invalid repeater`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" (Some "bad") None
+
     match result with
     | Ok _ -> failwith "Expected Error"
     | Error msg -> Assert.Contains("Invalid repeater", msg)
@@ -251,6 +259,7 @@ let ``parseDateWithRepeat rejects invalid repeater`` () =
 [<Fact>]
 let ``parseDateWithRepeat rejects invalid delay`` () =
     let result = Utils.parseDateWithRepeat "2026-03-10" None (Some "bad")
+
     match result with
     | Ok _ -> failwith "Expected Error"
     | Error msg -> Assert.Contains("Invalid delay", msg)

@@ -7,16 +7,14 @@ open OrgCli.Org
 
 [<Fact>]
 let ``expandHome replaces leading tilde-slash with home directory`` () =
-    let home =
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
     let result = Utils.expandHome "~/org"
     Assert.Equal(Path.Combine(home, "org"), result)
 
 [<Fact>]
 let ``expandHome replaces bare tilde with home directory`` () =
-    let home =
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
     Assert.Equal(home, Utils.expandHome "~")
 
@@ -84,8 +82,7 @@ let ``loadDirectoriesFromEnv returns empty when env var is unset`` () =
 
 [<Fact>]
 let ``loadDirectoriesFromEnv splits by path separator and expands tilde`` () =
-    let home =
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
     let old = Environment.GetEnvironmentVariable("ORG_CLI_DIRECTORY")
 
@@ -114,8 +111,7 @@ let ``loadDirectoriesFromConfig returns empty when config file does not exist`` 
 
 [<Fact>]
 let ``loadDirectoriesFromConfig reads directories array from config`` () =
-    let home =
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
     let old = Environment.GetEnvironmentVariable("XDG_CONFIG_HOME")
 
@@ -127,10 +123,7 @@ let ``loadDirectoriesFromConfig reads directories array from config`` () =
         Directory.CreateDirectory(configDir) |> ignore
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
 
-        File.WriteAllText(
-            Path.Combine(configDir, "config.json"),
-            """{"directories": ["~/org", "/tmp/notes"]}"""
-        )
+        File.WriteAllText(Path.Combine(configDir, "config.json"), """{"directories": ["~/org", "/tmp/notes"]}""")
 
         let result = Program.loadDirectoriesFromConfig ()
         Assert.Equal(2, result.Length)
@@ -153,10 +146,7 @@ let ``loadDirectoriesFromConfig returns empty when key is missing`` () =
         Directory.CreateDirectory(configDir) |> ignore
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
 
-        File.WriteAllText(
-            Path.Combine(configDir, "config.json"),
-            """{"logDone": "time"}"""
-        )
+        File.WriteAllText(Path.Combine(configDir, "config.json"), """{"logDone": "time"}""")
 
         let result = Program.loadDirectoriesFromConfig ()
         Assert.Empty(result)
@@ -180,10 +170,7 @@ let ``resolveDirectory prefers CLI directory flag over env and config`` () =
         Directory.CreateDirectory(configDir) |> ignore
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
 
-        File.WriteAllText(
-            Path.Combine(configDir, "config.json"),
-            """{"directories": ["/tmp/config-dir"]}"""
-        )
+        File.WriteAllText(Path.Combine(configDir, "config.json"), """{"directories": ["/tmp/config-dir"]}""")
 
         let opts = Map.ofList [ "directory", [ "/tmp/cli-dir" ] ]
         let result = Program.resolveDirectory opts

@@ -552,10 +552,7 @@ let ``resolveIndexDbPath uses directory from config.json for default db location
         Directory.CreateDirectory(configDir) |> ignore
         Environment.SetEnvironmentVariable("XDG_CONFIG_HOME", tmpConfig)
 
-        File.WriteAllText(
-            Path.Combine(configDir, "config.json"),
-            """{"directories": ["/tmp/my-org-dir"]}"""
-        )
+        File.WriteAllText(Path.Combine(configDir, "config.json"), """{"directories": ["/tmp/my-org-dir"]}""")
 
         try
             let opts = Map.empty
@@ -1150,8 +1147,7 @@ let ``main routes todo set command`` () =
         let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () ->
-                Program.main [| "todo"; "set"; file; "0"; "DONE"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "todo"; "set"; file; "0"; "DONE"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1167,8 +1163,7 @@ let ``main routes implicit todo set (without subcommand)`` () =
         let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () ->
-                Program.main [| "todo"; file; "0"; "DONE"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "todo"; file; "0"; "DONE"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1256,8 +1251,7 @@ let ``schedule with repeater flag writes repeater to file`` () =
 
         let stdout, _, exitCode =
             captureBoth (fun () ->
-                Program.main
-                    [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "+1w"; "-f"; "json" |])
+                Program.main [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "+1w"; "-f"; "json" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1277,7 +1271,16 @@ let ``deadline with repeater and delay flags writes both to file`` () =
         let stdout, _, exitCode =
             captureBoth (fun () ->
                 Program.main
-                    [| "deadline"; file; "0"; "2026-04-01"; "--repeater"; "++1m"; "--delay"; "2d"; "-f"; "json" |])
+                    [| "deadline"
+                       file
+                       "0"
+                       "2026-04-01"
+                       "--repeater"
+                       "++1m"
+                       "--delay"
+                       "2d"
+                       "-f"
+                       "json" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1295,8 +1298,7 @@ let ``schedule with invalid repeater returns error`` () =
 
         let stdout, _, exitCode =
             captureBoth (fun () ->
-                Program.main
-                    [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "bad"; "-f"; "json" |])
+                Program.main [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "bad"; "-f"; "json" |])
 
         Assert.Equal(1, exitCode)
         let json = JsonNode.Parse(stdout.Trim())
@@ -1316,8 +1318,7 @@ let ``schedule clear ignores repeater flag`` () =
             writeOrgFile dir "test.org" "* TODO My task\nSCHEDULED: <2026-03-10 Tue +1w>\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () ->
-                Program.main [| "schedule"; file; "0"; ""; "--repeater"; "+1w"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "schedule"; file; "0"; ""; "--repeater"; "+1w"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)

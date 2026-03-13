@@ -22,11 +22,35 @@ On first use, the agent will ask whether you want org-memory to replace OpenClaw
 
 Once installed, just talk to your agent naturally:
 
-- **"Know: Sarah prefers morning meetings"** → Agent saves to its knowledge base
-- **"Todo: submit taxes in 3 weeks"** → Agent adds scheduled TODO to your inbox
-- **"Note: Buy groceries"** → Agent adds TODO to your inbox
-- **"Done: groceries"** → Agent marks the task complete
+- **"k: Sarah prefers morning meetings"** → Agent saves to its knowledge base
+- **"t: submit taxes in 3 weeks"** → Agent adds scheduled TODO to your inbox
+- **"r: Buy groceries"** → Agent adds TODO to your inbox
+- **"d: groceries"** → Agent marks the task complete
+- **"s: taxes to next Friday"** → Agent reschedules the task
 - **"What do you know about Sarah?"** → Agent queries its knowledge
+
+### Shortcuts
+
+Org mutations:
+
+| Prefix | Alias | Action |
+|---|---|---|
+| `t:` | `Todo:` | Create TODO in your org (extracts dates) |
+| `d:` | `Done:` / `Finished:` | Mark a TODO as DONE |
+| `s:` | | Reschedule a TODO |
+| `r:` | `Note:` | Save to your roam (knowledge/info) |
+| `k:` | `Know:` / `Remember:` | Agent learns it (agent's knowledge base) |
+
+Behaviour modifiers:
+
+| Prefix | Action |
+|---|---|
+| `v:` | Voice reply (TTS) |
+| `?` | Research (web + files) |
+| `@` | Roam lookup |
+| `w:` | Work context (Remundo) |
+| `!` | Urgent — act now |
+| `q:` | Quick answer, no tools |
 
 ## When to use org-memory
 
@@ -43,7 +67,7 @@ OpenClaw's default memory (`MEMORY.md` + semantic search) works well for simple 
 | "What do I need to do today?" | Not possible | `org today` → due + overdue TODOs |
 | "What's due this week?" | Not possible | `agenda week` → parsed dates |
 | Task management | No date support | SCHEDULED, DEADLINE, repeaters |
-| "Mark that task done" | Find file, find line | `org todo k4t DONE` |
+| "Mark that task done" | Find file, find line | `org todo set k4t DONE` |
 
 **Use MEMORY.md** for: personal preferences, key dates, simple facts (<100 items).
 
@@ -71,7 +95,7 @@ The real differentiator is **agenda queries** and **short IDs**. The moment you 
 - "What's due today?" → `org today` shows all non-done TODOs due today or overdue
 - "Schedule this for next Monday"
 - "Show me overdue tasks" → `org today` catches these automatically
-- "Mark k4t as done" (no file path needed)
+- "d: groceries" → `org todo set k4t DONE` (no file path needed)
 
 ...MEMORY.md and Obsidian can't help. org-memory handles this natively because org-mode was built for it. Every headline gets a short CUSTOM_ID (like `k4t`) that works across files without remembering paths.
 
@@ -91,15 +115,17 @@ By default the agent maintains two directories: its own knowledge base and the h
 | Variable | Default | Purpose |
 |---|---|---|
 | `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
-| `ORG_MEMORY_AGENT_DIR` | `~/org/agent` | Agent's org directory |
-| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/.local/share/org-memory/agent/.org.db` | Agent's database |
+| `ORG_MEMORY_AGENT_DIR` | `~/org/alcuin` | Agent's org workspace directory |
+| `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/alcuin/roam` | Agent's roam node directory |
+| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/alcuin/roam/.org.db` | Agent's database |
 | `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
-| `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org directory |
-| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/.local/share/org-memory/human/.org.db` | Human's database |
+| `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org workspace directory |
+| `ORG_MEMORY_HUMAN_ROAM_DIR` | `~/org/human/roam` | Human's roam node directory |
+| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/roam/.org.db` | Human's database |
 
 All are optional. If unset, the defaults apply. Set `ORG_MEMORY_USE_FOR_AGENT` or `ORG_MEMORY_USE_FOR_HUMAN` to anything other than `true` to disable that feature.
 
-The databases are stored under `~/.local/share/org-memory/` by default, separate from both the org files and the emacs org-roam database (`~/.emacs.d/org-roam.db`) to avoid concurrent-write conflicts. The `org` CLI itself defaults to the emacs database; the skill overrides this via `--db`.
+Workspace dirs (`*_DIR`) hold tasks, inbox, and daily files. Roam dirs (`*_ROAM_DIR`) hold knowledge graph nodes. Databases are collocated with roam dirs by default. Roam dirs default to `<workspace>/roam` — roam nodes are never created in the workspace root.
 
 To override, set them in `~/.openclaw/openclaw.json`:
 

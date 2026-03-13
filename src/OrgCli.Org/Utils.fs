@@ -101,8 +101,7 @@ let parseDateWithRepeat (date: string) (repeater: string option) (delay: string 
 
     // Normalize delay: prepend '-' if not already present
     let normalizedDelay =
-        delay
-        |> Option.map (fun dl -> if dl.StartsWith("-") then dl else "-" + dl)
+        delay |> Option.map (fun dl -> if dl.StartsWith("-") then dl else "-" + dl)
 
     match repeater with
     | Some r when not (repeaterPattern.IsMatch(r)) ->
@@ -122,8 +121,7 @@ let parseDateWithRepeat (date: string) (repeater: string option) (delay: string 
 
 /// Expand a leading ~/ (or bare ~) to the user's home directory.
 let expandHome (path: string) : string =
-    let home =
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
 
     if path = "~" then
         home
@@ -144,10 +142,7 @@ let listOrgFiles (directory: string) : string list =
         []
     else
         let opts =
-            EnumerationOptions(
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = true
-            )
+            EnumerationOptions(RecurseSubdirectories = true, IgnoreInaccessible = true)
 
         let filter (f: string) =
             let fileName = Path.GetFileName(f)
@@ -157,16 +152,13 @@ let listOrgFiles (directory: string) : string list =
             && not (f.Contains("\\.git\\"))
 
         let orgFiles =
-            Directory.EnumerateFiles(directory, "*.org", opts)
-            |> Seq.filter filter
+            Directory.EnumerateFiles(directory, "*.org", opts) |> Seq.filter filter
 
         let gpgFiles =
-            Directory.EnumerateFiles(directory, "*.org.gpg", opts)
-            |> Seq.filter filter
+            Directory.EnumerateFiles(directory, "*.org.gpg", opts) |> Seq.filter filter
 
         let ageFiles =
-            Directory.EnumerateFiles(directory, "*.org.age", opts)
-            |> Seq.filter filter
+            Directory.EnumerateFiles(directory, "*.org.age", opts) |> Seq.filter filter
 
         Seq.concat [ orgFiles; gpgFiles; ageFiles ] |> Seq.toList
 

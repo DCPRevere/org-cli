@@ -11,11 +11,19 @@
     "properties": {
       "agentDir": {
         "type": "string",
-        "description": "Agent's org directory"
+        "description": "Agent's org workspace directory"
+      },
+      "agentRoamDir": {
+        "type": "string",
+        "description": "Agent's roam node directory (defaults to <agentDir>/roam)"
       },
       "humanDir": {
         "type": "string",
-        "description": "Human's org directory"
+        "description": "Human's org workspace directory"
+      },
+      "humanRoamDir": {
+        "type": "string",
+        "description": "Human's roam node directory (defaults to <humanDir>/roam)"
       },
       "agentDb": {
         "type": "string",
@@ -37,20 +45,28 @@
   },
   "uiHints": {
     "agentDir": {
-      "label": "Agent Directory",
+      "label": "Agent Workspace Directory",
       "placeholder": "~/org/alcuin"
     },
+    "agentRoamDir": {
+      "label": "Agent Roam Directory",
+      "placeholder": "~/org/alcuin/roam"
+    },
     "humanDir": {
-      "label": "Human Directory",
+      "label": "Human Workspace Directory",
       "placeholder": "~/org/human"
+    },
+    "humanRoamDir": {
+      "label": "Human Roam Directory",
+      "placeholder": "~/org/human/roam"
     },
     "agentDb": {
       "label": "Agent Database",
-      "placeholder": "~/.local/share/org-memory/agent/.org.db"
+      "placeholder": "~/org/alcuin/roam/.org.db"
     },
     "humanDb": {
       "label": "Human Database",
-      "placeholder": "~/.local/share/org-memory/human/.org.db"
+      "placeholder": "~/org/human/roam/.org.db"
     },
     "orgBin": {
       "label": "org CLI Binary",

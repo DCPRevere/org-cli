@@ -1,6 +1,6 @@
 ---
 name: org-memory
-version: 0.3.0
+version: 0.5.0
 description: "Structured knowledge base and task management using org-mode files. Query, mutate, link, and search org files and org-roam databases with the `org` CLI."
 metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_AGENT_DIR","ORG_MEMORY_HUMAN_DIR","ORG_MEMORY_AGENT_DATABASE_LOCATION","ORG_MEMORY_HUMAN_DATABASE_LOCATION"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}]}}
 ---
@@ -13,69 +13,99 @@ Use the `org` CLI to maintain structured, linked, human-readable knowledge in or
 
 When your human uses these patterns, act on them directly.
 
-| Keyword | Meaning | Target |
+### Org mutations
+
+| Prefix | Alias | Action |
 |---|---|---|
-| `Todo:` | Create a task with a date | `$ORG_MEMORY_HUMAN_DIR` |
-| `Note:` | Write this down for me | `$ORG_MEMORY_HUMAN_DIR` |
-| `Done:` / `Finished:` | Mark a task complete | `$ORG_MEMORY_HUMAN_DIR` |
-| `Know:` | Store this for agent recall | `$ORG_MEMORY_AGENT_DIR` |
+| `t:` | `Todo:` | Create TODO in human's org (extracts dates) |
+| `d:` | `Done:` / `Finished:` | Mark a TODO as DONE |
+| `s:` | | Reschedule a TODO |
+| `r:` | `Note:` | Save to human's roam (knowledge/info) |
+| `k:` | `Know:` / `Remember:` | Agent learns it (agent's knowledge base) |
+
+### Behaviour modifiers
+
+These prefixes change how you respond, not what you store.
+
+| Prefix | Action |
+|---|---|
+| `v:` | Voice reply (TTS) |
+| `?` | Research (web + files) |
+| `@` | Roam lookup |
+| `w:` | Work context (Remundo) |
+| `!` | Urgent — act now |
+| `q:` | Quick answer, no tools |
 
 ### Todo — create a task
 
-`Todo: <text>` means "create a task." Extract any date or timeframe from the text and schedule it. If the text contains a relative date ("in 3 weeks", "by Friday", "next month"), compute the actual date and add `--scheduled <date>` or `--deadline <date>`.
+`t: <text>` or `Todo: <text>` means "create a task." Extract any date or timeframe from the text and schedule it. If the text contains a relative date ("in 3 weeks", "by Friday", "next month"), compute the actual date and add `--scheduled <date>` or `--deadline <date>`.
 
 Action: `org add "$ORG_MEMORY_HUMAN_DIR/inbox.org" '<title>' --todo TODO --scheduled <date> --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json`
 
 Use `--deadline` instead of `--scheduled` when the text implies a hard due date ("by Friday", "due March 1st"). Use `--scheduled` for softer timing ("in 3 weeks", "next month", "tomorrow").
 
 Examples:
-- "Todo: submit taxes in 3 weeks" → `org add .../inbox.org 'Submit taxes' --todo TODO --scheduled 2026-03-18`
+- "t: submit taxes in 3 weeks" → `org add .../inbox.org 'Submit taxes' --todo TODO --scheduled 2026-03-18`
 - "Todo: renew passport by June" → `org add .../inbox.org 'Renew passport' --todo TODO --deadline 2026-06-01`
-- "Todo: call dentist tomorrow" → `org add .../inbox.org 'Call dentist' --todo TODO --scheduled 2026-02-26`
+- "t: call dentist tomorrow" → `org add .../inbox.org 'Call dentist' --todo TODO --scheduled 2026-02-26`
 - "Todo: book flights" → `org add .../inbox.org 'Book flights' --todo TODO` (no date mentioned)
 
 ### Note — for the human
 
-`Note: <text>` means "add this to MY org files." It is always a task or reminder for the *human*, not for the agent.
+`r: <text>` or `Note: <text>` means "add this to MY org files." It is always a task or reminder for the *human*, not for the agent.
 
 Action: `org add "$ORG_MEMORY_HUMAN_DIR/inbox.org" '<text>' --todo TODO -f json`
 
 If the note includes a date or deadline, add `--scheduled <date>` or `--deadline <date>`. If there's no date, add it without one (the human will schedule it themselves, or ask you to).
 
 Examples:
-- "Note: Buy groceries" → `org add .../inbox.org 'Buy groceries' --todo TODO`
+- "r: Buy groceries" → `org add .../inbox.org 'Buy groceries' --todo TODO`
 - "Note: Review PR #42 by Friday" → `org add .../inbox.org 'Review PR #42' --todo TODO --deadline 2026-02-28`
-- "Note: we could add feature X to the app" → `org add .../inbox.org 'Add feature X to the app' --todo TODO`
+- "r: we could add feature X to the app" → `org add .../inbox.org 'Add feature X to the app' --todo TODO`
 - "Note: send email to Donna about safeguarding" → `org add .../inbox.org 'Send email to Donna about safeguarding' --todo TODO`
 
-**Note vs Todo:** Both create TODO headings. The difference is intent — `Todo:` signals a concrete task (always try to extract a date), while `Note:` is broader (ideas, reminders, observations). When there's no date, add it without one.
+**Note vs Todo:** Both create TODO headings. The difference is intent — `t:` / `Todo:` signals a concrete task (always try to extract a date), while `r:` / `Note:` is broader (ideas, reminders, observations). When there's no date, add it without one.
 
-**Edge case — ideas and observations:** If the human says "Note: we could do X" or "Note: idea for Y", it's still a Note. They're telling you to write it down for them. Add it as a TODO. Don't create a roam node, don't put it in the agent's knowledge base.
+**Edge case — ideas and observations:** If the human says "r: we could do X" or "Note: idea for Y", it's still a Note. They're telling you to write it down for them. Add it as a TODO. Don't create a roam node, don't put it in the agent's knowledge base.
 
-### Done — mark complete
+### Schedule — reschedule a task
 
-`Done: <text>` or `Finished: <text>` means "mark this task as DONE." Search for the matching TODO and set its state.
+`s: <text>` means "reschedule this task." Search for the matching TODO and update its scheduled date.
 
 Action:
-1. Search: `org todos --state TODO --search '<text>' -d "$ORG_MEMORY_HUMAN_DIR" -f json`
-2. If exactly one match: `org todo <file> '<title>' DONE -f json`
+1. Search: `org todo list --state TODO --search '<text>' -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+2. If exactly one match: `org schedule <custom_id> <date> -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json`
 3. If multiple matches: show them to the human and ask which one
 4. If no match: tell the human you couldn't find it
 
 Examples:
-- "Done: pay Nigel Kerry" → find and mark DONE
+- "s: taxes to next Friday" → find "taxes" TODO, reschedule to next Friday
+- "s: dentist 2026-04-01" → find "dentist" TODO, reschedule to 2026-04-01
+
+### Done — mark complete
+
+`d: <text>`, `Done: <text>`, or `Finished: <text>` means "mark this task as DONE." Search for the matching TODO and set its state.
+
+Action:
+1. Search: `org todo list --state TODO --search '<text>' -d "$ORG_MEMORY_HUMAN_DIR" -f json`
+2. If exactly one match: `org todo set <custom_id> DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json`
+3. If multiple matches: show them to the human and ask which one
+4. If no match: tell the human you couldn't find it
+
+Examples:
+- "d: pay Nigel Kerry" → find and mark DONE
 - "Finished: the PR review" → find and mark DONE
 - "Done: groceries" → search for "groceries", mark DONE
 
 ### Know — for the agent
 
-`Know: <info>` means "store this in YOUR knowledge base for future recall." This is information the agent should retain across sessions.
+`k: <info>`, `Know: <info>`, or `Remember: <info>` means "store this in YOUR knowledge base for future recall." This is information the agent should retain across sessions.
 
 Action: Search for an existing node first (`org roam node find`), then create or update.
 
 Examples:
-- "Know: Sarah prefers morning meetings" → Create/update a node for Sarah in `$ORG_MEMORY_AGENT_DIR`
-- "Know: The API uses OAuth2, not API keys" → Create/update a node for the API in `$ORG_MEMORY_AGENT_DIR`
+- "k: Sarah prefers morning meetings" → Create/update a node for Sarah in `$ORG_MEMORY_AGENT_DIR`
+- "Remember: The API uses OAuth2, not API keys" → Create/update a node for the API in `$ORG_MEMORY_AGENT_DIR`
 
 ### After every write — confirm
 
@@ -130,15 +160,19 @@ Configuration is via environment variables. Set them in `openclaw.json` so they 
 | Variable | Default | Purpose |
 |---|---|---|
 | `ORG_MEMORY_USE_FOR_AGENT` | `true` | Enable the agent's own knowledge base |
-| `ORG_MEMORY_AGENT_DIR` | `~/org/agent` | Agent's org directory |
-| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/.local/share/org-memory/agent/.org.db` | Agent's database |
+| `ORG_MEMORY_AGENT_DIR` | `~/org/alcuin` | Agent's org workspace directory |
+| `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/alcuin/roam` | Agent's roam node directory |
+| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/alcuin/roam/.org.db` | Agent's database |
 | `ORG_MEMORY_USE_FOR_HUMAN` | `true` | Enable task management in the human's org files |
-| `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org directory |
-| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/.local/share/org-memory/human/.org.db` | Human's database |
+| `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org workspace directory |
+| `ORG_MEMORY_HUMAN_ROAM_DIR` | `~/org/human/roam` | Human's roam node directory |
+| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/roam/.org.db` | Human's database |
+
+Workspace dirs (`*_DIR`) hold tasks, inbox, and daily files. Roam dirs (`*_ROAM_DIR`) hold knowledge graph nodes. Databases are collocated with roam dirs by default. Roam dirs default to `<workspace>/roam` — roam nodes are never created in the workspace root.
 
 If `ORG_MEMORY_USE_FOR_AGENT` is not `true`, skip the Knowledge management section. If `ORG_MEMORY_USE_FOR_HUMAN` is not `true`, skip the Task management and Batch operations sections.
 
-Always pass `--db` to point at the correct database. The CLI auto-syncs the roam database after every mutation using the `--db` value. Without `--db`, the CLI defaults to the emacs org-roam database (`~/.emacs.d/org-roam.db`), which is not what you want.
+Always pass `--db` to point at the correct database. The CLI auto-syncs the roam database after every mutation using the `--db` value. Without `--db`, the CLI defaults to `<directory>/.org.db`.
 
 Initialize each enabled directory. If the directories already contain org files, sync them first:
 
@@ -164,7 +198,7 @@ Every headline created with `org add` is auto-assigned a short CUSTOM_ID (e.g. `
 Use CUSTOM_IDs to refer to headlines in subsequent commands — they are stable across edits and don't require a file path:
 
 ```bash
-org todo k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
+org todo set k4t DONE -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org schedule k4t 2026-03-15 -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org note k4t 'Pushed back per manager request' -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json
 org append k4t 'Updated scope per review.' -d "$ORG_MEMORY_HUMAN_DIR" --db "$ORG_MEMORY_HUMAN_DATABASE_LOCATION" -f json

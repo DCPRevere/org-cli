@@ -467,8 +467,7 @@ let commandDefs: CommandDef list =
             ("--search", "Filter by title substring (case-insensitive)")
             ("--sort", "Sort by: scheduled, deadline, priority, title, file")
             ("--reverse", "Reverse sort order") ]
-        HelpArgs =
-          [ "DEPRECATED: use 'todo list' instead" ] }
+        HelpArgs = [ "DEPRECATED: use 'todo list' instead" ] }
       { Name = "batch"
         Description = "Execute multiple commands from JSON stdin"
         Usage = "batch"

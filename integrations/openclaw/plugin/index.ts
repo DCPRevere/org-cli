@@ -441,6 +441,7 @@ When the human mentions facts in passing (a person's preference, a date, a relat
           try {
             const { stdout } = await runOrg(cfg.orgBin, [
               "todo",
+              "set",
               customId,
               "DONE",
               "-d",
