@@ -79,11 +79,9 @@ let formatNodeJson (node: RoamNode) : JsonNode =
     obj["aliases"] <- JsonOutput.jsonArray (node.Aliases |> List.map (fun a -> JsonValue.Create(a) :> JsonNode))
     obj
 
-let defaultDbPath () =
-    let emacsDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".emacs.d")
-
-    Path.Combine(emacsDir, "org-roam.db")
+/// Default roam database path: <directory>/.org.db
+let defaultDbPath (directory: string) =
+    Path.Combine(directory, ".org.db")
 
 let ensureDbDirectory (dbPath: string) =
     let dir = Path.GetDirectoryName(dbPath)
@@ -117,7 +115,7 @@ let handleRoam
     let dbPath =
         match Map.tryFind "db" opts with
         | Some(p :: _) -> p
-        | _ -> defaultDbPath ()
+        | _ -> defaultDbPath roamDir
 
     match roamRest with
     | "sync" :: rest ->

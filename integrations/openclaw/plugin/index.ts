@@ -9,36 +9,49 @@ import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
 // Config resolution: env vars > plugin config > defaults
 // ---------------------------------------------------------------------------
 
-type OrgMemoryConfig = {
+export type OrgMemoryConfig = {
   agentDir: string;
+  agentRoamDir: string;
   humanDir: string;
+  humanRoamDir: string;
   agentDb: string;
   humanDb: string;
   orgBin: string;
   inboxFile: string;
 };
 
-function resolveConfig(pluginConfig?: Record<string, unknown>): OrgMemoryConfig {
+export function resolveConfig(pluginConfig?: Record<string, unknown>): OrgMemoryConfig {
   const home = homedir();
   const cfg = pluginConfig ?? {};
 
+  const agentDir =
+    process.env.ORG_MEMORY_AGENT_DIR ??
+    (cfg.agentDir as string | undefined) ??
+    join(home, "org/alcuin");
+  const humanDir =
+    process.env.ORG_MEMORY_HUMAN_DIR ??
+    (cfg.humanDir as string | undefined) ??
+    join(home, "org/human");
+
   return {
-    agentDir:
-      process.env.ORG_MEMORY_AGENT_DIR ??
-      (cfg.agentDir as string | undefined) ??
-      join(home, "org/alcuin"),
-    humanDir:
-      process.env.ORG_MEMORY_HUMAN_DIR ??
-      (cfg.humanDir as string | undefined) ??
-      join(home, "org/human"),
+    agentDir,
+    agentRoamDir:
+      process.env.ORG_MEMORY_AGENT_ROAM_DIR ??
+      (cfg.agentRoamDir as string | undefined) ??
+      join(agentDir, "roam"),
+    humanDir,
+    humanRoamDir:
+      process.env.ORG_MEMORY_HUMAN_ROAM_DIR ??
+      (cfg.humanRoamDir as string | undefined) ??
+      join(humanDir, "roam"),
     agentDb:
       process.env.ORG_MEMORY_AGENT_DATABASE_LOCATION ??
       (cfg.agentDb as string | undefined) ??
-      join(home, ".local/share/org-memory/agent/.org.db"),
+      join(agentDir, "roam/.org.db"),
     humanDb:
       process.env.ORG_MEMORY_HUMAN_DATABASE_LOCATION ??
       (cfg.humanDb as string | undefined) ??
-      join(home, ".local/share/org-memory/human/.org.db"),
+      join(humanDir, "roam/.org.db"),
     orgBin:
       process.env.ORG_MEMORY_ORG_BIN ??
       (cfg.orgBin as string | undefined) ??
@@ -109,7 +122,9 @@ const orgMemoryPlugin = {
   register(api: OpenClawPluginApi) {
     const cfg = resolveConfig(api.pluginConfig);
 
-    api.logger.info(`org-memory: agentDir=${cfg.agentDir}, orgBin=${cfg.orgBin}`);
+    api.logger.info(
+      `org-memory: agentDir=${cfg.agentDir}, agentRoamDir=${cfg.agentRoamDir}, orgBin=${cfg.orgBin}`,
+    );
 
     // ======================================================================
     // Session-start hook: inject memory.org + daily files as context
@@ -117,6 +132,42 @@ const orgMemoryPlugin = {
 
     api.on("before_agent_start", async () => {
       const parts: string[] = [];
+
+      // Inject shortcut instructions so the agent knows how to handle quick-capture
+      parts.push(`<org-memory-instructions>
+## Quick-Capture Shortcuts
+
+These shortcuts trigger org-cli actions. Act on them immediately, confirm briefly.
+
+| Prefix | Alias | Target | Action |
+|---|---|---|---|
+| \`t:\` | \`Todo:\` | Human's org | Create TODO in inbox.org (extract dates → --scheduled/--deadline) |
+| \`d:\` | \`Done:\` / \`Finished:\` | Human's org | Mark matching TODO as DONE |
+| \`s:\` | | Human's org | Reschedule a TODO to a new date |
+| \`r:\` | \`Note:\` | Human's roam | Save knowledge/info to human's roam |
+| \`k:\` | \`Know:\` / \`Remember:\` | Agent's roam | Agent learns — store in agent's knowledge base |
+
+### Rules
+- **Todo vs Note**: Both create TODOs. \`t:\` is a concrete task (always extract a date if present). \`Note:\` is broader (ideas, reminders). When no date, add without one.
+- **Done**: Search for matching TODO first. If multiple matches, ask which one. If no match, say so.
+- **Know**: Search for existing node first (\`org roam node find\`), then create or update. Never create duplicates.
+- **Schedule**: Use \`--deadline\` for hard due dates ("by Friday"). Use \`--scheduled\` for softer timing ("next week").
+- **After every write**: Confirm what you did: \`org-memory: <action> <file-path>\`
+- **Shell safety**: Always single-quote user-provided text in org-cli commands. Use \`--stdin\` for multi-line content.
+- **Always use \`-f json\`** for structured output and **\`--db\`** to point at the correct database.
+
+### Directories
+- Human's org workspace: \`${cfg.humanDir}\` (tasks, projects, inbox.org)
+- Human's roam nodes: \`${cfg.humanRoamDir}\` (knowledge, people, concepts)
+- Agent's org workspace: \`${cfg.agentDir}\` (agent's own files)
+- Agent's roam nodes: \`${cfg.agentRoamDir}\` (agent's knowledge base)
+- Daily notes: \`${cfg.agentDir}/daily/YYYY-MM-DD.org\`
+
+**Important:** Roam nodes are ONLY created in the roam directories, never in the workspace root. The plugin tools handle this automatically.
+
+### Ambient Capture
+When the human mentions facts in passing (a person's preference, a date, a relationship), capture them in the agent's knowledge base without being asked — but only when the info has lasting value. Complete the explicit request first, then silently update/create the relevant node.
+</org-memory-instructions>`);
 
       const memoryOrg = await readOrgFile(join(cfg.agentDir, "memory.org"));
       if (memoryOrg) {
@@ -232,7 +283,7 @@ const orgMemoryPlugin = {
             identifier: string;
             dir?: "agent" | "human";
           };
-          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const roamDir = dir === "human" ? cfg.humanRoamDir : cfg.agentRoamDir;
           const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
 
           try {
@@ -243,7 +294,7 @@ const orgMemoryPlugin = {
               "find",
               identifier,
               "-d",
-              d,
+              roamDir,
               "--db",
               db,
               "-f",
@@ -271,7 +322,7 @@ const orgMemoryPlugin = {
                 filePath,
                 identifier,
                 "-d",
-                d,
+                roamDir,
                 "--db",
                 db,
                 "-f",
@@ -556,7 +607,7 @@ const orgMemoryPlugin = {
             tags?: string[];
             dir?: "agent" | "human";
           };
-          const d = dir === "human" ? cfg.humanDir : cfg.agentDir;
+          const roamDir = dir === "human" ? cfg.humanRoamDir : cfg.agentRoamDir;
           const db = dir === "human" ? cfg.humanDb : cfg.agentDb;
 
           const args = ["roam", "node", "create", title];
@@ -565,7 +616,7 @@ const orgMemoryPlugin = {
               args.push("-t", tag);
             }
           }
-          args.push("-d", d, "--db", db, "-f", "json");
+          args.push("-d", roamDir, "--db", db, "-f", "json");
 
           try {
             const { stdout } = await runOrg(cfg.orgBin, args);
@@ -675,7 +726,7 @@ const orgMemoryPlugin = {
       id: "org-memory",
       start: () => {
         api.logger.info(
-          `org-memory: started (agent: ${cfg.agentDir}, human: ${cfg.humanDir})`,
+          `org-memory: started (agent: ${cfg.agentDir}, agentRoam: ${cfg.agentRoamDir}, human: ${cfg.humanDir}, humanRoam: ${cfg.humanRoamDir})`,
         );
       },
       stop: () => {

@@ -256,17 +256,17 @@ let tryAutoSyncIndex (opts: Map<string, string list>) (filePaths: string list) =
         with _ ->
             ()
 
-let resolveRoamDbPath (opts: Map<string, string list>) =
+let resolveRoamDbPath (opts: Map<string, string list>) (dir: string) =
     match Map.tryFind "db" opts with
     | Some(p :: _) -> p
-    | _ -> OrgCli.RoamCommands.defaultDbPath ()
+    | _ -> OrgCli.RoamCommands.defaultDbPath dir
 
 let tryAutoSyncRoam (opts: Map<string, string list>) (filePaths: string list) =
-    let dbPath = resolveRoamDbPath opts
+    let dir = filePaths |> List.head |> Path.GetDirectoryName
+    let dbPath = resolveRoamDbPath opts dir
 
     if File.Exists(dbPath) then
         try
-            let dir = filePaths |> List.head |> Path.GetDirectoryName
             use db = new OrgCli.Roam.Database.OrgRoamDb(dbPath)
 
             match db.Initialize() with
@@ -449,7 +449,7 @@ let printUsage () =
     printfn "  -q, --quiet             Suppress informational text output"
 
     printfn
-        "  --db <path>             Database path (default: ~/.emacs.d/org-roam.db for roam, <dir>/.org-index.db for index)"
+        "  --db <path>             Database path (default: <dir>/.org.db for roam, <dir>/.org-index.db for index)"
 
     printfn ""
     printfn "Org Commands:"
