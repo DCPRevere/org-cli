@@ -1,6 +1,6 @@
 {
   "name": "@dcprevere/org-memory",
-  "version": "0.5.3",
+  "version": "0.6.0",
   "type": "module",
   "description": "Structured knowledge base and task management using org-mode files and the org CLI.",
   "license": "MIT",
