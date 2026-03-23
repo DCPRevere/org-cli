@@ -887,17 +887,17 @@ let ``syncFile indexes headline without CUSTOM_ID as NULL`` () =
         finally
             Directory.Delete(dir, true))
 
-// ── custom-id assign command ──
+// ── id stamp command ──
 
 [<Fact>]
-let ``custom-id assign adds CUSTOM_IDs to headlines without them`` () =
+let ``id stamp adds CUSTOM_IDs to headlines without them`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
     File.WriteAllText(file, "* First\n* Second\n* Third\n")
 
     try
-        let args = [| "custom-id"; "assign"; "--directory"; dir; "--quiet" |]
+        let args = [| "id"; "stamp"; "--directory"; dir; "--quiet" |]
         let exitCode = Program.main args
         Assert.Equal(0, exitCode)
 
@@ -911,7 +911,7 @@ let ``custom-id assign adds CUSTOM_IDs to headlines without them`` () =
         Directory.Delete(dir, true)
 
 [<Fact>]
-let ``custom-id assign skips headlines that already have CUSTOM_ID`` () =
+let ``id stamp skips headlines that already have CUSTOM_ID`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
@@ -919,7 +919,7 @@ let ``custom-id assign skips headlines that already have CUSTOM_ID`` () =
     File.WriteAllText(file, "* Has ID\n:PROPERTIES:\n:CUSTOM_ID: existing\n:END:\n* No ID\n")
 
     try
-        let args = [| "custom-id"; "assign"; "--directory"; dir; "--quiet" |]
+        let args = [| "id"; "stamp"; "--directory"; dir; "--quiet" |]
         let exitCode = Program.main args
         Assert.Equal(0, exitCode)
 
@@ -937,7 +937,7 @@ let ``custom-id assign skips headlines that already have CUSTOM_ID`` () =
         Directory.Delete(dir, true)
 
 [<Fact>]
-let ``custom-id assign works across multiple files`` () =
+let ``id stamp works across multiple files`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file1 = Path.Combine(dir, "a.org")
@@ -946,7 +946,7 @@ let ``custom-id assign works across multiple files`` () =
     File.WriteAllText(file2, "* Task B1\n")
 
     try
-        let args = [| "custom-id"; "assign"; "--directory"; dir; "--quiet" |]
+        let args = [| "id"; "stamp"; "--directory"; dir; "--quiet" |]
         let exitCode = Program.main args
         Assert.Equal(0, exitCode)
 
@@ -968,7 +968,7 @@ let ``custom-id assign works across multiple files`` () =
         Directory.Delete(dir, true)
 
 [<Fact>]
-let ``custom-id assign with dry-run does not modify files`` () =
+let ``id stamp with dry-run does not modify files`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
@@ -976,7 +976,7 @@ let ``custom-id assign with dry-run does not modify files`` () =
     File.WriteAllText(file, original)
 
     try
-        let args = [| "custom-id"; "assign"; "--directory"; dir; "--dry-run"; "--quiet" |]
+        let args = [| "id"; "stamp"; "--directory"; dir; "--dry-run"; "--quiet" |]
         let exitCode = Program.main args
         Assert.Equal(0, exitCode)
 
@@ -986,7 +986,7 @@ let ``custom-id assign with dry-run does not modify files`` () =
         Directory.Delete(dir, true)
 
 [<Fact>]
-let ``custom-id assign JSON output reports counts`` () =
+let ``id stamp JSON output reports counts`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
@@ -999,7 +999,7 @@ let ``custom-id assign JSON output reports counts`` () =
         Console.SetOut(sw)
 
         try
-            let args = [| "custom-id"; "assign"; "--directory"; dir; "--format"; "json" |]
+            let args = [| "id"; "stamp"; "--directory"; dir; "--format"; "json" |]
             Program.main args |> ignore
         finally
             Console.SetOut(oldOut)

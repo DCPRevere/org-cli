@@ -258,20 +258,23 @@ let resolveRoamDbPath (opts: Map<string, string list>) (dir: string) =
     | _ -> OrgCli.RoamCommands.defaultDbPath dir
 
 let tryAutoSyncRoam (opts: Map<string, string list>) (filePaths: string list) =
-    let dir = filePaths |> List.head |> Path.GetDirectoryName
-    let dbPath = resolveRoamDbPath opts dir
+    if List.isEmpty filePaths then
+        ()
+    else
+        let dir = filePaths |> List.head |> Path.GetDirectoryName
+        let dbPath = resolveRoamDbPath opts dir
 
-    if File.Exists(dbPath) then
-        try
-            use db = new OrgCli.Roam.Database.OrgRoamDb(dbPath)
+        if File.Exists(dbPath) then
+            try
+                use db = new OrgCli.Roam.Database.OrgRoamDb(dbPath)
 
-            match db.Initialize() with
-            | Error _ -> ()
-            | Ok() ->
-                for f in filePaths do
-                    OrgCli.Roam.Sync.updateFile db dir f
-        with _ ->
-            ()
+                match db.Initialize() with
+                | Error _ -> ()
+                | Ok() ->
+                    for f in filePaths do
+                        OrgCli.Roam.Sync.updateFile db dir f
+            with _ ->
+                ()
 
 /// Determine if an argument looks like a file path (as opposed to a bare identifier).
 let looksLikeFile (arg: string) : bool =
@@ -442,7 +445,10 @@ let printUsage () =
     printfn "  --log-done <action>     Override log-done: none, time, or note"
     printfn "  --deadline-warning-days <n>  Override deadline warning days"
     printfn "  --dry-run               Preview mutation without writing to file"
-    printfn "  -q, --quiet             Suppress informational text output"
+
+    printfn
+        "  -q, --quiet             Suppress informational text output
+  -v, --verbose           Print diagnostic info (DB paths, directory, files) to stderr"
 
     printfn "  --db <path>             Database path (default: <dir>/.org.db for roam, <dir>/.org-index.db for index)"
 
@@ -483,7 +489,7 @@ let printUsage () =
     printfn "Index Commands:"
     printfn "  index [-d dir] [--force]                Build or update the headline index"
     printfn "  fts <query> [-d dir]                    Full-text search via index"
-    printfn "  custom-id assign [-d dir] [--dry-run]   Assign CUSTOM_ID to all headlines"
+    printfn "  id stamp [-d dir] [--dry-run]            Stamp CUSTOM_ID onto all headlines"
     printfn ""
     printfn "Agenda Commands:"
     printfn "  today                                 All TODOs due today or overdue"
@@ -595,6 +601,15 @@ let handleToday (config: OrgConfig) (opts: Map<string, string list>) (isJson: bo
         if not (List.isEmpty todayItems) then
             printfn "Today:"
             printTable (todayTableColumns baseDir) todayItems
+
+        let noId =
+            due
+            |> List.filter (fun i ->
+                headlineCustomId i.Headline |> Option.isNone
+                && Types.tryGetProperty "ID" i.Headline.Properties |> Option.isNone)
+
+        if not (List.isEmpty noId) then
+            eprintfn "\n%d item(s) have no ID — run 'org id stamp' to fix" noId.Length
 
     0
 
@@ -1091,7 +1106,24 @@ let handleCustomIdAssign (opts: Map<string, string list>) (isJson: bool) (isDryR
         sessionIds.Add(id) |> ignore
         id
 
+    let spinnerChars = [| '|'; '/'; '-'; '\\' |]
+    let mutable spinnerIdx = 0
+    let mutable filesProcessed = 0
+    let totalFiles = files.Length
+
+    let updateSpinner () =
+        if not isQuiet && not isJson then
+            let pct =
+                if totalFiles = 0 then
+                    100
+                else
+                    filesProcessed * 100 / totalFiles
+
+            eprintf "\r[%c] %d/%d files (%d%%)   " spinnerChars.[spinnerIdx % 4] filesProcessed totalFiles pct
+            spinnerIdx <- spinnerIdx + 1
+
     for file in files do
+        updateSpinner ()
         let content = File.ReadAllText(file)
         let doc = Document.parse content
 
@@ -1113,6 +1145,11 @@ let handleCustomIdAssign (opts: Map<string, string list>) (isJson: bool) (isDryR
             if not isDryRun then
                 File.WriteAllText(file, current)
                 IndexSync.syncFile db file
+
+        filesProcessed <- filesProcessed + 1
+
+    if not isQuiet && not isJson then
+        eprintf "\r%s\r" (String.replicate 40 " ") // clear spinner line
 
     if isJson then
         let obj = System.Text.Json.Nodes.JsonObject()
@@ -1250,7 +1287,18 @@ let main args =
     let isJson = format = "json"
     let isDryRun = Map.containsKey "dry-run" opts
     let isQuiet = Map.containsKey "quiet" opts || Map.containsKey "q" opts
+    let isVerbose = Map.containsKey "verbose" opts || Map.containsKey "v" opts
     let config = loadConfig opts
+
+    let printVerbose (msg: string) =
+        if isVerbose then
+            eprintfn "[verbose] %s" msg
+
+    if isVerbose then
+        let dir = resolveDirectory opts
+        printVerbose (sprintf "directory: %s" dir)
+        printVerbose (sprintf "roam db:   %s" (resolveRoamDbPath opts dir))
+        printVerbose (sprintf "index db:  %s" (resolveIndexDbPath opts))
 
     if Map.containsKey "version" opts || List.contains "--version" positional then
         let ver =
@@ -2019,7 +2067,11 @@ let main args =
             | "index" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "index"
                 0
-            | "index" :: _ -> handleIndex opts isJson isQuiet
+            | "index" :: [] -> handleIndex opts isJson isQuiet
+            | "index" :: sub :: _ ->
+                eprintfn "Error: unknown 'index' subcommand: %s" sub
+                printCommandHelp "index"
+                1
 
             | "fts" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "fts"
@@ -2030,13 +2082,13 @@ let main args =
                 printCommandHelp "fts"
                 1
 
-            | "custom-id" :: rest when hasHelpFlag opts rest ->
-                printCommandHelp "custom-id"
+            | "id" :: rest when hasHelpFlag opts rest ->
+                printCommandHelp "id"
                 0
-            | "custom-id" :: "assign" :: _ -> handleCustomIdAssign opts isJson isDryRun isQuiet
-            | "custom-id" :: _ ->
-                eprintfn "Error: 'custom-id' requires a subcommand. Usage: custom-id assign"
-                printCommandHelp "custom-id"
+            | "id" :: "stamp" :: _ -> handleCustomIdAssign opts isJson isDryRun isQuiet
+            | "id" :: _ ->
+                eprintfn "Error: 'id' requires a subcommand. Usage: id stamp"
+                printCommandHelp "id"
                 1
 
             | "batch" :: _ ->
@@ -2069,7 +2121,7 @@ let main args =
             | "completions" :: "bash" :: _ ->
                 printfn
                     """_org_completions() {
-    local commands="today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts custom-id roam batch schema completions"
+    local commands="today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts id roam batch schema completions"
     local flags="--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help"
     if [ "${#COMP_WORDS[@]}" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$commands $flags" -- "${COMP_WORDS[1]}"))

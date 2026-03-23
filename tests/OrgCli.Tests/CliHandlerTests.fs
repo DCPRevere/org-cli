@@ -1325,3 +1325,87 @@ let ``schedule clear ignores repeater flag`` () =
         Assert.DoesNotContain("SCHEDULED:", content)
     finally
         cleanup [ dir ]
+
+// ── unknown subcommand error handling ──
+
+[<Fact>]
+let ``index with unknown subcommand returns error`` () =
+    let dir = tempDir ()
+
+    try
+        let stderr, exitCode =
+            captureStderr (fun () -> Program.main [| "index"; "assign"; "--directory"; dir |])
+
+        Assert.Equal(1, exitCode)
+        Assert.Contains("unknown 'index' subcommand", stderr)
+        Assert.Contains("assign", stderr)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``id with unknown subcommand returns error`` () =
+    let dir = tempDir ()
+
+    try
+        let stderr, exitCode =
+            captureStderr (fun () -> Program.main [| "id"; "frobnicate"; "--directory"; dir |])
+
+        Assert.Equal(1, exitCode)
+        Assert.Contains("id", stderr)
+    finally
+        cleanup [ dir ]
+
+// ── today no-ID hint ──
+
+[<Fact>]
+let ``today prints hint when items have no ID`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "inbox.org" "* TODO Fix thing\nSCHEDULED: <2026-03-23 Mon>\n"
+        |> ignore
+
+        let _, stderr, exitCode =
+            captureBoth (fun () -> Program.main [| "today"; "--directory"; dir |])
+
+        Assert.Equal(0, exitCode)
+        Assert.Contains("no ID", stderr)
+        Assert.Contains("org id stamp", stderr)
+    finally
+        cleanup [ dir ]
+
+[<Fact>]
+let ``today does not print hint when all items have IDs`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile
+            dir
+            "inbox.org"
+            "* TODO Fix thing\nSCHEDULED: <2026-03-23 Mon>\n:PROPERTIES:\n:CUSTOM_ID: abc\n:END:\n"
+        |> ignore
+
+        let _, stderr, exitCode =
+            captureBoth (fun () -> Program.main [| "today"; "--directory"; dir |])
+
+        Assert.Equal(0, exitCode)
+        Assert.DoesNotContain("org id stamp", stderr)
+    finally
+        cleanup [ dir ]
+
+// ── id stamp spinner ──
+
+[<Fact>]
+let ``id stamp completes without spinner artifacts in stdout`` () =
+    let dir = tempDir ()
+
+    try
+        writeOrgFile dir "a.org" "* Task One\n* Task Two\n" |> ignore
+
+        let stdout, _, exitCode =
+            captureBoth (fun () -> Program.main [| "id"; "stamp"; "--directory"; dir; "--quiet" |])
+
+        Assert.Equal(0, exitCode)
+        Assert.Equal("", stdout.Trim())
+    finally
+        cleanup [ dir ]

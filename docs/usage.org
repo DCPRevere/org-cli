@@ -451,10 +451,10 @@ The index is also updated automatically after mutations (=todo=, =add=, =refile=
 
 Headlines can be addressed by short CUSTOM_ID strings (e.g. =k4t=) stored in the standard =:CUSTOM_ID:= property. These are base36 (a-z, 0-9), starting at 3 characters and growing as needed to stay unique across the index.
 
-=org add= auto-assigns a CUSTOM_ID when an index database exists. To backfill IDs on existing headlines:
+=org add= auto-assigns a CUSTOM_ID when an index database exists. To stamp IDs onto existing headlines:
 
 #+begin_example
-org custom-id assign [-d <dir>] [--dry-run]
+org id stamp [-d <dir>] [--dry-run]
 #+end_example
 
 This scans all =.org= files, generates a unique CUSTOM_ID for every headline that lacks one, and writes the =:PROPERTIES:= drawers. Use =--dry-run= to preview without modifying files.

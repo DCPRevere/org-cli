@@ -439,15 +439,15 @@ let commandDefs: CommandDef list =
           [ "<query>        FTS5 query: boolean (AND, OR, NOT), prefix (word*), phrase (\"exact phrase\")"
             "--no-sync      Skip pre-query sync"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
-      { Name = "custom-id"
-        Description = "Assign CUSTOM_ID properties to headlines"
-        Usage = "custom-id assign [-d dir] [--db path] [--dry-run]"
+      { Name = "id"
+        Description = "Stamp CUSTOM_ID properties onto headlines"
+        Usage = "id stamp [-d dir] [--db path] [--dry-run]"
         Args = []
         Flags =
-          [ ("--dry-run", "Show what would be assigned without modifying files")
+          [ ("--dry-run", "Show what would be stamped without modifying files")
             ("--db", "Database path (default: <dir>/.org-index.db)") ]
         HelpArgs =
-          [ "assign         Assign CUSTOM_IDs to all headlines missing them"
+          [ "stamp          Stamp CUSTOM_IDs onto all headlines missing them"
             "--dry-run      Preview without modifying files"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
       { Name = "todos"
