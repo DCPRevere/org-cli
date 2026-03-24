@@ -2,7 +2,7 @@ import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { resolveConfig } from "./index.ts";
+import { resolveConfig, formatAddedTodo } from "./index.ts";
 
 // Save and restore env vars around each test
 const envKeys = [
@@ -138,5 +138,32 @@ describe("resolveConfig", () => {
       assert.ok(cfg.agentRoamDir.startsWith(cfg.agentDir + "/"));
       assert.ok(cfg.humanRoamDir.startsWith(cfg.humanDir + "/"));
     });
+  });
+});
+
+describe("formatAddedTodo", () => {
+  it("prefixes custom_id when present in JSON response", () => {
+    const stdout = JSON.stringify({ ok: true, data: { custom_id: "abc", title: "Fix thing" } });
+    const result = formatAddedTodo(stdout);
+    assert.ok(result.startsWith("TODO created with ID: abc\n\n"));
+    assert.ok(result.includes(stdout));
+  });
+
+  it("returns stdout unchanged when custom_id is absent", () => {
+    const stdout = JSON.stringify({ ok: true, data: { title: "Fix thing" } });
+    const result = formatAddedTodo(stdout);
+    assert.equal(result, stdout);
+  });
+
+  it("returns stdout unchanged when response is not JSON", () => {
+    const stdout = "Headline added";
+    const result = formatAddedTodo(stdout);
+    assert.equal(result, stdout);
+  });
+
+  it("returns stdout unchanged when ok is false", () => {
+    const stdout = JSON.stringify({ ok: false, error: { message: "bad" } });
+    const result = formatAddedTodo(stdout);
+    assert.equal(result, stdout);
   });
 });

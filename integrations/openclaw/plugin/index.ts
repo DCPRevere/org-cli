@@ -109,6 +109,23 @@ function yesterdayStr(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+export function formatAddedTodo(stdout: string): string {
+  try {
+    const parsed = JSON.parse(stdout);
+    const customId = parsed?.data?.custom_id;
+    if (customId) {
+      return `TODO created with ID: ${customId}\n\n${stdout}`;
+    }
+  } catch {
+    // non-JSON, use as-is
+  }
+  return stdout;
+}
+
+// ---------------------------------------------------------------------------
 // Plugin
 // ---------------------------------------------------------------------------
 
@@ -401,7 +418,7 @@ When the human mentions facts in passing (a person's preference, a date, a relat
           try {
             const { stdout } = await runOrg(cfg.orgBin, args);
             return {
-              content: [{ type: "text" as const, text: stdout }],
+              content: [{ type: "text" as const, text: formatAddedTodo(stdout) }],
               details: { action: "added" },
             };
           } catch (err) {
