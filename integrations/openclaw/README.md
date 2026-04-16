@@ -116,12 +116,12 @@ Set these to match your directory layout:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ORG_MEMORY_AGENT_DIR` | `~/org/alcuin` | Agent's org workspace directory |
-| `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/alcuin/roam` | Agent's roam node directory |
-| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/alcuin/roam/.org.db` | Agent's database |
+| `ORG_MEMORY_AGENT_DIR` | `~/org/agent` | Agent's org workspace directory |
+| `ORG_MEMORY_AGENT_ROAM_DIR` | `~/org/agent/roam` | Agent's roam node directory |
+| `ORG_MEMORY_AGENT_DATABASE_LOCATION` | `~/org/agent/.org.db` | Agent's database |
 | `ORG_MEMORY_HUMAN_DIR` | `~/org/human` | Human's org workspace directory |
 | `ORG_MEMORY_HUMAN_ROAM_DIR` | `~/org/human/roam` | Human's roam node directory |
-| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/roam/.org.db` | Human's database |
+| `ORG_MEMORY_HUMAN_DATABASE_LOCATION` | `~/org/human/.org.db` | Human's database |
 
 Optional:
 

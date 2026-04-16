@@ -11,14 +11,39 @@ The primary consumers are AI agents and automation scripts that need to query an
 
 * Installation
 
-Pre-built binaries are available on the [[https://github.com/dcprevere/org-cli/releases][releases page]]. Download, extract, and put =org= on your PATH. No runtime dependencies.
+Pre-built, self-contained binaries for Linux, macOS, and Windows are attached to every [[https://github.com/dcprevere/org-cli/releases][GitHub release]]. No .NET runtime required.
+
+** Linux / macOS
 
 #+begin_src shell
-# Or install as a global .NET tool (requires .NET 9.0 SDK)
+# Pick the asset for your platform:
+#   org-linux-x64.tar.gz   org-linux-arm64.tar.gz
+#   org-osx-x64.tar.gz     org-osx-arm64.tar.gz
+ASSET=org-linux-x64.tar.gz
+curl -L "https://github.com/dcprevere/org-cli/releases/latest/download/${ASSET}" | tar xz
+install -m 755 org ~/.local/bin/org    # or: sudo mv org /usr/local/bin/
+org --version
+#+end_src
+
+Verify checksums (optional):
+
+#+begin_src shell
+curl -LO https://github.com/dcprevere/org-cli/releases/latest/download/sha256sums.txt
+sha256sum -c --ignore-missing sha256sums.txt
+#+end_src
+
+** Windows
+
+Download =org-win-x64.zip= from the [[https://github.com/dcprevere/org-cli/releases][releases page]], extract =org.exe=, and add its directory to =PATH=.
+
+** Other install methods
+
+#+begin_src shell
+# Global .NET tool (requires .NET 9.0 SDK)
 dotnet tool install --global OrgCli
 
-# Or build from source
-git clone <repo-url>
+# Build from source
+git clone https://github.com/dcprevere/org-cli.git
 cd org-cli
 dotnet build OrgCli.slnx
 #+end_src
@@ -134,6 +159,27 @@ Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema v
 - =org completions bash|zsh|fish= for shell integration
 
 See [[file:docs/agents.org][docs/agents.org]] for a guide to building a knowledge base with an AI agent.
+
+** OpenClaw integration (=org-memory=)
+
+The fastest way to put =org= in front of an AI agent is the bundled [[https://github.com/openclaw/openclaw][OpenClaw]] skill, =org-memory=. It turns this CLI into structured, linked, human-readable memory for your agent: a knowledge graph for the agent itself, plus task management against your own org files.
+
+#+begin_src shell
+# Install from ClawHub
+openclaw skill install org-memory
+#+end_src
+
+Once installed you talk to the agent naturally and it drives =org= for you:
+
+- =k: Sarah prefers morning meetings= -- agent stores a fact in its knowledge base
+- =t: submit taxes in 3 weeks= -- agent creates a scheduled TODO in your inbox
+- =d: groceries= -- agent resolves the headline by short CUSTOM_ID and marks it DONE
+- =s: taxes to next Friday= -- agent reschedules
+- ="What's due today?"= -- agent runs =org today=
+
+The skill is what makes =org today=, short CUSTOM_IDs, and =org batch= actually useful day-to-day -- agenda queries, graph links, and file-less mutations are the things flat-text agent memory cannot do.
+
+See [[file:integrations/openclaw/README.md][integrations/openclaw/README.md]] for installation, configuration (agent vs human directories, env vars), and the full shortcut table.
 
 * Configuration
 
