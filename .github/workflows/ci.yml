@@ -36,3 +36,15 @@ jobs:
 
       - name: Vulnerability check
         run: dotnet list OrgCli.slnx package --vulnerable --include-transitive 2>&1 | tee /dev/stderr | grep -q "no vulnerable packages" || exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test OpenClaw plugins
+        run: |
+          for dir in integrations/openclaw/org-cli/plugin integrations/openclaw/org-memory/plugin; do
+            echo "::group::$dir"
+            (cd "$dir" && npm install --no-audit --no-fund && npm test)
+            echo "::endgroup::"
+          done

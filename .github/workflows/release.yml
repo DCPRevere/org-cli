@@ -75,12 +75,21 @@ jobs:
 
       - name: Validate version matches tag
         run: |
-          FILE_VER="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' Directory.Build.props)"
           TAG_VER="${{ steps.version.outputs.version }}"
-          if [ "$FILE_VER" != "$TAG_VER" ]; then
-            echo "::error::Directory.Build.props version '$FILE_VER' does not match tag '$TAG_VER'. Update <Version> before tagging."
+          fail() {
+            echo "::error::$1 version '$2' does not match tag '$TAG_VER'. Bump to $TAG_VER before tagging."
             exit 1
-          fi
+          }
+          FILE_VER="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' Directory.Build.props)"
+          [ "$FILE_VER" = "$TAG_VER" ] || fail "Directory.Build.props" "$FILE_VER"
+          for manifest in \
+            integrations/openclaw/org-cli/plugin/package.json \
+            integrations/openclaw/org-cli/plugin/openclaw.plugin.json \
+            integrations/openclaw/org-memory/plugin/package.json \
+            integrations/openclaw/org-memory/plugin/openclaw.plugin.json; do
+            V="$(node -p "require('./$manifest').version")"
+            [ "$V" = "$TAG_VER" ] || fail "$manifest" "$V"
+          done
 
       - name: Pack dotnet tool
         run: dotnet pack src/OrgCli/OrgCli.fsproj -c Release -p:Version=${{ steps.version.outputs.version }} -o artifacts/nupkg
@@ -162,23 +171,48 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
-      - name: Publish OpenClaw plugin to npm
+      - name: Publish org-cli plugin to npm
         if: env.NPM_TOKEN != ''
         continue-on-error: true
         run: |
           echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
           npm publish --access public
-        working-directory: integrations/openclaw/plugin
+        working-directory: integrations/openclaw/org-cli/plugin
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish to ClawHub
+      - name: Publish org-memory plugin to npm
+        if: env.NPM_TOKEN != ''
+        continue-on-error: true
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
+          npm publish --access public
+        working-directory: integrations/openclaw/org-memory/plugin
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Install ClawHub CLI
         if: env.CLAWHUB_TOKEN != ''
         continue-on-error: true
         run: |
           npm install -g clawhub
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser
-          clawhub publish integrations/openclaw --slug org-memory --name org-memory --version "${{ steps.version.outputs.version }}"
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      - name: Publish org-cli skill to ClawHub
+        if: env.CLAWHUB_TOKEN != ''
+        continue-on-error: true
+        run: |
+          clawhub publish integrations/openclaw/org-cli --slug org-cli --name org-cli --version "${{ steps.version.outputs.version }}"
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      - name: Publish org-memory skill to ClawHub
+        if: env.CLAWHUB_TOKEN != ''
+        continue-on-error: true
+        run: |
+          clawhub publish integrations/openclaw/org-memory --slug org-memory --name org-memory --version "${{ steps.version.outputs.version }}"
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
 
