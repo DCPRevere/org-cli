@@ -1,0 +1,39 @@
+{
+  "name": "@dcprevere/org-cli",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Task capture, scheduling, and linked knowledge in org-mode files via the org CLI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DCPRevere/org-cli.git",
+    "directory": "integrations/openclaw/org-cli/plugin"
+  },
+  "files": [
+    "index.ts",
+    "lib.ts",
+    "openclaw.plugin.json"
+  ],
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    },
+    "build": {
+      "openclawVersion": "2026.3.24-beta.2",
+      "pluginSdkVersion": "2026.3.24-beta.2"
+    }
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types index.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.48"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0"
+  }
+}

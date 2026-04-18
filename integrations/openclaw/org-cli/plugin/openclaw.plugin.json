@@ -1,0 +1,77 @@
+{
+  "id": "org-cli",
+  "kind": "memory",
+  "name": "org-cli",
+  "description": "Task capture, scheduling, and linked knowledge in org-mode files via the org CLI.",
+  "version": "1.0.0",
+  "contracts": {
+    "tools": [
+      "org_find",
+      "org_read_node",
+      "org_add_todo",
+      "org_add_note",
+      "org_mark_done",
+      "org_set_state",
+      "org_reschedule",
+      "org_list_todos",
+      "org_append",
+      "org_roam_upsert"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "dir": {
+        "type": "string",
+        "description": "Workspace directory"
+      },
+      "roamDir": {
+        "type": "string",
+        "description": "Roam nodes directory (defaults to <dir>/roam)"
+      },
+      "db": {
+        "type": "string",
+        "description": "Path to the SQLite database (defaults to <dir>/.org.db)"
+      },
+      "orgBin": {
+        "type": "string",
+        "description": "Path to the org CLI binary"
+      },
+      "inboxFile": {
+        "type": "string",
+        "description": "Filename for new captures (relative to dir)"
+      }
+    }
+  },
+  "uiHints": {
+    "dir": {
+      "label": "Workspace Directory",
+      "placeholder": "~/org",
+      "help": "Your org workspace — tasks, projects, and inbox.org."
+    },
+    "roamDir": {
+      "label": "Roam Directory",
+      "placeholder": "~/org/roam",
+      "help": "Where knowledge-graph nodes live. Defaults to <dir>/roam.",
+      "advanced": true
+    },
+    "db": {
+      "label": "Database",
+      "placeholder": "~/org/.org.db",
+      "help": "SQLite database for roam + index. Defaults to <dir>/.org.db.",
+      "advanced": true
+    },
+    "orgBin": {
+      "label": "org CLI Binary",
+      "placeholder": "org",
+      "help": "Path to the `org` binary. Must be on PATH or set to an absolute path.",
+      "advanced": true
+    },
+    "inboxFile": {
+      "label": "Inbox File",
+      "placeholder": "inbox.org",
+      "help": "Filename new captures are added to, relative to the workspace directory."
+    }
+  }
+}
