@@ -8,7 +8,7 @@
 #                    Add it as a repository secret under Settings > Secrets > Actions.
 #                    If the secret is absent, the nuget push step is skipped.
 #
-#   NPM_TOKEN      — npm access token for publishing @dcprevere/org-memory.
+#   NPM_TOKEN      — npm access token for publishing @dcprevere/org-cli and @dcprevere/org-memory.
 #                    Generate at https://www.npmjs.com/settings/tokens (Automation type).
 #                    Add it as a repository secret under Settings > Secrets > Actions.
 #                    If the secret is absent, the npm publish step is skipped.

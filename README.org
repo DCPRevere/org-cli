@@ -160,26 +160,36 @@ Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema v
 
 See [[file:docs/agents.org][docs/agents.org]] for a guide to building a knowledge base with an AI agent.
 
-** OpenClaw integration (=org-memory=)
+** OpenClaw integration
 
-The fastest way to put =org= in front of an AI agent is the bundled [[https://github.com/openclaw/openclaw][OpenClaw]] skill, =org-memory=. It turns this CLI into structured, linked, human-readable memory for your agent: a knowledge graph for the agent itself, plus task management against your own org files.
+This repo ships two [[https://github.com/openclaw/openclaw][OpenClaw]] plugins that put =org= in front of an AI agent:
+
+- =org-cli= -- task capture, scheduling, and a knowledge graph for *your* org files. The day-to-day agent-as-secretary case.
+- =org-memory= -- extends =org-cli= so the agent also keeps its own memory (daily notes, learned facts, a linked knowledge graph) in a separate org workspace. Install on top of =org-cli= if you want that layer.
 
 #+begin_src shell
-# Install from ClawHub
+# Manage your own org files
+openclaw skill install org-cli
+
+# Optional: also let the agent persist its own memory in org
 openclaw skill install org-memory
 #+end_src
 
 Once installed you talk to the agent naturally and it drives =org= for you:
 
-- =k: Sarah prefers morning meetings= -- agent stores a fact in its knowledge base
 - =t: submit taxes in 3 weeks= -- agent creates a scheduled TODO in your inbox
+- =n: think about hanging pictures up= -- plain captured headline, no TODO state
+- =k: Sarah prefers morning meetings= -- agent stores a fact in your roam graph against =Sarah=
 - =d: groceries= -- agent resolves the headline by short CUSTOM_ID and marks it DONE
 - =s: taxes to next Friday= -- agent reschedules
+- =f: sacra= -- agent searches across your headlines and roam nodes
 - ="What's due today?"= -- agent runs =org today=
 
-The skill is what makes =org today=, short CUSTOM_IDs, and =org batch= actually useful day-to-day -- agenda queries, graph links, and file-less mutations are the things flat-text agent memory cannot do.
+With =org-memory= loaded you additionally get =@a=-prefixed shortcuts (=@at:=, =@an:=, =@ak:=, =@ad:=, =@as:=, =@af:=) that target the agent's own workspace.
 
-See [[file:integrations/openclaw/README.md][integrations/openclaw/README.md]] for installation, configuration (agent vs human directories, env vars), and the full shortcut table.
+The plugins are what make =org today=, short CUSTOM_IDs, and =org batch= actually useful day-to-day -- agenda queries, graph links, and file-less mutations are the things flat-text agent memory cannot do.
+
+See [[file:integrations/openclaw/README.md][integrations/openclaw/README.md]] for an overview, or each plugin's README for install and env var details.
 
 * Configuration
 

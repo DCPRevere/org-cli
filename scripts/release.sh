@@ -36,16 +36,22 @@ echo "Bumping version to $version ..."
 sed -i "s|<Version>[^<]*</Version>|<Version>$version</Version>|" \
   "$root/Directory.Build.props"
 
-# OpenClaw plugin
-plugin="$root/integrations/openclaw/plugin"
-sed -i "s|\"version\": \"[^\"]*\"|\"version\": \"$version\"|" \
-  "$plugin/openclaw.plugin.json" \
-  "$plugin/package.json"
+# OpenClaw plugins (org-cli and org-memory ship from the same release)
+plugins=(
+  "$root/integrations/openclaw/org-cli/plugin"
+  "$root/integrations/openclaw/org-memory/plugin"
+)
 
-# package-lock.json: only replace the top-level project version lines,
-# not dependency versions deeper in the file
-sed -i '1,10 s|"version": "[^"]*"|"version": "'"$version"'"|' \
-  "$plugin/package-lock.json"
+for plugin in "${plugins[@]}"; do
+  sed -i "s|\"version\": \"[^\"]*\"|\"version\": \"$version\"|" \
+    "$plugin/openclaw.plugin.json" \
+    "$plugin/package.json"
+
+  # package-lock.json: only replace the top-level project version lines,
+  # not dependency versions deeper in the file
+  sed -i '1,10 s|"version": "[^"]*"|"version": "'"$version"'"|' \
+    "$plugin/package-lock.json"
+done
 
 echo "Building ..."
 dotnet build --warnaserror
@@ -53,12 +59,19 @@ dotnet build --warnaserror
 echo "Testing ..."
 dotnet test --no-build -q
 
+echo "Testing OpenClaw plugins ..."
+for plugin in "${plugins[@]}"; do
+  (cd "$plugin" && npm install --no-audit --no-fund --silent && npm test)
+done
+
 echo "Committing ..."
-git add \
-  "$root/Directory.Build.props" \
-  "$plugin/openclaw.plugin.json" \
-  "$plugin/package.json" \
-  "$plugin/package-lock.json"
+git add "$root/Directory.Build.props"
+for plugin in "${plugins[@]}"; do
+  git add \
+    "$plugin/openclaw.plugin.json" \
+    "$plugin/package.json" \
+    "$plugin/package-lock.json"
+done
 
 git commit -m "chore: bump version to $version"
 
