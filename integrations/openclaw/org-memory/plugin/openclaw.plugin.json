@@ -3,7 +3,7 @@
   "kind": "memory",
   "name": "org-memory",
   "description": "Agent-memory extension for org-cli: persists agent knowledge and daily notes to an org workspace, overriding memory-wiki.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "contracts": {
     "tools": [
       "org_memory_find",
