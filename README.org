@@ -15,6 +15,26 @@ Pre-built, self-contained binaries for Linux, macOS, and Windows are attached to
 
 ** Linux / macOS
 
+One-line install (detects OS/arch, verifies sha256, installs to =~/.local/bin=):
+
+#+begin_src shell
+curl -fsSL https://raw.githubusercontent.com/dcprevere/org-cli/master/scripts/install.sh | bash
+#+end_src
+
+Options:
+
+#+begin_src shell
+# Specific version
+curl -fsSL https://raw.githubusercontent.com/dcprevere/org-cli/master/scripts/install.sh | ORG_VERSION=1.0.0 bash
+
+# System-wide install (uses sudo if needed)
+curl -fsSL https://raw.githubusercontent.com/dcprevere/org-cli/master/scripts/install.sh | bash -s -- --prefix /usr/local/bin
+#+end_src
+
+Upgrade by re-running the one-liner -- it overwrites the existing binary in place.
+
+Manual install:
+
 #+begin_src shell
 # Pick the asset for your platform:
 #   org-linux-x64.tar.gz   org-linux-arm64.tar.gz
