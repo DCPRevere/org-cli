@@ -32,7 +32,6 @@ export default definePluginEntry({
   name: "org-cli",
   description:
     "Task capture, scheduling, and linked knowledge in org-mode files via the org CLI.",
-  kind: "memory",
 
   register(api: OpenClawPluginApi) {
     const cfg = resolveConfig(api.pluginConfig);

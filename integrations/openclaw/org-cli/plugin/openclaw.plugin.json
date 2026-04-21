@@ -1,6 +1,5 @@
 {
   "id": "org-cli",
-  "kind": "memory",
   "name": "org-cli",
   "description": "Task capture, scheduling, and linked knowledge in org-mode files via the org CLI.",
   "version": "1.0.0",
