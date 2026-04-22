@@ -1,6 +1,6 @@
 ---
 name: org-memory
-version: 1.0.1
+version: 1.0.2
 description: "Extends the org-cli skill so the agent also persists its own memory (knowledge, observations, daily notes) to an org workspace."
 metadata: {"openclaw":{"emoji":"🐘","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_MEMORY_DIR","ORG_MEMORY_ROAM_DIR","ORG_MEMORY_DB","ORG_CLI_BIN"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB","$ORG_MEMORY_DIR","$ORG_MEMORY_ROAM_DIR","$ORG_MEMORY_DB"],"writes":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB","$ORG_MEMORY_DIR","$ORG_MEMORY_ROAM_DIR","$ORG_MEMORY_DB"]}}}
 ---

@@ -2,7 +2,7 @@
   "id": "org-cli",
   "name": "org-cli",
   "description": "Task capture, scheduling, and linked knowledge in org-mode files via the org CLI.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "contracts": {
     "tools": [
       "org_find",
