@@ -1,8 +1,8 @@
 ---
 name: org-cli
-version: 1.0.0
+version: 1.0.1
 description: "Task capture, scheduling, and linked knowledge in org-mode files via the `org` CLI. Query, mutate, link, and search the user's org files and org-roam database."
-metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_CLI_DIR"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB"],"writes":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB"]}}}
+metadata: {"openclaw":{"emoji":"🦄","homepage":"https://github.com/dcprevere/org-cli","requires":{"bins":["org"],"env":["ORG_CLI_DIR","ORG_CLI_ROAM_DIR","ORG_CLI_DB","ORG_CLI_BIN","ORG_CLI_INBOX_FILE"]},"install":[{"kind":"download","label":"Download from GitHub releases: https://github.com/dcprevere/org-cli/releases"}],"scope":{"reads":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB"],"writes":["$ORG_CLI_DIR","$ORG_CLI_ROAM_DIR","$ORG_CLI_DB"]}}}
 ---
 
 # org-cli

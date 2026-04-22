@@ -51,6 +51,10 @@ for plugin in "${plugins[@]}"; do
   # not dependency versions deeper in the file
   sed -i '1,10 s|"version": "[^"]*"|"version": "'"$version"'"|' \
     "$plugin/package-lock.json"
+
+  # SKILL.md frontmatter version (one level up from plugin/)
+  sed -i "s|^version: .*|version: $version|" \
+    "$(dirname "$plugin")/SKILL.md"
 done
 
 echo "Building ..."
@@ -70,7 +74,8 @@ for plugin in "${plugins[@]}"; do
   git add \
     "$plugin/openclaw.plugin.json" \
     "$plugin/package.json" \
-    "$plugin/package-lock.json"
+    "$plugin/package-lock.json" \
+    "$(dirname "$plugin")/SKILL.md"
 done
 
 git commit -m "chore: bump version to $version"
