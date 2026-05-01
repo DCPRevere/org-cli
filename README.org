@@ -1,7 +1,37 @@
 #+title: org
 #+options: toc:nil num:nil
 
-A CLI for querying and mutating org-mode files and managing org-roam databases, built for scripts and AI agents.
+#+begin_export html
+<div align="center">
+
+<pre>
+
+                                       ,,    ,,
+                                     `7MM    db
+                                       MM
+ ,pW"Wq.`7Mb,od8 .P"Ybmmm      ,p6"bo  MM  `7MM
+6W'   `Wb MM' "':MI  I8       6M'  OO  MM    MM
+8M     M8 MM     WmmmP" mmmmm 8M       MM    MM
+YA.   ,A9 MM    8M            YM.    , MM    MM
+ `Ybmd9'.JMML.   YMMMMMb       YMbmd'.JMML..JMML.
+                6'     dP
+                Ybmmmd'
+</pre>
+
+</div>
+
+<p align="center">
+  <strong>📝 Org-mode for scripts and AI agents.</strong><br>
+  Query and mutate org files from the command line. Parses headlines, TODOs, tags, timestamps, properties, clock entries, links — no Emacs required.
+</p>
+
+<p align="center">
+  <a href="https://dotnet.microsoft.com/"><img src="https://img.shields.io/badge/.NET-9.0-512BD4?logo=dotnet" alt=".NET 9" /></a>
+  <a href="https://github.com/dcprevere/org-cli/releases/latest"><img src="https://img.shields.io/github/v/release/dcprevere/org-cli?label=org-cli" alt="latest release" /></a>
+</p>
+#+end_export
+
+-----
 
 * Why this exists
 
