@@ -1,23 +1,24 @@
 <div align="center">
 
 <pre>
-                                       ,,    ,,
-                                     `7MM    db
-                                       MM
- ,pW"Wq.`7Mb,od8 .P"Ybmmm      ,p6"bo  MM  `7MM
-6W'   `Wb MM' "':MI  I8       6M'  OO  MM    MM
-8M     M8 MM     WmmmP" mmmmm 8M       MM    MM
-YA.   ,A9 MM    8M            YM.    , MM    MM
+                                                 
+                                       ,,    ,,  
+                                     `7MM    db  
+                                       MM        
+ ,pW"Wq.`7Mb,od8 .P"Ybmmm      ,p6"bo  MM  `7MM  
+6W'   `Wb MM' "':MI  I8       6M'  OO  MM    MM  
+8M     M8 MM     WmmmP" mmmmm 8M       MM    MM  
+YA.   ,A9 MM    8M            YM.    , MM    MM  
  `Ybmd9'.JMML.   YMMMMMb       YMbmd'.JMML..JMML.
-                6'     dP
-                Ybmmmd'
+                6'     dP                        
+                Ybmmmd'                          
 </pre>
 
 </div>
 
 <p align="center">
-  <strong>📝 Org-mode for scripts and AI agents.</strong><br>
-  Query and mutate org files from the command line. Parses headlines, TODOs, tags, timestamps, properties, clock entries, links — no Emacs required.
+  <strong>An org-mode CLI for scripts and AI agents.</strong><br>
+  Query and mutate org files without running Emacs.
 </p>
 
 <p align="center">
@@ -27,11 +28,11 @@ YA.   ,A9 MM    8M            YM.    , MM    MM
 
 ---
 
-## Why this exists
+## What it is
 
-Grep can find text in org files but cannot understand their structure. This tool parses org-mode syntax — headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links — and exposes that structure through a command-line interface.
+A parser and CLI for org-mode files: headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links. Output is structured (text or JSON) and mutations are atomic.
 
-The primary consumers are AI agents and automation scripts that need to query and modify an org-mode corpus without running Emacs.
+Intended for scripts and AI agents that need to read or edit an org-mode corpus without running Emacs.
 
 ## Installation
 
@@ -206,10 +207,10 @@ See [docs/agents.org](docs/agents.org) for a guide to building a knowledge base 
 
 ### OpenClaw integration
 
-This repo ships two [OpenClaw](https://github.com/openclaw/openclaw) plugins that put `org` in front of an AI agent:
+Two [OpenClaw](https://github.com/openclaw/openclaw) plugins ship with this repo:
 
-- `org-cli` — task capture, scheduling, and a knowledge graph for **your** org files. The day-to-day agent-as-secretary case.
-- `org-memory` — extends `org-cli` so the agent also keeps its own memory (daily notes, learned facts, a linked knowledge graph) in a separate org workspace. Install on top of `org-cli` if you want that layer.
+- `org-cli` — task capture, scheduling, and knowledge graph operations against your org files.
+- `org-memory` — extends `org-cli` with a separate workspace for the agent's own notes.
 
 ```sh
 # Manage your own org files
@@ -219,21 +220,19 @@ openclaw skill install org-cli
 openclaw skill install org-memory
 ```
 
-Once installed you talk to the agent naturally and it drives `org` for you:
+The plugins map short prefixes to `org` commands:
 
-- `t: submit taxes in 3 weeks` — agent creates a scheduled TODO in your inbox
-- `n: think about hanging pictures up` — plain captured headline, no TODO state
-- `k: Sarah prefers morning meetings` — agent stores a fact in your roam graph against `Sarah`
-- `d: groceries` — agent resolves the headline by short CUSTOM_ID and marks it DONE
-- `s: taxes to next Friday` — agent reschedules
-- `f: sacra` — agent searches across your headlines and roam nodes
-- `"What's due today?"` — agent runs `org today`
+- `t: submit taxes in 3 weeks` — scheduled TODO in your inbox
+- `n: think about hanging pictures up` — plain captured headline
+- `k: Sarah prefers morning meetings` — roam fact against `Sarah`
+- `d: groceries` — resolves by CUSTOM_ID and marks DONE
+- `s: taxes to next Friday` — reschedule
+- `f: sacra` — search headlines and roam nodes
+- `"What's due today?"` — runs `org today`
 
-With `org-memory` loaded you additionally get `@a`-prefixed shortcuts (`@at:`, `@an:`, `@ak:`, `@ad:`, `@as:`, `@af:`) that target the agent's own workspace.
+With `org-memory` loaded, `@a`-prefixed shortcuts (`@at:`, `@an:`, `@ak:`, `@ad:`, `@as:`, `@af:`) target the agent's own workspace.
 
-The plugins are what make `org today`, short CUSTOM_IDs, and `org batch` actually useful day-to-day — agenda queries, graph links, and file-less mutations are the things flat-text agent memory cannot do.
-
-See [integrations/openclaw/README.md](integrations/openclaw/README.md) for an overview, or each plugin's README for install and env var details.
+See [integrations/openclaw/README.md](integrations/openclaw/README.md) for an overview.
 
 ## Configuration
 
