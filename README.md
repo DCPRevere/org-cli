@@ -17,7 +17,7 @@ YA.   ,A9 MM    8M            YM.    , MM    MM
 </div>
 
 <p align="center">
-  <strong>An org-mode CLI for scripts and AI agents.</strong><br>
+  <strong>📃 CLI access to your org files, for you and your agents.</strong><br>
   Query and mutate org files without running Emacs.
 </p>
 
