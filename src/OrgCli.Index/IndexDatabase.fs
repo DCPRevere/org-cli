@@ -193,6 +193,10 @@ CREATE INDEX IF NOT EXISTS idx_identity_value ON index_identity(value,kind);
             OrgCli.Org.Types.tryGetProperty "CUSTOM_ID" h.Properties
             |> Option.iter (add h.Position "custom")
 
+    member _.GetDocument(file: string) =
+        executeScalarObj "SELECT snapshot FROM index_documents WHERE file=@file" [ "@file", box file ]
+        |> Option.map (fun value -> Snapshot.decode file (string value))
+
     member _.GetDocuments() =
         executeReader "SELECT file,snapshot FROM index_documents ORDER BY file" [] (fun r ->
             let file = r.GetString 0

@@ -14,7 +14,7 @@ Org files contain note data and identities. SQLite contains replaceable parsed d
 
 Refresh hashes the selected file contents and effective configuration, including a projection version. It reuses unchanged snapshots and replaces changed file projections transactionally. Missing files are removed. Queries filter by their selected file set; querying a subdirectory does not discard unrelated cached documents. Duplicate IDs remain visible and resolving them fails instead of silently selecting a row.
 
-Freshness currently requires reading the selected corpus. Warm queries avoid parsing unchanged Org text, but are not constant-time filesystem operations. There is no watcher, daemon, mtime-only shortcut, or separate roam cache. `fts --no-sync` is an explicit stale-read option. There is no claim of a simultaneous snapshot across external editors and all files: files are refreshed individually.
+Ordinary CLI freshness requires reading the selected corpus. The optional HTTP/MCP server maintains an in-memory map of parsed snapshots and watches the physical workspace recursively. Notifications are coalesced into bounded batches; only affected file projections are refreshed. Requests drain pending changes under the same lock used by the background worker, and service writes update projections immediately. Startup, directory changes, watcher failures, and a 60-second verification interval trigger full reconciliation. Notifications are eventually delivered, so requests can briefly race external edits; full verification repairs missed notifications. There is no separately installed daemon, mtime-only shortcut, or separate roam cache. `fts --no-sync` is an explicit stale-read option. There is no claim of a simultaneous snapshot across external editors and all files: files are refreshed individually.
 
 ## Org-roam extension
 
@@ -46,3 +46,7 @@ The parser is still an Org subset, not Emacs's complete grammar. Unterminated so
 ## Optional interfaces in one binary
 
 `org serve` runs a loopback HTTP API; `--mcp` adds the MCP endpoint. `org mcp --stdio` is an on-demand subprocess mode. Both use `Application.WorkspaceService`, an explicit host-scoped application boundary using the same index and mutation primitives as ordinary CLI commands. There is no separate server executable and no listener starts during ordinary CLI use. See [API documentation](api.md).
+
+## Task coordination
+
+`TaskWorkflow` implements the shared task state machine independently of transports. It stores durable coordination in Org properties and logbooks, uses standard TODO completion and UUID IDs, and consumes workspace document projections. Mutations take a workspace lock before reconciliation and a checked file commit; read-only inspection shares the watched cache. The CLI, browser board, HTTP, and MCP expose the same operations. See [task workflow](task-workflow.md) for the lifecycle and the local coordination boundary.

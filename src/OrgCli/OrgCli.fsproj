@@ -19,9 +19,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="dashboard.html" LogicalName="OrgCli.dashboard.html" />
+  </ItemGroup>
+
+  <ItemGroup>
 
     <Compile Include="Version.fs" />
     <Compile Include="Server.fs" />
+    <Compile Include="TaskCommands.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

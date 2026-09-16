@@ -37,6 +37,13 @@ jobs:
       - name: API and MCP process smoke tests
         run: python3 tests/server_smoke.py
 
+      - name: Browser task workflow
+        run: |
+          python3 -m venv "$RUNNER_TEMP/org-browser-tests"
+          "$RUNNER_TEMP/org-browser-tests/bin/pip" install -r tests/requirements-browser.txt
+          "$RUNNER_TEMP/org-browser-tests/bin/playwright" install --with-deps chromium
+          "$RUNNER_TEMP/org-browser-tests/bin/python" tests/browser_smoke.py
+
       - name: Vulnerability check
         run: |
           dotnet list OrgCli.slnx package --vulnerable --include-transitive --format json > audit.json

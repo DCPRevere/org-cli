@@ -28,6 +28,19 @@ YA.   ,A9 MM    8M            YM.    , MM    MM
 
 ---
 
+## Tasks for humans and agents
+
+The shared task workflow provides dependency-aware ready queues, assignments, expiring claims, evidence, and review. It works with existing Org TODO headings and keeps coordination state in readable Org properties and logbooks.
+
+```sh
+org task ready -d ~/org
+org task create "Prepare the proposal" -d ~/org --actor daniel --acceptance "Scope and costs verified"
+org serve -d ~/org --mcp
+# Human board: http://127.0.0.1:8765/
+```
+
+Humans use the CLI or built-in browser board; agents use the same operations through MCP or HTTP. See the [task workflow guide](docs/task-workflow.md) for claims, handoffs, review, and the agent operating loop.
+
 ## What it is
 
 A parser and CLI for org-mode files: headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links. Output is structured (text or JSON) and file edits use checked, staged replacements. Multi-file edits have a recovery journal.
@@ -187,7 +200,7 @@ It does **not** read or write Emacs's org-roam database. Emacs can index the sha
 
 Org files are authoritative. The CLI owns `.org-index.db` under the selected directory (`--db` overrides it). Queries create and refresh it automatically; deleting it loses no note data. Parsed document snapshots, identity lookup, and SQLite FTS5 share one projection.
 
-Every refresh fingerprints file contents and effective parser configuration. Unchanged files reuse their parsed snapshot; changes with unchanged timestamps are still detected. This currently reads the selected corpus on each refresh, trading some I/O for reliable freshness without a watcher. `fts --no-sync` explicitly accepts stale results.
+Every refresh fingerprints file contents and effective parser configuration. Unchanged files reuse their parsed snapshot; changes with unchanged timestamps are still detected. Ordinary CLI queries read the selected corpus on each refresh. The optional HTTP/MCP server watches external changes and reuses snapshots between changes, with periodic full reconciliation as a fallback. `fts --no-sync` explicitly accepts stale results.
 
 - `org add` always assigns a UUID `ID`, independent of index state.
 - Use `id:<uuid>` for standard IDs, `custom:<value>` for existing CUSTOM_IDs, or `pos:<offset>` with a file for explicit character offsets.
@@ -264,7 +277,7 @@ python3 tests/server_smoke.py
 - Interactive or TUI features. This is a tool for scripts, not humans at a terminal.
 - Tables, spreadsheets, babel/code block evaluation.
 - Capture templates. Appending to a file is trivial; no tool needed.
-- File watching. Queries refresh the owned index automatically.
+- A separately installed background daemon. Watching runs only while the optional HTTP/MCP server is running.
 
 ## License
 

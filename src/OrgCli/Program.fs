@@ -442,6 +442,10 @@ let printUsage () =
     printfn "  --db <path>             Database path (default: <dir>/.org.db for roam, <dir>/.org-index.db for index)"
 
     printfn ""
+    printfn "Task Workflow:"
+    printfn "  task list|ready|review|create|show|edit|claim|renew|release|submit|approve|reject|cancel|reopen"
+    printfn "  Use org task --help for human/agent coordination commands."
+    printfn ""
     printfn "Org Commands:"
     printfn "  headlines [-d dir] [--todo STATE] [--tag TAG] [--level N] [--property K=V]"
     printfn "                                         List headlines with optional filters"
@@ -869,14 +873,11 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
     match rest with
     | []
     | "today" :: _ ->
-        let items = Agenda.collectDatedItemsFromDocs config (cachedDocuments opts files)
         let today = (OrgCli.Org.Runtime.today ())
         let tomorrow = today.AddDays(1.0)
-        let todayItems = Agenda.filterByDateRange today tomorrow items
-        let overdue = Agenda.filterOverdue config today items
 
         let combined =
-            (overdue @ todayItems)
+            Agenda.openThrough config today (cachedDocuments opts files)
             |> List.distinctBy (fun i -> i.Headline.Position, i.File)
             |> applyTagFilter
             |> List.sortBy (fun i -> i.Date.Date, (if i.HasTime then 0 else 1), i.Date.TimeOfDay)
@@ -903,14 +904,10 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
         0
 
     | "week" :: _ ->
-        let items = Agenda.collectDatedItemsFromDocs config (cachedDocuments opts files)
         let today = (OrgCli.Org.Runtime.today ())
-        let weekEnd = today.AddDays(7.0)
-        let weekItems = Agenda.filterByDateRange today weekEnd items
-        let overdue = Agenda.filterOverdue config today items
 
         let combined =
-            (overdue @ weekItems)
+            Agenda.openThrough config (today.AddDays(6.0)) (cachedDocuments opts files)
             |> List.distinctBy (fun i -> i.Headline.Position, i.File)
             |> applyTagFilter
             |> List.sortBy (fun i -> i.Date.Date, (if i.HasTime then 0 else 1), i.Date.TimeOfDay)
@@ -928,10 +925,11 @@ let handleAgenda (config: OrgConfig) (opts: Map<string, string list>) (isJson: b
                 printTable (agendaTableColumns baseDir) overdueOnly
                 printfn ""
 
-            let dates = weekOnly |> List.map (fun i -> i.Date) |> List.distinct |> List.sort
+            let dates =
+                weekOnly |> List.map (fun i -> i.Date.Date) |> List.distinct |> List.sort
 
             for date in dates do
-                let dayItems = weekOnly |> List.filter (fun i -> i.Date = date.Date)
+                let dayItems = weekOnly |> List.filter (fun i -> i.Date.Date = date)
 
                 if not (List.isEmpty dayItems) then
                     printfn "%s %s" (date.ToString("yyyy-MM-dd")) (date.ToString("ddd"))
@@ -1212,12 +1210,11 @@ let handleFts (opts: Map<string, string list>) (isJson: bool) (query: string) : 
     if not noSync then
         IndexSync.syncDirectory db dir
 
+    let selected = resolveFiles opts |> List.map Runtime.fullPath |> Set.ofList
+
     let results =
         try
-            Ok(
-                db.SearchFts(query)
-                |> List.filter (fun r -> resolveFiles opts |> List.map Runtime.fullPath |> List.contains r.File)
-            )
+            Ok(db.SearchFts(query) |> List.filter (fun r -> selected.Contains r.File))
         with ex ->
             Error(sprintf "Invalid FTS query: %s" ex.Message)
 
@@ -1356,6 +1353,16 @@ let main args =
             | ("serve" | "mcp") :: _ ->
                 eprintfn "Use org serve [--mcp] or org mcp --stdio; see --help."
                 1
+            | "task" :: rest ->
+                let service =
+                    OrgCli.Index.Application.WorkspaceService(
+                        Runtime.host (),
+                        resolveDirectory opts,
+                        resolveIndexDbPath opts,
+                        config
+                    )
+
+                OrgCli.TaskCommands.run service opts rest
             | "today" :: rest when hasHelpFlag opts rest ->
                 printCommandHelp "today"
                 0
@@ -2241,7 +2248,7 @@ let main args =
             | "completions" :: "bash" :: _ ->
                 printfn
                     """_org_completions() {
-    local commands="today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts id backlinks recover roam batch serve mcp schema completions"
+    local commands="task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts id backlinks recover roam batch serve mcp schema completions"
     local flags="--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help"
     if [ "${#COMP_WORDS[@]}" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$commands $flags" -- "${COMP_WORDS[1]}"))
@@ -2255,7 +2262,7 @@ complete -F _org_completions org"""
                 printfn
                     """#compdef org
 _org() {
-    local commands=(today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions)
+    local commands=(task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions)
     local flags=(--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help)
     _arguments '1:command:($commands)' '*:flags:($flags)'
 }
@@ -2265,7 +2272,7 @@ compdef _org org"""
 
             | "completions" :: "fish" :: _ ->
                 printfn
-                    """set -l commands today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions
+                    """set -l commands task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions
 complete -c org -f -n '__fish_use_subcommand' -a "$commands"
 complete -c org -l format -d 'Output format: text or json'
 complete -c org -l directory -s d -d 'Base directory'

@@ -10,10 +10,12 @@ let documents dbPath files =
     let selected = files |> List.map Runtime.fullPath |> Set.ofList
     db.GetDocuments() |> List.filter (fun (file, _) -> Set.contains file selected)
 
-let resolve dbPath files (identifier: string) =
+let private resolveCore refresh dbPath files (identifier: string) =
     use db = new IndexDatabase.OrgIndexDb(dbPath)
     db.Initialize()
-    IndexSync.syncFiles db files false
+
+    if refresh then
+        IndexSync.syncFiles db files false
 
     let matches =
         if identifier.StartsWith("id:") then
@@ -40,6 +42,13 @@ let resolve dbPath files (identifier: string) =
             { Type = CliErrorType.InvalidArgs
               Message = "Ambiguous identity; specify a file: " + identifier
               Detail = None }
+
+let resolve dbPath files identifier =
+    resolveCore true dbPath files identifier
+
+/// Resolve against an index already maintained by the workspace service.
+let resolveIndexed dbPath files identifier =
+    resolveCore false dbPath files identifier
 
 /// File roots are addressable for read/append but are not fabricated headlines.
 let isFileRoot (doc: OrgDocument) (identifier: string) =

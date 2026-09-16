@@ -145,7 +145,7 @@ let findAllLinks (text: string) : OrgLink list =
 // Property drawer parsing
 let pPropertyKey = pchar ':' >>. many1Chars (noneOf ":\n\r") .>> pchar ':'
 
-let pPropertyValue = ws >>. restOfLine
+let pPropertyValue = skipMany (anyOf " \t") >>. restOfLine
 
 let pProperty: Parser<Property, unit> =
     pipe2 pPropertyKey pPropertyValue (fun k v -> { Key = k.Trim(); Value = v.Trim() })
@@ -167,7 +167,7 @@ let pKeyword: Parser<Keyword, unit> =
         let! _ = pstring "#+"
         let! key = many1Chars (noneOf ":\n\r")
         let! _ = pchar ':'
-        let! _ = ws
+        let! _ = skipMany (anyOf " \t")
         let! value = restOfLine
 
         return

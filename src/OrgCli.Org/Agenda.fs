@@ -146,3 +146,17 @@ let skipDoneItems (config: OrgConfig) (items: AgendaItem list) : AgendaItem list
 let filterDeadlineWarnings (config: OrgConfig) (today: DateTime) (items: AgendaItem list) : AgendaItem list =
     let warningEnd = today.AddDays(float config.DeadlineWarningDays)
     items |> List.filter (fun i -> i.Type = Deadline && i.Date < warningEnd)
+
+/// Open scheduled work and deadlines through an inclusive date, including overdue
+/// items. All interfaces use each file's completion keywords.
+let openThrough config throughDate docs =
+    let effective =
+        docs
+        |> List.map (fun (file, doc) -> file, FileConfig.mergeFileConfig config doc.Keywords)
+        |> Map.ofList
+
+    collectDatedItemsFromDocs config docs
+    |> List.filter (fun item ->
+        item.Date.Date <= throughDate
+        && not (isDoneState effective[item.File] item.Headline.TodoKeyword))
+    |> List.sortBy (fun item -> item.Date, item.File, item.Headline.Position)

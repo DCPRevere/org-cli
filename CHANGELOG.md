@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add a shared human/agent task workflow: dependency-aware ready queues, project/owner assignment, expiring claims, handoffs, evidence-backed submission, and separate-actor review. Existing Org TODOs can be adopted without migration.
+- Add `org task` commands, four task API/MCP operations, and a browser task board embedded in the same executable.
+- Fix repeated directory traversal in CLI full-text search; avoid redundant timestamp writes and configuration formatting during cache refresh.
+- Unify overdue scheduled work and file-local completion handling across CLI and API agendas.
+- Fix empty Org properties/keywords consuming the following line, and rebuild older cached projections automatically.
+
+- HTTP and stdio MCP servers now watch the workspace for external edits, update only affected projections, and reuse cached snapshots between changes. Startup, directory changes, watcher errors, and periodic reconciliation repair missed notifications.
+- Add virtual-filesystem tests and live watcher tests for atomic saves, renames, and deletion.
+
 ## 2.0.0-rc.1
 
 First release candidate for the standalone Org engine and optional API/MCP interfaces. Try it against a copy of your Org workspace before adopting it for daily use.

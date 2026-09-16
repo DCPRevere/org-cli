@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>Org · Tasks</title>
+        <style>
+            :root {
+                color-scheme: light;
+                --bg: #f6f5f1;
+                --paper: #fffefa;
+                --ink: #23332d;
+                --muted: #647168;
+                --line: #dce1d9;
+                --green: #23624c;
+                --accent: #eaf2eb;
+                --warn: #94620e;
+            }
+            * {
+                box-sizing: border-box;
+            }
+            body {
+                margin: 0;
+                background: var(--bg);
+                color: var(--ink);
+                font:
+                    15px/1.5 system-ui,
+                    sans-serif;
+            }
+            header {
+                padding: 24px 36px;
+                border-bottom: 1px solid var(--line);
+                display: flex;
+                gap: 20px;
+                align-items: center;
+                justify-content: space-between;
+                flex-wrap: wrap;
+            }
+            h1 {
+                font-size: 24px;
+                letter-spacing: -0.7px;
+                margin: 0;
+            }
+            h1 span {
+                font-weight: 400;
+                color: var(--muted);
+            }
+            .eyebrow {
+                text-transform: uppercase;
+                letter-spacing: 0.14em;
+                font-size: 11px;
+                color: var(--muted);
+                margin: 0 0 3px;
+            }
+            .connection {
+                display: flex;
+                gap: 10px;
+                align-items: end;
+                flex-wrap: wrap;
+            }
+            label {
+                display: block;
+                font-size: 12px;
+                color: var(--muted);
+                margin-bottom: 10px;
+            }
+            input,
+            textarea,
+            select,
+            button {
+                font: inherit;
+                border: 1px solid var(--line);
+                border-radius: 7px;
+                padding: 9px 11px;
+                background: var(--paper);
+                color: var(--ink);
+            }
+            input,
+            textarea,
+            select {
+                width: 100%;
+                display: block;
+                margin-top: 4px;
+            }
+            input:focus,
+            textarea:focus,
+            select:focus,
+            button:focus-visible {
+                outline: 2px solid var(--green);
+                outline-offset: 2px;
+            }
+            textarea {
+                resize: vertical;
+                min-height: 80px;
+            }
+            button {
+                cursor: pointer;
+                font-weight: 600;
+                transition: background 0.12s;
+            }
+            button:hover {
+                background: var(--accent);
+            }
+            button:disabled {
+                opacity: 0.45;
+                cursor: default;
+            }
+            .primary {
+                background: var(--green);
+                color: white;
+                border-color: var(--green);
+            }
+            .primary:hover {
+                background: #194b39;
+            }
+            .connection label {
+                margin: 0;
+                width: 150px;
+            }
+            .connection input {
+                font-size: 13px;
+            }
+            .layout {
+                display: grid;
+                grid-template-columns: minmax(320px, 1fr) minmax(350px, 1fr);
+                max-width: 1480px;
+                margin: auto;
+                min-height: calc(100vh - 112px);
+            }
+            aside {
+                padding: 28px 28px 36px 36px;
+                border-right: 1px solid var(--line);
+            }
+            main {
+                padding: 28px 36px;
+            }
+            .toolbar {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                margin-bottom: 16px;
+            }
+            h2 {
+                font-size: 18px;
+                margin: 0;
+            }
+            .filters {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            .list {
+                display: grid;
+                gap: 9px;
+            }
+            .task {
+                display: block;
+                text-align: left;
+                padding: 16px;
+                width: 100%;
+                border-radius: 9px;
+                background: var(--paper);
+                font-weight: 400;
+            }
+            .task[aria-pressed="true"] {
+                border-color: var(--green);
+                box-shadow: inset 3px 0 var(--green);
+            }
+            .task-title {
+                display: block;
+                font-size: 16px;
+                font-weight: 600;
+                margin: 5px 0;
+            }
+            .meta {
+                font-size: 12px;
+                color: var(--muted);
+            }
+            .badge {
+                display: inline-block;
+                border-radius: 4px;
+                font: 600 11px system-ui;
+                text-transform: uppercase;
+                letter-spacing: 0.06em;
+                padding: 3px 6px;
+                background: var(--accent);
+                color: var(--green);
+            }
+            .badge.review {
+                background: #fff0cf;
+                color: var(--warn);
+            }
+            .badge.blocked {
+                background: #f7e8e4;
+                color: #9b4932;
+            }
+            .badge.working {
+                background: #e5eef7;
+                color: #335d86;
+            }
+            .empty {
+                padding: 44px 12px;
+                color: var(--muted);
+                text-align: center;
+            }
+            .detail-title {
+                font-size: 27px;
+                line-height: 1.2;
+                letter-spacing: -0.5px;
+                margin: 12px 0;
+            }
+            .box {
+                padding: 16px;
+                background: var(--paper);
+                border: 1px solid var(--line);
+                border-radius: 9px;
+                margin: 18px 0;
+            }
+            .box h3 {
+                margin: 0 0 8px;
+                font-size: 13px;
+                color: var(--muted);
+            }
+            pre {
+                white-space: pre-wrap;
+                overflow-wrap: anywhere;
+                font:
+                    13px/1.65 ui-monospace,
+                    monospace;
+                max-height: 420px;
+                overflow: auto;
+            }
+            #message {
+                padding: 0 36px;
+                min-height: 0;
+            }
+            #message:not(:empty) {
+                padding: 12px 36px;
+                background: #fff0cf;
+                color: #6b4300;
+                border-bottom: 1px solid #ead3a0;
+            }
+            .actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin: 12px 0;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            details {
+                margin: 16px 0;
+            }
+            summary {
+                cursor: pointer;
+                font-size: 13px;
+                color: var(--green);
+                font-weight: 600;
+            }
+            small {
+                color: var(--muted);
+            }
+            dialog {
+                border: 1px solid var(--line);
+                border-radius: 12px;
+                padding: 28px;
+                max-width: 540px;
+                width: calc(100% - 32px);
+                background: var(--paper);
+                color: var(--ink);
+            }
+            dialog::backdrop {
+                background: #23332d66;
+            }
+            dialog h2 {
+                margin-bottom: 18px;
+            }
+            .danger {
+                color: #983b2d;
+            }
+            #more {
+                width: 100%;
+                margin-top: 12px;
+            }
+            footer {
+                margin-top: 22px;
+                color: var(--muted);
+                font-size: 12px;
+            }
+            @media (max-width: 800px) {
+                header {
+                    padding: 20px;
+                }
+                .layout {
+                    grid-template-columns: 1fr;
+                }
+                aside {
+                    padding: 20px;
+                    border-right: 0;
+                    border-bottom: 1px solid var(--line);
+                }
+                main {
+                    padding: 20px;
+                }
+                .connection {
+                    width: 100%;
+                }
+                .connection label {
+                    flex: 1;
+                    min-width: 100px;
+                }
+                #message:not(:empty) {
+                    padding: 10px 20px;
+                }
+                .detail-title {
+                    font-size: 24px;
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <div>
+                <p class="eyebrow">Shared work, clear ownership</p>
+                <h1>Org <span>/ Tasks</span></h1>
+            </div>
+            <div class="connection">
+                <label
+                    >Your actor name<input
+                        id="actor"
+                        placeholder="daniel"
+                        autocomplete="off" /></label
+                ><label
+                    >Access token, if configured<input
+                        id="token"
+                        type="password"
+                        autocomplete="off" /></label
+                ><button id="connect" class="primary">Connect</button>
+            </div>
+        </header>
+        <div id="message" role="status" aria-live="polite"></div>
+        <div class="layout">
+            <aside>
+                <div class="toolbar">
+                    <h2>Work queue <small id="count"></small></h2>
+                    <button id="new" disabled>+ New task</button>
+                </div>
+                <div class="filters">
+                    <label
+                        >View<select id="status">
+                            <option value="open">All open work</option>
+                            <option value="ready">Ready to start</option>
+                            <option value="working">In progress</option>
+                            <option value="review">Needs review</option>
+                            <option value="blocked">Blocked</option>
+                            <option value="done">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="all">Everything</option>
+                        </select></label
+                    ><label
+                        >Project<input
+                            id="project-filter"
+                            placeholder="All projects"
+                    /></label>
+                </div>
+                <div id="list" class="list">
+                    <p class="empty">Connect to load your workspace.</p>
+                </div>
+                <button id="more" hidden>Load more</button>
+                <footer>
+                    Org files hold the work and its history. The server watches
+                    external edits.
+                    <button id="refresh" disabled>Refresh</button>
+                </footer>
+            </aside>
+            <main id="detail">
+                <div class="empty">
+                    <h2>A clear next step.</h2>
+                    <p>
+                        Choose a task to see its context, acceptance criteria,
+                        and ownership.
+                    </p>
+                </div>
+            </main>
+        </div>
+        <dialog id="create-dialog">
+            <form id="create-form">
+                <h2>New task</h2>
+                <label
+                    >What needs to be done?<input
+                        id="create-title"
+                        required
+                        maxlength="2048" /></label
+                ><label
+                    >Acceptance criteria<input
+                        id="create-acceptance"
+                        placeholder="What will demonstrate that this is done?"
+                /></label>
+                <div class="grid">
+                    <label>Project<input id="create-project" /></label
+                    ><label
+                        >Assigned actor (optional)<input id="create-owner"
+                    /></label>
+                </div>
+                <label>Context<textarea id="create-text"></textarea></label>
+                <p>
+                    <small
+                        >Completed work goes to a different actor for
+                        review.</small
+                    >
+                </p>
+                <div class="actions">
+                    <button class="primary" type="submit">Create task</button
+                    ><button id="create-cancel" type="button">Cancel</button>
+                </div>
+            </form>
+        </dialog>
+        <script>
+            "use strict";
+            const $ = (id) => document.getElementById(id);
+            let selected = null,
+                fetched = null,
+                next = null,
+                rows = [],
+                canWrite = false,
+                busy = false,
+                selectionVersion = 0,
+                createRequest = null,
+                claimRequest = null;
+            const message = (text) => {
+                $("message").textContent = text;
+            };
+            const el = (tag, text, cls) => {
+                const n = document.createElement(tag);
+                if (text !== undefined) n.textContent = text;
+                if (cls) n.className = cls;
+                return n;
+            };
+            const actor = () => {
+                const value = $("actor").value.trim();
+                if (!value)
+                    throw Error("Enter your actor name before making changes.");
+                return value;
+            };
+            async function request(operation, args) {
+                const headers = { "Content-Type": "application/json" };
+                if ($("token").value)
+                    headers.Authorization = "Bearer " + $("token").value;
+                const response = await fetch("/api/v1/" + operation, {
+                    method: args === undefined ? "GET" : "POST",
+                    headers,
+                    body: args === undefined ? undefined : JSON.stringify(args),
+                });
+                if (response.status === 401)
+                    throw Error(
+                        "Enter the access token configured for this server, then connect.",
+                    );
+                const payload = await response.json();
+                if (!response.ok || payload.ok === false)
+                    throw Error(
+                        payload.error?.message ||
+                            "Request failed (" +
+                                response.status +
+                                "). Refresh to inspect the current task before retrying.",
+                    );
+                return payload.data ?? payload;
+            }
+            async function run(fn) {
+                if (busy) return;
+                busy = true;
+                message("");
+                try {
+                    await fn();
+                } catch (error) {
+                    message(error.message);
+                } finally {
+                    busy = false;
+                    document
+                        .querySelectorAll("button[data-write]")
+                        .forEach((b) => (b.disabled = !canWrite));
+                }
+            }
+            async function load(more = false) {
+                const response = await request("tasks", {
+                    status: $("status").value,
+                    project: $("project-filter").value,
+                    limit: 50,
+                    offset: more ? (next ?? 0) : 0,
+                });
+                rows = more ? rows.concat(response.tasks) : response.tasks;
+                next = response.next_offset;
+                $("more").hidden = next === null;
+                $("count").textContent = "· " + response.total;
+                renderList();
+            }
+            function renderList() {
+                const list = $("list");
+                list.replaceChildren();
+                if (!rows.length) {
+                    list.append(el("p", "No tasks in this view.", "empty"));
+                    return;
+                }
+                for (const row of rows) {
+                    const b = el("button", undefined, "task");
+                    b.setAttribute(
+                        "aria-pressed",
+                        String(selected?.ref === row.ref),
+                    );
+                    b.append(
+                        el("span", row.status, "badge " + row.status),
+                        el("span", row.title, "task-title"),
+                        el(
+                            "span",
+                            [
+                                row.project,
+                                row.owner ? "Assigned to " + row.owner : "",
+                                row.claimed_by
+                                    ? "Working: " + row.claimed_by
+                                    : "",
+                                row.priority ? "Priority " + row.priority : "",
+                            ]
+                                .filter(Boolean)
+                                .join(" · "),
+                            "meta",
+                        ),
+                    );
+                    b.onclick = () => run(() => choose(row));
+                    list.append(b);
+                }
+            }
+            async function choose(row) {
+                const version = ++selectionVersion;
+                const data = await request("fetch", { ref: row.ref });
+                if (version !== selectionVersion) return;
+                selected = row;
+                fetched = data;
+                renderList();
+                renderDetail();
+            }
+            function property(name) {
+                const drawer = fetched.text.match(
+                    /^:PROPERTIES:\s*\r?\n([\s\S]*?)^:END:\s*$/m,
+                );
+                return (
+                    drawer?.[1]
+                        .match(new RegExp("^:" + name + ":\s*(.*)$", "m"))?.[1]
+                        .trim() || ""
+                );
+            }
+            function labelled(name, id, value, type = "input") {
+                const label = el("label", name),
+                    input = el(type);
+                input.id = id;
+                input.value = value || "";
+                label.append(input);
+                return label;
+            }
+            function renderDetail() {
+                const root = $("detail");
+                root.replaceChildren();
+                if (!selected) return;
+                const row = selected;
+                root.append(
+                    el("span", row.status, "badge " + row.status),
+                    el("h2", row.title, "detail-title"),
+                    el("div", row.file + " · " + row.ref, "meta"),
+                );
+                const criteria = el("section", undefined, "box");
+                criteria.append(
+                    el("h3", "Acceptance"),
+                    el(
+                        "div",
+                        row.acceptance || "No acceptance criteria recorded.",
+                    ),
+                );
+                root.append(criteria);
+                if (row.blockers.length) {
+                    const box = el("section", undefined, "box");
+                    box.append(el("h3", "Before this can proceed"));
+                    for (const reason of row.blockers)
+                        box.append(el("div", reason));
+                    root.append(box);
+                }
+                const evidence = labelled(
+                    "Evidence, review feedback, or handoff note",
+                    "evidence",
+                    "",
+                    "textarea",
+                );
+                evidence.hidden = ["done", "cancelled"].includes(row.status);
+                root.append(evidence);
+                const actions = el("div", undefined, "actions");
+                function button(label, action, cls = "") {
+                    const b = el("button", label, cls);
+                    b.dataset.write = "true";
+                    b.disabled = !canWrite;
+                    b.onclick = () => run(() => act(action));
+                    actions.append(b);
+                }
+                if (row.status === "ready")
+                    button("Claim task", "claim", "primary");
+                if (row.status === "working") {
+                    button("Submit work", "submit", "primary");
+                    button("Renew claim", "renew");
+                    button("Release", "release");
+                }
+                if (row.status === "review") {
+                    button("Approve", "approve", "primary");
+                    button("Request changes", "reject");
+                }
+                if (["done", "cancelled"].includes(row.status))
+                    button("Reopen", "reopen");
+                else button("Cancel task", "cancel", "danger");
+                root.append(actions);
+                if (row.claimed_by)
+                    root.append(
+                        el(
+                            "small",
+                            "Claimed by " +
+                                row.claimed_by +
+                                " until " +
+                                row.claim_until,
+                        ),
+                    );
+                const contract = el("details");
+                contract.append(el("summary", "Task settings"));
+                const form = el("form");
+                form.append(
+                    labelled(
+                        "Acceptance criteria",
+                        "edit-acceptance",
+                        row.acceptance,
+                    ),
+                    labelled("Project", "edit-project", row.project),
+                    labelled("Assigned actor", "edit-owner", row.owner),
+                    labelled(
+                        "Dependency IDs (space separated)",
+                        "edit-deps",
+                        row.depends_on.join(" "),
+                    ),
+                );
+                const review = el(
+                        "label",
+                        "Require review by a different actor",
+                    ),
+                    select = el("select");
+                select.id = "edit-review";
+                for (const [v, t] of [
+                    ["true", "Yes"],
+                    ["false", "No"],
+                ]) {
+                    const o = el("option", t);
+                    o.value = v;
+                    select.append(o);
+                }
+                select.value = String(row.review_required);
+                review.append(select);
+                form.append(review);
+                const save = el("button", "Save settings");
+                save.dataset.write = "true";
+                save.disabled = !canWrite;
+                form.append(save);
+                form.onsubmit = (e) => {
+                    e.preventDefault();
+                    run(async () => {
+                        const result = await request("task_update", {
+                            ref: fetched.ref,
+                            expected_revision: fetched.revision,
+                            actor: actor(),
+                            acceptance: $("edit-acceptance").value,
+                            project: $("edit-project").value,
+                            owner: $("edit-owner").value,
+                            depends_on: $("edit-deps")
+                                .value.trim()
+                                .split(/\s+/)
+                                .filter(Boolean),
+                            review_required: $("edit-review").value === "true",
+                        });
+                        await afterWrite(result);
+                    });
+                };
+                contract.append(form);
+                root.append(contract);
+                const history =
+                    fetched.text.match(
+                        /^:LOGBOOK:\s*\n([\s\S]*?)^:END:\s*$/m,
+                    )?.[1] || "";
+                const body = fetched.text
+                    .replace(/^[^\n]*\n/, "")
+                    .replace(
+                        /^:(?:PROPERTIES|LOGBOOK):[^\n]*\n[\s\S]*?^:END:[ \t]*$/gm,
+                        "",
+                    )
+                    .replace(/^CLOSED:.*$/gm, "")
+                    .trim();
+                if (body) {
+                    const context = el("section", undefined, "box");
+                    context.append(el("h3", "Context"), el("pre", body));
+                    root.append(context);
+                }
+                if (history) {
+                    const audit = el("details");
+                    audit.open = row.status === "review";
+                    audit.append(
+                        el("summary", "Work history"),
+                        el("pre", history),
+                    );
+                    root.append(audit);
+                }
+                const source = el("details");
+                source.append(
+                    el("summary", "Source Org"),
+                    el("pre", fetched.text),
+                );
+                root.append(source);
+                if (!canWrite)
+                    root.append(el("p", "Read-only workspace.", "meta"));
+            }
+            async function afterWrite(result) {
+                if (result.warning) message(result.warning);
+                await load();
+                await choose(result);
+            }
+            async function act(action) {
+                const who = actor(),
+                    evidence = $("evidence").value;
+                const args = {
+                    ref: fetched.ref,
+                    expected_revision: fetched.revision,
+                    actor: who,
+                    action,
+                };
+                if (action === "claim") {
+                    if (
+                        !claimRequest ||
+                        claimRequest.ref !== args.ref ||
+                        claimRequest.actor !== who
+                    )
+                        claimRequest = {
+                            ref: args.ref,
+                            actor: who,
+                            id: crypto.randomUUID(),
+                        };
+                    args.claim_id = claimRequest.id;
+                } else if (["renew", "release", "submit"].includes(action)) {
+                    if (selected.claimed_by !== who)
+                        throw Error(
+                            "This task is claimed by " +
+                                selected.claimed_by +
+                                ". Use that actor or wait for the lease to expire.",
+                        );
+                    args.claim_id = property("TASK_CLAIM_ID");
+                    if (!args.claim_id)
+                        throw Error(
+                            "Claim details changed. Refresh before continuing.",
+                        );
+                }
+                if (
+                    ["submit", "approve", "reject", "cancel"].includes(
+                        action,
+                    ) &&
+                    !evidence.trim()
+                )
+                    throw Error("Add evidence or a reason before continuing.");
+                if (
+                    [
+                        "submit",
+                        "approve",
+                        "reject",
+                        "cancel",
+                        "release",
+                        "reopen",
+                    ].includes(action)
+                )
+                    args.evidence = evidence;
+                const result = await request("task_action", args);
+                claimRequest = null;
+                await afterWrite(result);
+            }
+            async function connect() {
+                const tools = await request("tools");
+                canWrite = tools.some(
+                    (t) => (t.name ?? t.Name) === "task_action",
+                );
+                $("new").disabled = !canWrite;
+                $("refresh").disabled = false;
+                await load();
+                if (selected) {
+                    const current = rows.find((r) => r.ref === selected.ref);
+                    if (current) await choose(current);
+                    else {
+                        $("detail").replaceChildren(
+                            el("p", "Select a task from this view.", "empty"),
+                        );
+                        selected = null;
+                    }
+                }
+            }
+            $("connect").onclick = () => run(connect);
+            $("refresh").onclick = () =>
+                run(async () => {
+                    await load();
+                    if (selected) {
+                        const current = rows.find(
+                            (r) => r.ref === selected.ref,
+                        );
+                        if (current) await choose(current);
+                    }
+                });
+            $("status").onchange = () => run(() => load());
+            $("project-filter").onchange = () => run(() => load());
+            $("more").onclick = () => run(() => load(true));
+            $("new").onclick = () => {
+                createRequest = crypto.randomUUID();
+                $("create-dialog").showModal();
+                $("create-title").focus();
+            };
+            $("create-cancel").onclick = () => $("create-dialog").close();
+            $("create-form").onsubmit = (e) => {
+                e.preventDefault();
+                run(async () => {
+                    const result = await request("task_create", {
+                        request_id: createRequest,
+                        title: $("create-title").value,
+                        actor: actor(),
+                        acceptance: $("create-acceptance").value,
+                        project: $("create-project").value,
+                        owner: $("create-owner").value,
+                        text: $("create-text").value,
+                    });
+                    $("create-dialog").close();
+                    $("create-form").reset();
+                    await afterWrite(result);
+                });
+            };
+            run(connect);
+        </script>
+    </body>
+</html>

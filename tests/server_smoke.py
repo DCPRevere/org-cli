@@ -6,6 +6,7 @@ from pathlib import Path
 import select
 import signal
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -55,7 +56,7 @@ def stdio(root):
             p.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             p.stdin.flush()
             names = {t["name"] for t in rpc("tools/list")["result"]["tools"]}
-            assert names == {"search","fetch","agenda","capture","append_note","update_task","related"}, names
+            assert names == {"search","fetch","agenda","capture","append_note","update_task","related","tasks","task_create","task_update","task_action"}, names
             payload = {"request_id":str(uuid.uuid4()),"title":"Stdio task","state":"TODO"}
             result = rpc("tools/call", {"name":"capture","arguments":payload})["result"]
             assert not result["isError"], result
@@ -67,6 +68,20 @@ def stdio(root):
             assert "DONE" in result["structuredContent"]["data"]["text"]
             missing = rpc("tools/call", {"name":"fetch","arguments":{"ref":"id:missing"}})["result"]
             assert missing["isError"]
+            def tool(name, arguments):
+                result = rpc("tools/call", {"name":name,"arguments":arguments})["result"]
+                assert not result.get("isError"), result
+                return result["structuredContent"]["data"]
+            task = tool("task_create", {"request_id":str(uuid.uuid4()),"title":"Agent handoff","actor":"human","acceptance":"Verified output"})
+            claim_id = str(uuid.uuid4())
+            def transition(entry, actor, action, **fields):
+                return tool("task_action", dict(ref=entry["ref"],expected_revision=entry["revision"],actor=actor,action=action,**fields))
+            task = transition(task,"worker","claim",claim_id=claim_id)
+            task = transition(task,"worker","submit",claim_id=claim_id,evidence="Tests pass")
+            assert task["status"] == "review"
+            task = transition(task,"reviewer","approve",evidence="Independently verified")
+            assert task["status"] == "done"
+            print("PASS MCP task workflow: create, claim, evidence, separate review")
             p.stdin.close()
             assert p.wait(timeout=10) == 0
         except Exception:
@@ -105,6 +120,38 @@ def http(root):
                 except urllib.error.URLError:
                     time.sleep(0.05)
             else: raise AssertionError("HTTP startup timed out")
+            # Observe the index directly: requests must not be what refreshes it.
+            database = Path(root) / ".org-index.db"
+            def indexed(title):
+                with sqlite3.connect(database) as connection:
+                    return connection.execute("SELECT file FROM index_headlines WHERE title=?", (title,)).fetchall()
+            def eventually(predicate):
+                until = time.monotonic() + 15
+                while time.monotonic() < until:
+                    if predicate(): return
+                    assert p.poll() is None, "Watcher process exited"
+                    time.sleep(0.05)
+                raise AssertionError("Watcher did not refresh the index")
+            folder = Path(root) / "watcher-folder"
+            folder.mkdir()
+            note = folder / "external.org"
+            note.write_text("* watchbefore\n:PROPERTIES:\n:ID: watcher-note\n:END:\n")
+            eventually(lambda: len(indexed("watchbefore")) == 1)
+            previous = note.stat()
+            replacement = folder / "save.tmp"
+            replacement.write_text(note.read_text().replace("watchbefore", "watchafterx"))
+            os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+            os.replace(replacement, note)
+            eventually(lambda: len(indexed("watchafterx")) == 1 and not indexed("watchbefore"))
+            renamed = Path(root) / "watcher-renamed"
+            folder.rename(renamed)
+            eventually(lambda: indexed("watchafterx") == [(str(renamed / "external.org"),)])
+            # Renaming away from .org must remove the old projection.
+            (renamed / "external.org").rename(renamed / "external.txt")
+            eventually(lambda: not indexed("watchafterx"))
+            (renamed / "external.txt").unlink()
+            renamed.rmdir()
+            print("PASS watcher: background creation, atomic replacement with preserved mtime, directory rename, removal")
             assert request("/health",headers={"Authorization":"Bearer wrong"})[0] == 401
             assert request("/health",headers={"Origin":"https://evil.example"})[0] == 403
             assert request("/health",headers={"Host":"evil.example"})[0] == 403
@@ -116,6 +163,17 @@ def http(root):
             assert len(refs) == 1
             status,body = request("/api/v1/search",{"query":"Concurrent"})
             assert status == 200 and len(json.loads(body)["data"]["results"]) == 1, body
+            status, body = request("/api/v1/task_create", {"request_id":str(uuid.uuid4()),"title":"Competing workers","actor":"human"})
+            assert status == 200, body
+            task = json.loads(body)["data"]
+            def competing_claim(actor):
+                return subprocess.run([BINARY,"task","claim",task["ref"],"--actor",actor,"--claim-id",str(uuid.uuid4()),"--expected-revision",task["revision"],"-d",root,"-f","json"],capture_output=True,text=True,env=env,timeout=20)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                claims = list(pool.map(competing_claim,["worker-one","worker-two"]))
+            assert sorted(result.returncode for result in claims) == [0,1], [(r.returncode,r.stdout,r.stderr) for r in claims]
+            winner = json.loads(next(r.stdout for r in claims if r.returncode == 0))["data"]
+            assert winner["status"] == "working"
+            print("PASS independent CLI workers: exactly one claim succeeds")
             init = dict(jsonrpc="2.0",id=1,method="initialize",params={"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"http-test","version":"1"}})
             status,body = request("/mcp",init,{"Accept":"application/json, text/event-stream"})
             assert status == 200 and "org-cli" in body, (status,body)
