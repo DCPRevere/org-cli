@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OrgCli.Org\OrgCli.Org.fsproj" />
+    <ProjectReference Include="../OrgCli.Roam.Extension/OrgCli.Roam.Extension.fsproj" />
   </ItemGroup>
 
 </Project>

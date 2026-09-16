@@ -206,7 +206,7 @@ let ``Parse quoted aliases with spaces`` () =
 """
 
     let doc = Document.parse content
-    let aliases = Types.getRoamAliases doc.Headlines.[0].Properties
+    let aliases = OrgCli.RoamProperties.getRoamAliases doc.Headlines.[0].Properties
     Assert.Equal(3, aliases.Length)
     Assert.Contains("First Alias", aliases)
     Assert.Contains("Second Alias", aliases)
@@ -224,7 +224,7 @@ let ``Parse refs with different types`` () =
 """
 
     let doc = Document.parse content
-    let refs = Types.getRoamRefs doc.Headlines.[0].Properties
+    let refs = OrgCli.RoamProperties.getRoamRefs doc.Headlines.[0].Properties
     Assert.Equal(3, refs.Length)
     Assert.Contains("@citationKey", refs)
     Assert.Contains("https://example.com", refs)

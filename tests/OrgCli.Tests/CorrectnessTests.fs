@@ -311,7 +311,7 @@ let ``addToMultiValueProperty finds correct drawer after source block`` () =
 // ============================================================
 
 [<Fact>]
-let ``listOrgFiles finds .org.gpg and .org.age files`` () =
+let ``listOrgFiles excludes encrypted files until decryption is supported`` () =
     let tmpDir =
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString())
 
@@ -323,10 +323,10 @@ let ``listOrgFiles finds .org.gpg and .org.age files`` () =
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "private.org.age"), "encrypted")
         System.IO.File.WriteAllText(System.IO.Path.Combine(tmpDir, "readme.txt"), "not org")
         let files = Utils.listOrgFiles tmpDir
-        Assert.Equal(3, files.Length)
+        Assert.Equal(1, files.Length)
         Assert.Contains(files, fun f -> f.EndsWith("notes.org"))
-        Assert.Contains(files, fun f -> f.EndsWith("secret.org.gpg"))
-        Assert.Contains(files, fun f -> f.EndsWith("private.org.age"))
+        Assert.DoesNotContain(files, fun f -> f.EndsWith("secret.org.gpg"))
+        Assert.DoesNotContain(files, fun f -> f.EndsWith("private.org.age"))
     finally
         System.IO.Directory.Delete(tmpDir, true)
 

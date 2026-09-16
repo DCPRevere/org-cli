@@ -191,6 +191,32 @@ let computeBlockRanges (content: string) : (int * int) list =
             Some(b.Index, e.Index + e.Length)
         | None -> None)
 
+/// Refuse edits when an unterminated structure makes source ranges unreliable.
+let ensureEditable (content: string) =
+    let mutable block: string option = None
+    let mutable drawer = false
+
+    for line in content.Split('\n') do
+        let text = line.Trim().ToUpperInvariant()
+
+        match block with
+        | Some name ->
+            if text = "#+END_" + name then
+                block <- None
+        | None ->
+            if text.StartsWith("#+BEGIN_") then
+                block <- Some(text.Substring(8).Split([| ' '; '\t' |]).[0])
+            elif text = ":PROPERTIES:" || text = ":LOGBOOK:" then
+                if drawer then
+                    invalidArg "content" "Nested or unterminated drawer"
+
+                drawer <- true
+            elif text = ":END:" then
+                drawer <- false
+
+    if block.IsSome || drawer then
+        invalidArg "content" "Cannot edit an unterminated block or drawer"
+
 let private isInsideBlock (blockRanges: (int * int) list) (pos: int) : bool =
     blockRanges |> List.exists (fun (s, e) -> pos > s && pos < e)
 
@@ -240,13 +266,28 @@ let private buildDocumentFromSections
         let fileNodeId = Types.tryGetId fileProperties
         let fileLevelLinks = fileLinks |> List.map (fun l -> l, fileNodeId)
 
+        let mutable ancestors: Headline list = []
+
         let headlineLinks =
             headlinesWithContent
             |> List.collect (fun hwc ->
-                let nodeId = Types.tryGetId hwc.Headline.Properties
+                ancestors <- ancestors |> List.filter (fun h -> h.Level < hwc.Headline.Level)
+                ancestors <- hwc.Headline :: ancestors
+
+                let nodeId =
+                    ancestors
+                    |> List.tryPick (fun h -> Types.tryGetId h.Properties)
+                    |> Option.orElse fileNodeId
+
                 hwc.Links |> List.map (fun l -> l, nodeId))
 
+        let blocks = computeBlockRanges content
+
         fileLevelLinks @ headlineLinks
+        |> List.filter (fun (link, _) ->
+            blocks
+            |> List.exists (fun (a, b) -> link.Position > a && link.Position < b)
+            |> not)
 
     { FilePath = None
       Keywords = keywords
@@ -264,12 +305,12 @@ let parseWithConfig (config: OrgConfig) (content: string) : OrgDocument =
 
 /// Parse a complete org document (auto-detects #+TODO: keywords)
 let parse (content: string) : OrgDocument =
-    parseWithConfig Types.defaultConfig content
+    parseWithConfig (Config.load ()) content
 
 /// Parse an org file from disk
 let parseFile (filePath: string) : OrgDocument =
-    let content = File.ReadAllText(filePath)
-    let doc = parse content
+    let content = OrgCli.Org.Runtime.readText (filePath)
+    let doc = parseWithConfig (Config.load ()) content
     { doc with FilePath = Some filePath }
 
 /// Get all nodes (file-level + headlines with IDs) from a document

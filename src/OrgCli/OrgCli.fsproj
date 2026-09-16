@@ -2,12 +2,13 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <DefineConstants Condition="'$(EnableRoam)' != 'false'">$(DefineConstants);ROAM</DefineConstants>
     <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>org</AssemblyName>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>org</ToolCommandName>
     <PackageId>OrgCli</PackageId>
-    <Description>CLI for org-mode file manipulation and org-roam database management</Description>
+    <Description>Standalone Org CLI with an owned search index and optional org-roam support</Description>
     <Authors>dcprevere</Authors>
 
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -18,12 +19,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="RoamCommands.fs" />
+
+    <Compile Include="Version.fs" />
+    <Compile Include="Server.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OrgCli.Roam\OrgCli.Roam.fsproj" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <ProjectReference Include="../OrgCli.Roam.Extension/OrgCli.Roam.Extension.fsproj" Condition="'$(EnableRoam)' != 'false'" />
     <ProjectReference Include="..\OrgCli.Index\OrgCli.Index.fsproj" />
   </ItemGroup>
 

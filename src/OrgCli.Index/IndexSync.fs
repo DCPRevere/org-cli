@@ -63,11 +63,20 @@ let private serializeProperties (props: PropertyDrawer option) : string option =
         Some(sprintf "{%s}" (String.Join(",", pairs)))
 
 let private getUnixEpochSeconds (filePath: string) : int64 =
-    let mtime = File.GetLastWriteTimeUtc(filePath)
+    let mtime = OrgCli.Org.Runtime.lastWriteTime (filePath)
     DateTimeOffset(mtime).ToUnixTimeSeconds()
 
 let private indexFileContent (db: IndexDatabase.OrgIndexDb) (filePath: string) (content: string) =
-    let doc = Document.parse content
+    let doc = Document.parseWithConfig (Config.load ()) content
+    db.StoreDocument(filePath, doc)
+
+    let rootEnd =
+        doc.Headlines
+        |> List.tryHead
+        |> Option.map (fun h -> int h.Position)
+        |> Option.defaultValue content.Length
+
+    db.StoreRoot(filePath, Types.tryGetTitle doc.Keywords |> Option.defaultValue "", content.Substring(0, rootEnd))
     let filetags = Types.getFileTags doc.Keywords
 
     // Insert headlines
@@ -105,46 +114,24 @@ let private indexFileContent (db: IndexDatabase.OrgIndexDb) (filePath: string) (
         let priority = h.Priority |> Option.map (fun (Priority c) -> string c)
         let customId = Types.tryGetProperty "CUSTOM_ID" h.Properties
 
-        try
-            db.InsertHeadline(
-                { File = filePath
-                  CharPos = h.Position
-                  Level = h.Level
-                  Title = h.Title
-                  Todo = h.TodoKeyword
-                  Priority = priority
-                  Scheduled = scheduledRaw
-                  ScheduledDt = scheduledDt
-                  Deadline = deadlineRaw
-                  DeadlineDt = deadlineDt
-                  Closed = closedRaw
-                  ClosedDt = closedDt
-                  Properties = props
-                  Body = if String.IsNullOrWhiteSpace(body) then None else Some body
-                  OutlinePath = Some outlinePath
-                  CustomId = customId }
-            )
-        with :? Microsoft.Data.Sqlite.SqliteException when customId.IsSome ->
-            eprintfn "Warning: duplicate CUSTOM_ID '%s' in %s, indexing without it" customId.Value filePath
-
-            db.InsertHeadline(
-                { File = filePath
-                  CharPos = h.Position
-                  Level = h.Level
-                  Title = h.Title
-                  Todo = h.TodoKeyword
-                  Priority = priority
-                  Scheduled = scheduledRaw
-                  ScheduledDt = scheduledDt
-                  Deadline = deadlineRaw
-                  DeadlineDt = deadlineDt
-                  Closed = closedRaw
-                  ClosedDt = closedDt
-                  Properties = props
-                  Body = if String.IsNullOrWhiteSpace(body) then None else Some body
-                  OutlinePath = Some outlinePath
-                  CustomId = None }
-            )
+        db.InsertHeadline(
+            { File = filePath
+              CharPos = h.Position
+              Level = h.Level
+              Title = h.Title
+              Todo = h.TodoKeyword
+              Priority = priority
+              Scheduled = scheduledRaw
+              ScheduledDt = scheduledDt
+              Deadline = deadlineRaw
+              DeadlineDt = deadlineDt
+              Closed = closedRaw
+              ClosedDt = closedDt
+              Properties = props
+              Body = if String.IsNullOrWhiteSpace(body) then None else Some body
+              OutlinePath = Some outlinePath
+              CustomId = customId }
+        )
 
         // Insert direct tags (inherited=0)
         for tag in h.Tags do
@@ -199,23 +186,23 @@ let private indexFileContent (db: IndexDatabase.OrgIndexDb) (filePath: string) (
 /// Sync a single file. Always re-indexes (used for post-mutation auto-sync
 /// where the caller knows the file changed).
 let syncFile (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
-    if not (File.Exists(filePath)) then
+    let filePath = Runtime.fullPath filePath
+
+    if not (OrgCli.Org.Runtime.fileExists (filePath)) then
         db.ExecuteInTransaction(fun () ->
             db.DeleteFtsForFile(filePath)
             db.DeleteFile(filePath))
     elif isEncryptedFile filePath then
         ()
     else
-        let content =
-            try
-                Some(File.ReadAllText(filePath))
-            with _ ->
-                None
+        let content = Some(OrgCli.Org.Runtime.readText (filePath))
 
         match content with
         | None -> ()
         | Some text ->
-            let hash = computeSha256 text
+            let hash =
+                computeSha256 ("projection-v3\n" + sprintf "%A" (Config.load ()) + "\n" + text)
+
             let mtime = getUnixEpochSeconds filePath
 
             db.ExecuteInTransaction(fun () ->
@@ -233,19 +220,19 @@ let syncFile (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
 /// Incremental sync for a single file during directory scan.
 /// Uses mtime/hash checks to skip unchanged files.
 let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
+    let filePath = Runtime.fullPath filePath
+
     if isEncryptedFile filePath then
         ()
     else
-        let content =
-            try
-                Some(File.ReadAllText(filePath))
-            with _ ->
-                None
+        let content = Some(OrgCli.Org.Runtime.readText (filePath))
 
         match content with
         | None -> ()
         | Some text ->
-            let hash = computeSha256 text
+            let hash =
+                computeSha256 ("projection-v3\n" + sprintf "%A" (Config.load ()) + "\n" + text)
+
             let mtime = getUnixEpochSeconds filePath
             let existingFile = db.GetFile(filePath)
 
@@ -253,9 +240,7 @@ let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit
                 match existingFile with
                 | None -> true
                 | Some ef ->
-                    if ef.Mtime = mtime then
-                        false
-                    elif ef.Hash = hash then
+                    if ef.Hash = hash then
                         db.UpdateFileMtime(filePath, mtime)
                         false
                     else
@@ -274,63 +259,30 @@ let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit
 
                     indexFileContent db filePath text)
 
-let syncDirectory (db: IndexDatabase.OrgIndexDb) (directory: string) : unit =
-    let orgFiles =
-        Utils.listOrgFiles directory |> List.filter (fun f -> not (isEncryptedFile f))
+/// Remove missing files, then transactionally replace each changed file projection.
+let syncFiles (db: IndexDatabase.OrgIndexDb) (files: string list) (force: bool) =
+    let files = files |> List.map Runtime.fullPath |> List.distinct |> List.sort
 
-    for filePath in orgFiles do
-        try
-            syncFileIncremental db filePath
-        with _ ->
-            () // skip files that fail to parse; index the rest
+    db.ExecuteInTransaction(fun () ->
+        for f in db.GetAllFiles() do
+            if not (Runtime.fileExists f.Path) then
+                db.DeleteFtsForFile f.Path
+                db.DeleteFile f.Path)
 
-    // Remove entries for files that no longer exist on disk
-    let indexedFiles = db.GetAllFiles()
-    let staleFiles = indexedFiles |> List.filter (fun f -> not (File.Exists(f.Path)))
+    for file in files do
+        if force then
+            syncFile db file
+        else
+            syncFileIncremental db file
 
-    if not staleFiles.IsEmpty then
-        db.ExecuteInTransaction(fun () ->
-            for f in staleFiles do
-                db.DeleteFtsForFile(f.Path)
-                db.DeleteFile(f.Path))
+let syncDirectory (db: IndexDatabase.OrgIndexDb) (directory: string) =
+    if not (Runtime.directoryExists directory) then
+        invalidArg "directory" ("Directory does not exist: " + directory)
 
-let syncDirectoryForce (db: IndexDatabase.OrgIndexDb) (directory: string) : unit =
-    let orgFiles =
-        Utils.listOrgFiles directory |> List.filter (fun f -> not (isEncryptedFile f))
+    syncFiles db (Utils.listOrgFiles directory) false
 
-    for filePath in orgFiles do
-        let content =
-            try
-                Some(File.ReadAllText(filePath))
-            with _ ->
-                None
+let syncDirectoryForce (db: IndexDatabase.OrgIndexDb) (directory: string) =
+    if not (Runtime.directoryExists directory) then
+        invalidArg "directory" ("Directory does not exist: " + directory)
 
-        match content with
-        | None -> ()
-        | Some text ->
-            let hash = computeSha256 text
-            let mtime = getUnixEpochSeconds filePath
-
-            try
-                db.ExecuteInTransaction(fun () ->
-                    db.DeleteFtsForFile(filePath)
-                    db.DeleteHeadlines(filePath)
-
-                    db.InsertFile(
-                        { Path = filePath
-                          Hash = hash
-                          Mtime = mtime }
-                    )
-
-                    indexFileContent db filePath text)
-            with _ ->
-                ()
-
-    let indexedFiles = db.GetAllFiles()
-    let staleFiles = indexedFiles |> List.filter (fun f -> not (File.Exists(f.Path)))
-
-    if not staleFiles.IsEmpty then
-        db.ExecuteInTransaction(fun () ->
-            for f in staleFiles do
-                db.DeleteFtsForFile(f.Path)
-                db.DeleteFile(f.Path))
+    syncFiles db (Utils.listOrgFiles directory) true

@@ -22,6 +22,10 @@ let parseRepeater (s: string) : (RepeaterType * int * char) option =
 
         let n = int m.Groups.[2].Value
         let unit = m.Groups.[3].Value.[0]
+
+        if n <= 0 then
+            invalidArg "repeater" "Repeater interval must be positive"
+
         Some(rtype, n, unit)
 
 let private addUnits (date: DateTime) (n: int) (unit: char) : DateTime =
@@ -340,6 +344,11 @@ let refile
     let subtree = Subtree.extractSubtree srcContent srcPos
 
     if sameFile then
+        let startPos, endPos = Subtree.getSubtreeRange srcContent srcPos
+
+        if tgtPos >= int64 startPos && tgtPos < int64 endPos then
+            invalidArg "target" "Cannot refile an entry into itself or its descendants"
+
         let removedSrc = Subtree.removeSubtree srcContent srcPos
         let (srcStart, srcEnd) = Subtree.getSubtreeRange srcContent srcPos
         let adjustment = if srcStart < int tgtPos then -(srcEnd - srcStart) else 0

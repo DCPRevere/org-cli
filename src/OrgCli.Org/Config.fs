@@ -136,11 +136,11 @@ let loadFromJson (json: string) : Result<OrgConfig, string> =
         Error $"Failed to parse config JSON: {ex.Message}"
 
 let loadFromFile (path: string) : Result<OrgConfig, string> =
-    if not (File.Exists(path)) then
+    if not (OrgCli.Org.Runtime.fileExists (path)) then
         Ok Types.defaultConfig
     else
         try
-            let json = File.ReadAllText(path)
+            let json = OrgCli.Org.Runtime.readText (path)
             loadFromJson json
         with ex ->
             Error $"Failed to read config file '{path}': {ex.Message}"
@@ -153,19 +153,19 @@ type private EnvOverrides =
 
 let private readEnvOverrides () : EnvOverrides =
     let logDone =
-        match Environment.GetEnvironmentVariable("ORG_CLI_LOG_DONE") with
+        match OrgCli.Org.Runtime.environment ("ORG_CLI_LOG_DONE") with
         | null
         | "" -> None
         | v -> parseLogAction v
 
     let logIntoDrawer =
-        match Environment.GetEnvironmentVariable("ORG_CLI_LOG_INTO_DRAWER") with
+        match OrgCli.Org.Runtime.environment ("ORG_CLI_LOG_INTO_DRAWER") with
         | null -> None
         | "" -> Some None
         | v -> Some(Some v)
 
     let deadlineWarningDays =
-        match Environment.GetEnvironmentVariable("ORG_CLI_DEADLINE_WARNING_DAYS") with
+        match OrgCli.Org.Runtime.environment ("ORG_CLI_DEADLINE_WARNING_DAYS") with
         | null
         | "" -> None
         | v ->
@@ -174,7 +174,7 @@ let private readEnvOverrides () : EnvOverrides =
             | _ -> None
 
     let tagInheritance =
-        match Environment.GetEnvironmentVariable("ORG_CLI_TAG_INHERITANCE") with
+        match OrgCli.Org.Runtime.environment ("ORG_CLI_TAG_INHERITANCE") with
         | null
         | "" -> None
         | v ->
@@ -207,10 +207,22 @@ let overlayEnv (baseCfg: OrgConfig) : OrgConfig =
 /// Backward-compatible: read env vars, apply over defaultConfig.
 let loadFromEnv () : OrgConfig = overlayEnv Types.defaultConfig
 
-let load () : OrgConfig =
+let private loadBase () : OrgConfig =
     let fileCfg =
         match loadFromFile (Utils.orgCliConfigFile ()) with
         | Ok cfg -> cfg
         | Error _ -> Types.defaultConfig
 
     overlayEnv fileCfg
+
+let private current = System.Threading.AsyncLocal<OrgConfig option>()
+
+let load () =
+    current.Value |> Option.defaultWith loadBase
+
+let useConfig config =
+    let previous = current.Value
+    current.Value <- Some config
+
+    { new System.IDisposable with
+        member _.Dispose() = current.Value <- previous }

@@ -142,11 +142,14 @@ type OrgRoamDb(dbPath: string) =
         results |> Seq.toList
 
     member _.Initialize() : Result<unit, string> =
-        let isNewDb = not (File.Exists(dbPath))
+        let isNewDb = not (OrgCli.Org.Runtime.fileExists (dbPath))
         let dir = Path.GetDirectoryName(dbPath)
 
-        if not (String.IsNullOrEmpty(dir)) && not (Directory.Exists(dir)) then
-            Directory.CreateDirectory(dir) |> ignore
+        if
+            not (String.IsNullOrEmpty(dir))
+            && not (OrgCli.Org.Runtime.directoryExists (dir))
+        then
+            OrgCli.Org.Runtime.createDirectory (dir) |> ignore
 
         let conn = ensureConnection ()
 

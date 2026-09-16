@@ -2,21 +2,13 @@
 # Builds, tests, packs the dotnet tool, publishes self-contained binaries,
 # creates a GitHub release, and pushes to configured package registries.
 #
+# Release candidates are GitHub/NuGet prereleases only; stable package channels are skipped.
+#
 # Secrets required:
 #   NUGET_API_KEY  — API key from nuget.org (https://www.nuget.org/account/apikeys).
 #                    Create a key scoped to the "OrgCli" package with Push permission.
 #                    Add it as a repository secret under Settings > Secrets > Actions.
 #                    If the secret is absent, the nuget push step is skipped.
-#
-#   NPM_TOKEN      — npm access token for publishing @dcprevere/org-cli and @dcprevere/org-memory.
-#                    Generate at https://www.npmjs.com/settings/tokens (Automation type).
-#                    Add it as a repository secret under Settings > Secrets > Actions.
-#                    If the secret is absent, the npm publish step is skipped.
-#
-#   CLAWHUB_TOKEN  — Auth token for ClawHub (https://clawhub.ai).
-#                    Log in with GitHub, go to Settings, generate a token.
-#                    Add it as a repository secret under Settings > Secrets > Actions.
-#                    If the secret is absent, the ClawHub publish step is skipped.
 #
 #   HOMEBREW_TAP_TOKEN — GitHub PAT (classic, repo scope) for dcprevere/homebrew-org-cli.
 #                        Generate at https://github.com/settings/tokens.
@@ -69,6 +61,9 @@ jobs:
       - name: Test
         run: dotnet test OrgCli.slnx --no-build
 
+      - name: API and MCP process smoke tests
+        run: python3 tests/server_smoke.py
+
       - name: Extract version from tag
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
@@ -82,14 +77,6 @@ jobs:
           }
           FILE_VER="$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*/\1/p' Directory.Build.props)"
           [ "$FILE_VER" = "$TAG_VER" ] || fail "Directory.Build.props" "$FILE_VER"
-          for manifest in \
-            integrations/openclaw/org-cli/plugin/package.json \
-            integrations/openclaw/org-cli/plugin/openclaw.plugin.json \
-            integrations/openclaw/org-memory/plugin/package.json \
-            integrations/openclaw/org-memory/plugin/openclaw.plugin.json; do
-            V="$(node -p "require('./$manifest').version")"
-            [ "$V" = "$TAG_VER" ] || fail "$manifest" "$V"
-          done
 
       - name: Pack dotnet tool
         run: dotnet pack src/OrgCli/OrgCli.fsproj -c Release -p:Version=${{ steps.version.outputs.version }} -o artifacts/nupkg
@@ -152,6 +139,9 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: CHANGELOG.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
           files: |
             artifacts/org-linux-x64.tar.gz
             artifacts/org-linux-arm64.tar.gz
@@ -171,56 +161,11 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
-      - name: Publish org-cli plugin to npm
-        if: env.NPM_TOKEN != ''
-        continue-on-error: true
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-          npm publish --access public
-        working-directory: integrations/openclaw/org-cli/plugin
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish org-memory plugin to npm
-        if: env.NPM_TOKEN != ''
-        continue-on-error: true
-        run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > .npmrc
-          npm publish --access public
-        working-directory: integrations/openclaw/org-memory/plugin
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Install ClawHub CLI
-        if: env.CLAWHUB_TOKEN != ''
-        continue-on-error: true
-        run: |
-          npm install -g clawhub
-          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-
-      - name: Publish org-cli skill to ClawHub
-        if: env.CLAWHUB_TOKEN != ''
-        continue-on-error: true
-        run: |
-          clawhub publish integrations/openclaw/org-cli --slug org-cli --name org-cli --version "${{ steps.version.outputs.version }}"
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-
-      - name: Publish org-memory skill to ClawHub
-        if: env.CLAWHUB_TOKEN != ''
-        continue-on-error: true
-        run: |
-          clawhub publish integrations/openclaw/org-memory --slug org-memory --name org-memory --version "${{ steps.version.outputs.version }}"
-        env:
-          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
-
       - name: Push to Homebrew tap
-        if: env.HOMEBREW_TAP_TOKEN != ''
+        if: ${{ !contains(github.ref_name, '-') && env.HOMEBREW_TAP_TOKEN != '' }}
         continue-on-error: true
         run: |
-          git clone --depth 1 https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/dcprevere/homebrew-org-cli.git _tap
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/dcprevere/homebrew-org-cli.git" _tap
           mkdir -p _tap/Formula
           cp packaging/homebrew/org-cli.rb _tap/Formula/org-cli.rb
           cd _tap
@@ -234,10 +179,10 @@ jobs:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
       - name: Push to Scoop bucket
-        if: env.SCOOP_BUCKET_TOKEN != ''
+        if: ${{ !contains(github.ref_name, '-') && env.SCOOP_BUCKET_TOKEN != '' }}
         continue-on-error: true
         run: |
-          git clone --depth 1 https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/dcprevere/scoop-org-cli.git _bucket
+          git clone --depth 1 "https://x-access-token:${SCOOP_BUCKET_TOKEN}@github.com/dcprevere/scoop-org-cli.git" _bucket
           cp packaging/scoop/org-cli.json _bucket/org-cli.json
           cd _bucket
           git config user.name "github-actions[bot]"
@@ -250,7 +195,7 @@ jobs:
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
 
       - name: Publish to AUR
-        if: env.AUR_SSH_KEY != ''
+        if: ${{ !contains(github.ref_name, '-') && env.AUR_SSH_KEY != '' }}
         continue-on-error: true
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
@@ -264,7 +209,7 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
 
       - name: Publish to Chocolatey
-        if: env.CHOCO_API_KEY != ''
+        if: ${{ !contains(github.ref_name, '-') && env.CHOCO_API_KEY != '' }}
         continue-on-error: true
         run: |
           VER="${{ steps.version.outputs.version }}"

@@ -37,7 +37,7 @@ let defaultCreateOptions title =
 
 /// Generate a filename from title (slug format)
 let generateFilename (roamDirectory: string) (title: string) : string =
-    let timestamp = DateTime.Now.ToString("yyyyMMddHHmmss")
+    let timestamp = (OrgCli.Org.Runtime.now ()).ToString("yyyyMMddHHmmss")
     let slug = Utils.slugify title
     let filename = sprintf "%s-%s.org" timestamp slug
     Path.Combine(roamDirectory, filename)
@@ -55,7 +55,7 @@ let createFileNode (roamDirectory: string) (options: CreateNodeOptions) : string
         | Some c -> content + "\n" + c
         | None -> content
 
-    File.WriteAllText(filePath, fullContent)
+    OrgCli.Org.Runtime.writeText (filePath, fullContent)
     filePath
 
 /// Create a new headline node in an existing file
@@ -102,7 +102,7 @@ let createHeadlineNode (filePath: string) (options: CreateNodeOptions) : string 
         | None -> headlineContent + "\n"
 
     // Append to file
-    File.AppendAllText(filePath, "\n" + fullContent)
+    OrgCli.Org.Runtime.appendText (filePath, "\n" + fullContent)
     nodeId
 
 /// Add a link from one node to another
@@ -113,7 +113,7 @@ let addLink
     (targetNodeId: string)
     (description: string option)
     : Result<unit, string> =
-    let content = File.ReadAllText(sourceFilePath)
+    let content = OrgCli.Org.Runtime.readText (sourceFilePath)
     let doc = Document.parseFile sourceFilePath
 
     let link =
@@ -127,7 +127,7 @@ let addLink
 
     if Types.tryGetId doc.FileProperties = Some sourceNodeId then
         // File-level node - append at end
-        File.AppendAllText(sourceFilePath, "\n" + linkText + "\n")
+        OrgCli.Org.Runtime.appendText (sourceFilePath, "\n" + linkText + "\n")
         Ok()
     else
         match
@@ -147,7 +147,7 @@ let addLink
                     ""
 
             let newContent = content.Insert(insertPos, prefix + linkText + "\n")
-            File.WriteAllText(sourceFilePath, newContent)
+            OrgCli.Org.Runtime.writeText (sourceFilePath, newContent)
             Ok()
 
 /// Find the character position of a node within a parsed document.
@@ -162,7 +162,7 @@ let private findNodePosition (doc: OrgDocument) (nodeId: string) : int option =
 
 /// Add an alias to a node
 let addAlias (filePath: string) (nodeId: string) (alias: string) : Result<unit, string> =
-    let content = File.ReadAllText(filePath)
+    let content = OrgCli.Org.Runtime.readText (filePath)
     let doc = Document.parseFile filePath
 
     match findNodePosition doc nodeId with
@@ -171,12 +171,12 @@ let addAlias (filePath: string) (nodeId: string) (alias: string) : Result<unit, 
         let newContent =
             Writer.addToMultiValueProperty content nodePosition "ROAM_ALIASES" alias
 
-        File.WriteAllText(filePath, newContent)
+        OrgCli.Org.Runtime.writeText (filePath, newContent)
         Ok()
 
 /// Remove an alias from a node
 let removeAlias (filePath: string) (nodeId: string) (alias: string) : Result<unit, string> =
-    let content = File.ReadAllText(filePath)
+    let content = OrgCli.Org.Runtime.readText (filePath)
     let doc = Document.parseFile filePath
 
     match findNodePosition doc nodeId with
@@ -185,12 +185,12 @@ let removeAlias (filePath: string) (nodeId: string) (alias: string) : Result<uni
         let newContent =
             Writer.removeFromMultiValueProperty content nodePosition "ROAM_ALIASES" alias
 
-        File.WriteAllText(filePath, newContent)
+        OrgCli.Org.Runtime.writeText (filePath, newContent)
         Ok()
 
 /// Add a tag to a node
 let addTag (filePath: string) (nodeId: string) (tag: string) : Result<unit, string> =
-    let content = File.ReadAllText(filePath)
+    let content = OrgCli.Org.Runtime.readText (filePath)
     let doc = Document.parseFile filePath
 
     // Check if file-level node
@@ -236,7 +236,7 @@ let addTag (filePath: string) (nodeId: string) (tag: string) : Result<unit, stri
                                String.concat "\n" after |]
                     | None -> content + sprintf "\n#+filetags: %s" tagString
 
-            File.WriteAllText(filePath, newContent)
+            OrgCli.Org.Runtime.writeText (filePath, newContent)
 
         Ok()
     else
@@ -260,25 +260,25 @@ let addTag (filePath: string) (nodeId: string) (tag: string) : Result<unit, stri
                         { section with
                             HeadlineLine = newHeadlineLine }
 
-                File.WriteAllText(filePath, newContent)
+                OrgCli.Org.Runtime.writeText (filePath, newContent)
 
             Ok()
 
 /// Add a ref to a node
 let addRef (filePath: string) (nodeId: string) (ref: string) : Result<unit, string> =
-    let content = File.ReadAllText(filePath)
+    let content = OrgCli.Org.Runtime.readText (filePath)
     let doc = Document.parseFile filePath
 
     match findNodePosition doc nodeId with
     | None -> Error(sprintf "Node %s not found in file %s" nodeId filePath)
     | Some nodePosition ->
         let newContent = Writer.addToMultiValueProperty content nodePosition "ROAM_REFS" ref
-        File.WriteAllText(filePath, newContent)
+        OrgCli.Org.Runtime.writeText (filePath, newContent)
         Ok()
 
 /// Remove a ref from a node
 let removeRef (filePath: string) (nodeId: string) (ref: string) : Result<unit, string> =
-    let content = File.ReadAllText(filePath)
+    let content = OrgCli.Org.Runtime.readText (filePath)
     let doc = Document.parseFile filePath
 
     match findNodePosition doc nodeId with
@@ -287,7 +287,7 @@ let removeRef (filePath: string) (nodeId: string) (ref: string) : Result<unit, s
         let newContent =
             Writer.removeFromMultiValueProperty content nodePosition "ROAM_REFS" ref
 
-        File.WriteAllText(filePath, newContent)
+        OrgCli.Org.Runtime.writeText (filePath, newContent)
         Ok()
 
 /// Delete a node (either remove headline or delete file)
@@ -297,12 +297,12 @@ let deleteNode (db: Database.OrgRoamDb) (nodeId: string) : Result<unit, string> 
     | Some node ->
         if node.Level = 0 then
             // File-level node - delete the file
-            if File.Exists(node.File) then
-                File.Delete(node.File)
+            if OrgCli.Org.Runtime.fileExists (node.File) then
+                OrgCli.Org.Runtime.deleteFile (node.File)
         else
             // Headline node - remove the entire subtree
-            let content = File.ReadAllText(node.File)
+            let content = OrgCli.Org.Runtime.readText (node.File)
             let newContent = Subtree.removeSubtree content (int64 node.Pos)
-            File.WriteAllText(node.File, newContent)
+            OrgCli.Org.Runtime.writeText (node.File, newContent)
 
         Ok()

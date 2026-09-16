@@ -176,7 +176,7 @@ let ``batch with empty commands array returns empty results`` () =
     Assert.Empty(results)
 
 [<Fact>]
-let ``batch partial failure: some succeed some fail, successes are preserved`` () =
+let ``batch failure leaves all original file contents intact`` () =
     let content = "* TODO Good task\n:PROPERTIES:\n:ID: good-id\n:END:\nBody\n"
 
     let json =
@@ -191,9 +191,7 @@ let ``batch partial failure: some succeed some fail, successes are preserved`` (
     Assert.True(Result.isOk results.[0], "First command should succeed")
     Assert.True(Result.isError results.[1], "Second command should fail (nonexistent headline)")
     Assert.True(Result.isOk results.[2], "Third command should succeed")
-    // The successful mutations should still be applied
-    Assert.Contains("DONE", files.["test.org"])
-    Assert.Contains("processed", files.["test.org"])
+    Assert.Equal(content, files.["test.org"])
 
 [<Fact>]
 let ``batch with 50 commands completes`` () =

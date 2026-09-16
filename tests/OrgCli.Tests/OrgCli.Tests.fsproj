@@ -37,6 +37,8 @@
     <Compile Include="CliHandlerTests.fs" />
     <Compile Include="CustomIdTests.fs" />
     <Compile Include="DirectoryConfigTests.fs" />
+    <Compile Include="VirtualWorkspaceTests.fs" />
+    <Compile Include="ServiceTests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>
 

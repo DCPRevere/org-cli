@@ -30,7 +30,7 @@ YA.   ,A9 MM    8M            YM.    , MM    MM
 
 ## What it is
 
-A parser and CLI for org-mode files: headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links. Output is structured (text or JSON) and mutations are atomic.
+A parser and CLI for org-mode files: headlines, TODO states, priorities, tags, timestamps, property drawers, clock entries, links. Output is structured (text or JSON) and file edits use checked, staged replacements. Multi-file edits have a recovery journal.
 
 Intended for scripts and AI agents that need to read or edit an org-mode corpus without running Emacs.
 
@@ -108,7 +108,7 @@ org headlines --todo TODO --tag work -d ~/org
 # Set a headline to DONE (by short ID -- no file needed)
 org todo k4t DONE
 
-# Add a new headline (auto-assigns a short CUSTOM_ID)
+# Add a new headline (always assigns a standard UUID ID)
 org add tasks.org "New task" --todo TODO --tag project --scheduled 2026-03-01
 
 # Assign short IDs to all existing headlines
@@ -130,7 +130,7 @@ org search "meeting.*notes" -d ~/org
 # JSON output for scripting
 org today -d ~/org -f json
 
-# Sync and query an org-roam database
+# Query the optional org-roam view over your Org files
 org roam sync -d ~/org
 org roam node list -d ~/org
 ```
@@ -140,14 +140,14 @@ org roam node list -d ~/org
 ### Org file operations
 
 - **Headlines** — list, filter by TODO state / tag / level / property, with tag and property inheritance. Each headline shows its short CUSTOM_ID for easy reference.
-- **Mutations** — set TODO state, priority, tags, properties, SCHEDULED, DEADLINE; respects repeaters, per-keyword logging, LOGBOOK drawers. Commands accept a bare CUSTOM_ID instead of `<file> <identifier>` when an index exists.
+- **Mutations** — set TODO state, priority, tags, properties, SCHEDULED, DEADLINE; respects repeaters, per-keyword logging, LOGBOOK drawers. Commands accept a bare CUSTOM_ID instead of `<file> <identifier>` with automatic index refresh.
 - **Clock** — clock in/out, clock reports with per-headline and grand totals.
 - **Refile** — move subtrees within or across files, with level adjustment.
 - **Archive** — move subtrees to `.org_archive` with metadata stamps.
 - **Search** — regex search with context (containing headline, file, line number).
 - **Links** — resolve `id:`, `file:`, fuzzy, and abbreviated links across the document set.
 - **Export** — convert via pandoc to any supported format.
-- **Batch mode** — execute multiple mutations atomically from JSON on stdin.
+- **Batch mode** — validate multiple mutations from JSON before writing; interrupted multi-file commits are recoverable.
 
 ### Todos
 
@@ -168,7 +168,7 @@ View and filter all TODO headlines across your org files.
 
 ### Agenda
 
-Queries org files directly (no database needed).
+Uses cached parsed documents, refreshed from Org files before each query.
 
 - `org today` — all non-done TODOs due today or overdue, split into sections
 - Today/week views with overdue detection
@@ -179,60 +179,52 @@ Queries org files directly (no database needed).
 
 ### Org-roam
 
-Manages an org-roam v2 SQLite database, compatible with Emacs org-roam (schema version 20).
+Org-roam is an optional extension over the same documents and index used by the core. It interprets file and heading IDs, aliases, refs, tags, and node exclusions. It supports node create/find/read, backlinks, and link/property edits without Emacs.
 
-- Sync files to database (incremental or forced)
-- Node CRUD (file-level and headline-level nodes)
-- Backlinks, tags, aliases, refs
-- Link management
+It does **not** read or write Emacs's org-roam database. Emacs can index the shared Org files independently. Build without the extension using `dotnet build src/OrgCli/OrgCli.fsproj -p:EnableRoam=false`.
 
-### Index and CUSTOM_ID
+### Owned index and identity
 
-`org index` builds a SQLite headline index for fast full-text search and CUSTOM_ID resolution.
+Org files are authoritative. The CLI owns `.org-index.db` under the selected directory (`--db` overrides it). Queries create and refresh it automatically; deleting it loses no note data. Parsed document snapshots, identity lookup, and SQLite FTS5 share one projection.
 
-- `org add` auto-assigns a short base36 CUSTOM_ID (e.g. `k4t`) to new headlines when an index exists
-- `org custom-id assign` backfills CUSTOM_IDs on all existing headlines that lack one
-- With CUSTOM_IDs, most commands accept a bare ID instead of `<file> <identifier>`: `org todo k4t DONE`
-- `org fts` provides FTS5 full-text search over indexed headlines
+Every refresh fingerprints file contents and effective parser configuration. Unchanged files reuse their parsed snapshot; changes with unchanged timestamps are still detected. This currently reads the selected corpus on each refresh, trading some I/O for reliable freshness without a watcher. `fts --no-sync` explicitly accepts stale results.
+
+- `org add` always assigns a UUID `ID`, independent of index state.
+- Use `id:<uuid>` for standard IDs, `custom:<value>` for existing CUSTOM_IDs, or `pos:<offset>` with a file for explicit character offsets.
+- Bare IDs and exact titles remain compatibility selectors; ambiguous matches fail.
+- `org read id:<uuid>` and `org append id:<uuid> "text"` support file-level notes as well as headings.
+- `org backlinks id:<uuid>` is a core command.
+- `org custom-id assign` / `org id stamp` remain legacy short-ID helpers.
+
+### Safe edits and recovery
+
+Edits validate the original content, acquire cooperating CLI locks, stage replacements, and then rename them into place. A failed batch command writes nothing. Refile validates its destination before changing its source. Dry runs leave source files unchanged.
+
+Multiple file renames are not an OS-level atomic transaction. If a commit is interrupted, its `.org-operation-*/manifest.json` records original and replacement contents; `.org-pending` markers block overlapping edits. Run `org recover <manifest.json>` to finish. Recovery refuses files changed by another editor. Keep journals private: they contain note contents. Locks coordinate CLI processes; unrelated editors do not participate in these locks.
+
+See [the architecture and migration notes](docs/architecture.md) for boundaries, cache guarantees, and remaining limits.
 
 ### For AI agents
 
 - `org schema` outputs a machine-readable JSON description of all commands and their arguments
-- `org batch` accepts a JSON command array on stdin for atomic multi-step operations
+- `org batch` accepts a JSON command array on stdin for validated multi-step operations
 - `-f json` on all commands for structured output with `{"ok":true,"data":...}` envelopes
 - `--dry-run` previews mutations without writing
 - `org completions bash|zsh|fish` for shell integration
 
 See [docs/agents.org](docs/agents.org) for a guide to building a knowledge base with an AI agent.
 
-### OpenClaw integration
+### Optional API and MCP
 
-Two [OpenClaw](https://github.com/openclaw/openclaw) plugins ship with this repo:
-
-- `org-cli` — task capture, scheduling, and knowledge graph operations against your org files.
-- `org-memory` — extends `org-cli` with a separate workspace for the agent's own notes.
+Use the same binary when a client needs a live connection:
 
 ```sh
-# Manage your own org files
-openclaw skill install org-cli
-
-# Optional: also let the agent persist its own memory in org
-openclaw skill install org-memory
+org serve -d ~/org                  # Local HTTP API
+org serve --mcp -d ~/org            # API plus MCP endpoint
+org mcp --stdio -d ~/org            # Launched on demand by a local MCP client
 ```
 
-The plugins map short prefixes to `org` commands:
-
-- `t: submit taxes in 3 weeks` — scheduled TODO in your inbox
-- `n: think about hanging pictures up` — plain captured headline
-- `k: Sarah prefers morning meetings` — roam fact against `Sarah`
-- `d: groceries` — resolves by CUSTOM_ID and marks DONE
-- `s: taxes to next Friday` — reschedule
-- `f: sacra` — search headlines and roam nodes
-- `"What's due today?"` — runs `org today`
-
-With `org-memory` loaded, `@a`-prefixed shortcuts (`@at:`, `@an:`, `@ak:`, `@ad:`, `@as:`, `@af:`) target the agent's own workspace.
-
-See [integrations/openclaw/README.md](integrations/openclaw/README.md) for an overview.
+Search, fetch, agenda, capture, append, task updates, and backlinks share the owned index and file mutation primitives. No server is needed for ordinary CLI commands. See [API and MCP usage](docs/api.md) for schemas, revision checks, authentication, read-only mode, and client configuration.
 
 ## Configuration
 
@@ -250,8 +242,9 @@ See [docs/usage.org](docs/usage.org) for the complete configuration reference.
 
 ```
 src/OrgCli.Org/    Parser library. Types, parsers, writer, mutations, agenda, config, batch mode.
-src/OrgCli.Index/  Headline index. SQLite FTS5, CUSTOM_ID generation and resolution.
-src/OrgCli.Roam/   Roam DB layer. Database, sync, node operations.
+src/OrgCli.Index/  Owned document cache, SQLite FTS5, identity lookup.
+src/OrgCli.Roam.Extension/ Optional org-roam semantics over the core index.
+src/OrgCli.Roam/   Legacy database API retained for compatibility tests; not used by the CLI.
 src/OrgCli/        CLI entry point.
 tests/OrgCli.Tests/
 ```
@@ -261,14 +254,17 @@ tests/OrgCli.Tests/
 ```sh
 dotnet build OrgCli.slnx
 dotnet test OrgCli.slnx
+python3 tests/server_smoke.py
 ```
+
+`VirtualWorkspaceTests.fs` exercises the production CLI with an in-memory filesystem, environment, clock, and SQLite database. It includes stale timestamps, configuration changes, duplicate identities, dry runs, failed commits, recovery conflicts, and isolated workspaces. Legacy Emacs interoperability tests require Emacs and may be skipped; they do not validate the new extension.
 
 ## Non-goals
 
 - Interactive or TUI features. This is a tool for scripts, not humans at a terminal.
 - Tables, spreadsheets, babel/code block evaluation.
 - Capture templates. Appending to a file is trivial; no tool needed.
-- File watching. Sync is explicit.
+- File watching. Queries refresh the owned index automatically.
 
 ## License
 

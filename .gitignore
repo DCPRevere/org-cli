@@ -18,6 +18,3 @@ Thumbs.db
 
 # NuGet
 *.nupkg
-
-# Node
-node_modules/

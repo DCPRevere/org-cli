@@ -121,7 +121,7 @@ let ``resolveIndexDbPath respects --db flag`` () =
 // ── tryAutoSyncIndex ──
 
 [<Fact>]
-let ``tryAutoSyncIndex does nothing when no index db exists`` () =
+let ``tryAutoSyncIndex creates the owned index when absent`` () =
     let dir = tempDir ()
 
     try
@@ -130,7 +130,7 @@ let ``tryAutoSyncIndex does nothing when no index db exists`` () =
         // Should not throw, should not create a db
         Program.tryAutoSyncIndex opts [ filePath ]
         let dbPath = Path.Combine(dir, ".org-index.db")
-        Assert.False(File.Exists(dbPath), "Should not create db when it doesn't exist")
+        Assert.True(File.Exists(dbPath), "Creates index automatically")
     finally
         cleanup [ dir ]
 
@@ -261,20 +261,19 @@ let ``handleIndex returns 0 for empty directory`` () =
 // ── handleFts ──
 
 [<Fact>]
-let ``handleFts returns error when no index exists`` () =
+let ``handleFts creates an index for a fresh workspace`` () =
     let dir = tempDir ()
     let dbPath = tempDbPath ()
 
     try
         let opts = makeOpts [ ("directory", dir); ("db", dbPath) ]
         let stdout, _, exitCode = captureBoth (fun () -> Program.handleFts opts true "test")
-        Assert.Equal(1, exitCode)
+        Assert.Equal(0, exitCode)
 
         let json = JsonNode.Parse(stdout.Trim())
-        Assert.False(json["ok"].GetValue<bool>())
-        let err = json["error"]
-        Assert.Equal("invalid_args", err["type"].GetValue<string>())
-        Assert.Contains("No index found", err["message"].GetValue<string>())
+        Assert.True(json["ok"].GetValue<bool>())
+        Assert.Empty(json["data"].AsArray())
+        Assert.True(File.Exists dbPath)
     finally
         cleanup [ dir; dbPath ]
 
@@ -616,71 +615,8 @@ let ``main returns 1 for fts without query`` () =
     let _, stderr, exitCode = captureBoth (fun () -> Program.main [| "fts" |])
     Assert.Equal(1, exitCode)
 
-// ── tryAutoSyncRoam ──
-
-[<Fact>]
-let ``tryAutoSyncRoam does nothing when no roam db exists`` () =
-    let dir = tempDir ()
-
-    try
-        let filePath = writeOrgFile dir "test.org" "* Headline\n"
-        let dbPath = Path.Combine(dir, "nonexistent.db")
-        let opts = makeOpts [ ("db", dbPath) ]
-        // Should not throw, should not create a db
-        Program.tryAutoSyncRoam opts [ filePath ]
-        Assert.False(File.Exists(dbPath), "Should not create db when it doesn't exist")
-    finally
-        cleanup [ dir ]
-
-[<Fact>]
-let ``tryAutoSyncRoam silently handles corrupt db`` () =
-    let dir = tempDir ()
-    let dbPath = tempDbPath ()
-
-    try
-        let filePath =
-            writeOrgFile dir "test.org" ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Test\n"
-
-        // Write garbage to the db file
-        File.WriteAllBytes(dbPath, [| 0uy; 1uy; 2uy; 0xFFuy; 0xFEuy |])
-        let opts = makeOpts [ ("db", dbPath) ]
-        // Should not throw
-        Program.tryAutoSyncRoam opts [ filePath ]
-    finally
-        cleanup [ dir; dbPath ]
-
-[<Fact>]
-let ``tryAutoSyncRoam syncs file when roam db exists`` () =
-    let dir = tempDir ()
-    let dbPath = tempDbPath ()
-
-    try
-        let filePath =
-            writeOrgFile dir "test.org" ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Original\n"
-
-        let opts = makeOpts [ ("db", dbPath) ]
-
-        // Create and populate the roam db via initial sync
-        do
-            use db = new OrgCli.Roam.Database.OrgRoamDb(dbPath)
-            db.Initialize() |> ignore
-            OrgCli.Roam.Sync.updateFile db dir filePath
-            let node = db.GetNode("node-1")
-            Assert.True(node.IsSome, "Node should exist after initial sync")
-
-        // Modify the file externally (change title)
-        File.WriteAllText(filePath, ":PROPERTIES:\n:ID: node-1\n:END:\n#+title: Updated\n")
-
-        // tryAutoSyncRoam should re-sync
-        Program.tryAutoSyncRoam opts [ filePath ]
-
-        use db2 = new OrgCli.Roam.Database.OrgRoamDb(dbPath)
-        db2.Initialize() |> ignore
-        let node = db2.GetNode("node-1")
-        Assert.True(node.IsSome, "Node should still exist after re-sync")
-        Assert.Equal("Updated", node.Value.Title)
-    finally
-        cleanup [ dir; dbPath ]
+// Roam no longer owns an auto-sync database. VirtualWorkspaceTests exercise
+// fresh-workspace, external edit and file-root operations through the extension.
 
 [<Fact>]
 let ``roam initializes on db created by index module`` () =
@@ -1147,7 +1083,7 @@ let ``main routes todo set command`` () =
         let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () -> Program.main [| "todo"; "set"; file; "0"; "DONE"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "todo"; "set"; file; "pos:0"; "DONE"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1163,7 +1099,7 @@ let ``main routes implicit todo set (without subcommand)`` () =
         let file = writeOrgFile dir "test.org" "* TODO Task\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () -> Program.main [| "todo"; file; "0"; "DONE"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "todo"; file; "pos:0"; "DONE"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1251,7 +1187,7 @@ let ``schedule with repeater flag writes repeater to file`` () =
 
         let stdout, _, exitCode =
             captureBoth (fun () ->
-                Program.main [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "+1w"; "-f"; "json" |])
+                Program.main [| "schedule"; file; "pos:0"; "2026-03-10"; "--repeater"; "+1w"; "-f"; "json" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)
@@ -1273,7 +1209,7 @@ let ``deadline with repeater and delay flags writes both to file`` () =
                 Program.main
                     [| "deadline"
                        file
-                       "0"
+                       "pos:0"
                        "2026-04-01"
                        "--repeater"
                        "++1m"
@@ -1298,7 +1234,7 @@ let ``schedule with invalid repeater returns error`` () =
 
         let stdout, _, exitCode =
             captureBoth (fun () ->
-                Program.main [| "schedule"; file; "0"; "2026-03-10"; "--repeater"; "bad"; "-f"; "json" |])
+                Program.main [| "schedule"; file; "pos:0"; "2026-03-10"; "--repeater"; "bad"; "-f"; "json" |])
 
         Assert.Equal(1, exitCode)
         let json = JsonNode.Parse(stdout.Trim())
@@ -1318,7 +1254,7 @@ let ``schedule clear ignores repeater flag`` () =
             writeOrgFile dir "test.org" "* TODO My task\nSCHEDULED: <2026-03-10 Tue +1w>\nBody\n"
 
         let _, _, exitCode =
-            captureBoth (fun () -> Program.main [| "schedule"; file; "0"; ""; "--repeater"; "+1w"; "--quiet" |])
+            captureBoth (fun () -> Program.main [| "schedule"; file; "pos:0"; ""; "--repeater"; "+1w"; "--quiet" |])
 
         Assert.Equal(0, exitCode)
         let content = File.ReadAllText(file)

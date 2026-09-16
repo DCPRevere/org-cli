@@ -173,7 +173,7 @@ let ``formatBatchResults formats errors without envelope`` () =
     let okTrueCount =
         System.Text.RegularExpressions.Regex.Matches(result, "\"ok\":true").Count
 
-    Assert.Equal(2, okTrueCount)
+    Assert.Equal(1, okTrueCount)
 
 [<Fact>]
 let ``Utils.parseDate produces Active timestamp from yyyy-MM-dd`` () =
@@ -280,7 +280,7 @@ let ``structural: batch results array has correct shape`` () =
     let results = [ Ok state; Error err ]
     let json = JsonOutput.formatBatchResults results
     let node = JsonNode.Parse(json)
-    Assert.True(node["ok"].GetValue<bool>())
+    Assert.False(node["ok"].GetValue<bool>())
     let data = node["data"].AsArray()
     Assert.Equal(2, data.Count)
     // First result: ok

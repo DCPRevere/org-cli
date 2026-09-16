@@ -157,4 +157,7 @@ let executeBatch
                 Ok state
             | Error e -> Error e)
 
-    results, currentFiles
+    if results |> List.exists Result.isError then
+        results, files
+    else
+        results, currentFiles

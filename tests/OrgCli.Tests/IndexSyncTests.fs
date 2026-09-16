@@ -169,7 +169,7 @@ let ``Sync skips encrypted files`` () =
         cleanup [ dir; dbPath ]
 
 [<Fact>]
-let ``Sync skips unparseable files`` () =
+let ``Sync reports invalid encoding instead of hiding incomplete results`` () =
     let dir = tempDir ()
     let dbPath = tempDbPath ()
 
@@ -180,10 +180,9 @@ let ``Sync skips unparseable files`` () =
         writeOrgFile dir "normal.org" "* Headline\n" |> ignore
         use db = new OrgIndexDb(dbPath)
         db.Initialize()
-        // Should not throw
-        syncDirectory db dir
-        let normalHeadlines = db.GetHeadlines(Path.Combine(dir, "normal.org"))
-        Assert.True(normalHeadlines.Length > 0)
+
+        Assert.Throws<System.Text.DecoderFallbackException>(fun () -> syncDirectory db dir)
+        |> ignore
     finally
         cleanup [ dir; dbPath ]
 

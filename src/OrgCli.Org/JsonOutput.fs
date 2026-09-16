@@ -399,7 +399,7 @@ let commandDefs: CommandDef list =
         Flags = [ ("--to", "Output format") ]
         HelpArgs = [ "--to FORMAT   Output format (markdown, html, etc.)" ] }
       { Name = "roam"
-        Description = "Org-roam database commands"
+        Description = "Optional org-roam view over Org documents"
         Usage = "roam <subcommand>"
         Args =
           [ { Name = "subcommand"
@@ -420,13 +420,54 @@ let commandDefs: CommandDef list =
         Usage = "index [-d dir] [--force] [--db path]"
         Args = []
         Flags =
-          [ ("--force", "Full rebuild, skip mtime/hash checks")
+          [ ("--force", "Reparse every selected file")
             ("--db", "Database path (default: <dir>/.org-index.db)") ]
         HelpArgs =
-          [ "--force        Full rebuild (ignore mtime/hash cache)"
+          [ "--force        Reparse every selected file"
             "--db <path>    Database path (default: <dir>/.org-index.db)" ] }
+      { Name = "backlinks"
+        Description = "Find Org ID links in the selected workspace"
+        Usage = "backlinks id:<value> [-d dir]"
+        Args =
+          [ { Name = "id"
+              Description = "Target Org ID"
+              Required = true } ]
+        Flags = []
+        HelpArgs = [ "id:<value>     Target Org ID" ] }
+      { Name = "serve"
+        Description = "Run the optional local HTTP API in this process"
+        Usage = "serve [-d directory] [--db path] [--port 8765] [--mcp] [--read-only]"
+        Args = []
+        Flags =
+          [ ("--port", "Loopback HTTP port (default 8765)")
+            ("--mcp", "Also expose MCP at /mcp")
+            ("--read-only", "Disable write operations") ]
+        HelpArgs =
+          [ "--port         Listen on 127.0.0.1 at this port"
+            "--mcp          Enable MCP alongside the API"
+            "--read-only    Disable writes"
+            "ORG_API_TOKEN  Optional bearer token from the environment" ] }
+      { Name = "mcp"
+        Description = "Run MCP over stdin/stdout for an on-demand local client"
+        Usage = "mcp --stdio [-d directory] [--db path] [--read-only]"
+        Args = []
+        Flags =
+          [ ("--stdio", "Read and write MCP messages on standard streams")
+            ("--read-only", "Disable write tools") ]
+        HelpArgs =
+          [ "--stdio        Required; no HTTP listener is started"
+            "--read-only    Advertise and allow only read tools" ] }
+      { Name = "recover"
+        Description = "Complete an interrupted multi-file edit"
+        Usage = "recover <manifest.json> [--dry-run]"
+        Args =
+          [ { Name = "manifest"
+              Description = "Recovery manifest path"
+              Required = true } ]
+        Flags = [ ("--dry-run", "Print the manifest without changing files") ]
+        HelpArgs = [ "<manifest.json>     Manifest reported by the failed operation" ] }
       { Name = "fts"
-        Description = "Full-text search headlines via index"
+        Description = "Full-text search headings and file-level notes"
         Usage = "fts <query> [-d dir] [--db path] [--no-sync]"
         Args =
           [ { Name = "query"
@@ -576,4 +617,7 @@ let formatBatchResult (r: Result<HeadlineEdit.HeadlineState, CliError>) : JsonNo
 
 /// Format a list of batch results as a single JSON envelope wrapping an array.
 let formatBatchResults (results: Result<HeadlineEdit.HeadlineState, CliError> list) : string =
-    ok (jsonArray (results |> List.map formatBatchResult))
+    let envelope = JsonObject()
+    envelope["ok"] <- JsonValue.Create(results |> List.forall Result.isOk)
+    envelope["data"] <- jsonArray (results |> List.map formatBatchResult)
+    toJsonString envelope

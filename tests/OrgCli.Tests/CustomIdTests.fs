@@ -144,7 +144,7 @@ let ``CountCustomIds counts only non-null custom_ids`` () =
         Assert.Equal(2, db.CountCustomIds()))
 
 [<Fact>]
-let ``UNIQUE constraint on custom_id prevents duplicates`` () =
+let ``custom IDs are retained for explicit ambiguity resolution`` () =
     withDb (fun db ->
         db.InsertFile(
             { Path = "/test.org"
@@ -154,9 +154,8 @@ let ``UNIQUE constraint on custom_id prevents duplicates`` () =
 
         db.InsertHeadline(mkHeadline "/test.org" 0L "First" (Some "dup"))
 
-        Assert.Throws<Microsoft.Data.Sqlite.SqliteException>(fun () ->
-            db.InsertHeadline(mkHeadline "/test.org" 50L "Second" (Some "dup")))
-        |> ignore)
+        db.InsertHeadline(mkHeadline "/test.org" 50L "Second" (Some "dup"))
+        Assert.Equal(2, db.GetHeadlines("/test.org").Length))
 
 [<Fact>]
 let ``Multiple NULL custom_ids are allowed`` () =
@@ -377,7 +376,7 @@ let private withTempDirAndIndex (orgContent: string) (f: string -> string -> str
 // ── org add stamps CUSTOM_ID ──
 
 [<Fact>]
-let ``add command stamps CUSTOM_ID when index DB exists`` () =
+let ``add command stamps Org ID when index DB exists`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
@@ -395,7 +394,7 @@ let ``add command stamps CUSTOM_ID when index DB exists`` () =
         Assert.Equal(0, exitCode)
 
         let content = File.ReadAllText(file)
-        Assert.Contains(":CUSTOM_ID:", content)
+        Assert.Contains(":ID:", content)
         Assert.Contains(":PROPERTIES:", content)
         Assert.Contains(":END:", content)
     finally
@@ -421,7 +420,7 @@ let ``add command does not stamp CUSTOM_ID when no index DB`` () =
         Directory.Delete(dir, true)
 
 [<Fact>]
-let ``add command stamps unique CUSTOM_IDs for multiple headlines`` () =
+let ``add command stamps unique Org IDs for multiple headlines`` () =
     let dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"))
     Directory.CreateDirectory(dir) |> ignore
     let file = Path.Combine(dir, "test.org")
@@ -440,7 +439,7 @@ let ``add command stamps unique CUSTOM_IDs for multiple headlines`` () =
 
         let content = File.ReadAllText(file)
         // Extract all CUSTOM_ID values
-        let re = System.Text.RegularExpressions.Regex(@":CUSTOM_ID:\s+(\S+)")
+        let re = System.Text.RegularExpressions.Regex(@":ID:\s+(\S+)")
         let matches = re.Matches(content)
         Assert.Equal(5, matches.Count)
         let ids = [ for m in matches -> m.Groups.[1].Value ] |> Set.ofList
@@ -671,23 +670,23 @@ let ``syncDirectory handles duplicate CUSTOM_IDs across files gracefully`` () =
         File.WriteAllText(file2, "* Task B\n:PROPERTIES:\n:CUSTOM_ID: dup\n:END:\n")
 
         try
-            // Should not throw -- second file's headline gets custom_id = NULL
+            // Should not throw; retain both identifiers.
             IndexSync.syncDirectory db dir
 
             // First file's CUSTOM_ID should be findable
             let found = db.FindByCustomId("dup")
             Assert.True(found.IsSome)
 
-            // Both headlines should be indexed (one with custom_id, one without)
+            // Both headlines should be indexed with their original CUSTOM_ID.
             let h1 = db.GetHeadlines(file1)
             let h2 = db.GetHeadlines(file2)
             Assert.Equal(1, h1.Length)
             Assert.Equal(1, h2.Length)
 
-            // Exactly one has the custom_id
+            // Preserve both occurrences so resolution can report ambiguity
             let withId = [ h1.[0].CustomId; h2.[0].CustomId ] |> List.choose id
 
-            Assert.Equal(1, withId.Length)
+            Assert.Equal(2, withId.Length)
             Assert.Equal("dup", withId.[0])
         finally
             Directory.Delete(dir, true))

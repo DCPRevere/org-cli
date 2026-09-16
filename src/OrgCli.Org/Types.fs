@@ -204,24 +204,6 @@ module Types =
             |> List.tryFind (fun p -> p.Key.ToUpperInvariant() = key.ToUpperInvariant())
             |> Option.map (fun p -> p.Value))
 
-    /// Get ROAM_ALIASES as a list
-    let getRoamAliases (props: PropertyDrawer option) =
-        tryGetProperty "ROAM_ALIASES" props
-        |> Option.map splitQuotedString
-        |> Option.defaultValue []
-
-    /// Get ROAM_REFS as a list
-    let getRoamRefs (props: PropertyDrawer option) =
-        tryGetProperty "ROAM_REFS" props
-        |> Option.map splitQuotedString
-        |> Option.defaultValue []
-
-    /// Check if node should be excluded from org-roam
-    let isRoamExcluded (props: PropertyDrawer option) =
-        tryGetProperty "ROAM_EXCLUDE" props
-        |> Option.map (fun v -> not (String.IsNullOrWhiteSpace(v)))
-        |> Option.defaultValue false
-
     /// Get the title keyword from document keywords
     let tryGetTitle (keywords: Keyword list) =
         keywords

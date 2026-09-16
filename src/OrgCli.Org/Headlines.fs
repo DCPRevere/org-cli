@@ -2,31 +2,43 @@ module OrgCli.Org.Headlines
 
 /// Resolve a headline identifier to a byte position.
 /// Resolution order: (1) int64 → position, (2) :ID: property match, (3) :CUSTOM_ID: match, (4) exact title, (5) error.
+/// A selector never guesses that a numeric ID is a character offset.
 let resolveHeadlinePos (content: string) (identifier: string) : Result<int64, CliError> =
-    match System.Int64.TryParse(identifier) with
-    | true, pos -> Ok pos
-    | false, _ ->
-        let doc = Document.parse content
+    let doc = Document.parseWithConfig (Config.load ()) content
 
-        match
+    let error text =
+        Error
+            { Type = CliErrorType.HeadlineNotFound
+              Message = text
+              Detail = None }
+
+    let select predicate =
+        match doc.Headlines |> List.filter predicate with
+        | [ h ] -> Ok h.Position
+        | [] -> error ("Headline not found: " + identifier)
+        | _ -> error ("Ambiguous headline: " + identifier)
+
+    if identifier.StartsWith("pos:") then
+        match System.Int64.TryParse(identifier.Substring 4) with
+        | true, pos -> select (fun h -> h.Position = pos)
+        | _ -> error ("Invalid position: " + identifier)
+    elif identifier.StartsWith("id:") then
+        select (fun h -> Types.tryGetId h.Properties = Some(identifier.Substring 3))
+    elif identifier.StartsWith("custom:") then
+        select (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties = Some(identifier.Substring 7))
+    else
+        let byId =
             doc.Headlines
-            |> List.tryFind (fun h -> Types.tryGetId h.Properties = Some identifier)
-        with
-        | Some h -> Ok h.Position
-        | None ->
-            match
-                doc.Headlines
-                |> List.tryFind (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties = Some identifier)
-            with
-            | Some h -> Ok h.Position
-            | None ->
-                match doc.Headlines |> List.tryFind (fun h -> h.Title = identifier) with
-                | Some h -> Ok h.Position
-                | None ->
-                    Error
-                        { Type = CliErrorType.HeadlineNotFound
-                          Message = sprintf "Headline not found: %s" identifier
-                          Detail = None }
+            |> List.filter (fun h -> Types.tryGetId h.Properties = Some identifier)
+
+        let byCustom =
+            doc.Headlines
+            |> List.filter (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties = Some identifier)
+
+        match byId, byCustom with
+        | [], [] -> select (fun h -> h.Title = identifier)
+        | [], _ -> select (fun h -> Types.tryGetProperty "CUSTOM_ID" h.Properties = Some identifier)
+        | _ -> select (fun h -> Types.tryGetId h.Properties = Some identifier)
 
 type HeadlineMatch =
     { Headline: Headline

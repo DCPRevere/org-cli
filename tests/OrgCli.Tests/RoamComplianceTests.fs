@@ -93,7 +93,7 @@ let ``Org-cite in headline body populates citations table`` () =
 [<InlineData("1")>]
 let ``ROAM_EXCLUDE excludes on any non-empty value`` (value: string) =
     let props = Some { Properties = [ { Key = "ROAM_EXCLUDE"; Value = value } ] }
-    Assert.True(Types.isRoamExcluded props)
+    Assert.True(OrgCli.RoamProperties.isRoamExcluded props)
 
 [<Fact>]
 let ``ROAM_EXCLUDE with non-t value prevents node from being synced`` () =

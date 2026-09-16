@@ -55,7 +55,7 @@ let search (pattern: string) (files: string list) : Result<SearchResult list, st
     let docs =
         files
         |> List.map (fun f ->
-            let content = System.IO.File.ReadAllText(f)
+            let content = OrgCli.Org.Runtime.readText (f)
             (f, Document.parse content, content))
 
     searchDocs pattern docs

@@ -7,6 +7,7 @@ let private headlineRegex = Regex(@"^(\*+) ", RegexOptions.Multiline)
 /// Find the range [start, end) of the subtree rooted at the headline at `pos`.
 /// Returns (pos, pos) if pos does not point at a headline.
 let getSubtreeRange (content: string) (pos: int64) : int * int =
+    Document.ensureEditable content
     let startIdx = int pos
     let m = headlineRegex.Match(content, startIdx)
 
@@ -18,6 +19,10 @@ let getSubtreeRange (content: string) (pos: int64) : int * int =
         let endIdx =
             headlineRegex.Matches(content, startIdx + m.Length)
             |> Seq.cast<Match>
+            |> Seq.filter (fun m ->
+                Document.computeBlockRanges content
+                |> List.exists (fun (a, b) -> m.Index > a && m.Index < b)
+                |> not)
             |> Seq.tryFind (fun nm -> nm.Groups.[1].Value.Length <= level)
             |> Option.map (fun nm -> nm.Index)
             |> Option.defaultValue content.Length
@@ -69,9 +74,15 @@ let adjustLevels (subtreeContent: string) (delta: int) : string =
         headlineRegex.Replace(
             subtreeContent,
             fun m ->
-                let currentLevel = m.Groups.[1].Value.Length
-                let newLevel = max 1 (currentLevel + delta)
-                (String.replicate newLevel "*") + " "
+                if
+                    Document.computeBlockRanges subtreeContent
+                    |> List.exists (fun (a, b) -> m.Index > a && m.Index < b)
+                then
+                    m.Value
+                else
+                    let currentLevel = m.Groups.[1].Value.Length
+                    let newLevel = max 1 (currentLevel + delta)
+                    (String.replicate newLevel "*") + " "
         )
 
 /// Append subtreeContent at the end of the file at level 1.

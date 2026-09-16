@@ -18,6 +18,7 @@ type HeadlineSection =
       Body: string }
 
 let split (content: string) (pos: int64) : HeadlineSection =
+    Document.ensureEditable content
     let startIdx = int pos
     let before = if startIdx > 0 then content.Substring(0, startIdx) else ""
     let afterHeadlineStart = content.Substring(startIdx)

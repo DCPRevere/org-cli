@@ -12,7 +12,7 @@ let generateId () : string =
 /// Compute SHA1 hash of file contents (same as org-roam)
 let computeFileHash (filePath: string) : string =
     use sha1 = SHA1.Create()
-    use stream = File.OpenRead(filePath)
+    use stream = new System.IO.MemoryStream(Runtime.readBytes filePath)
     let hash = sha1.ComputeHash(stream)
     BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant()
 
@@ -51,21 +51,21 @@ let slugify (title: string) : string =
 
 /// XDG Base Directory paths
 let xdgConfigHome () =
-    match Environment.GetEnvironmentVariable("XDG_CONFIG_HOME") with
+    match OrgCli.Org.Runtime.environment ("XDG_CONFIG_HOME") with
     | null
-    | "" -> Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".config")
+    | "" -> Path.Combine(OrgCli.Org.Runtime.home (), ".config")
     | v -> v
 
 let xdgDataHome () =
-    match Environment.GetEnvironmentVariable("XDG_DATA_HOME") with
+    match OrgCli.Org.Runtime.environment ("XDG_DATA_HOME") with
     | null
-    | "" -> Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "share")
+    | "" -> Path.Combine(OrgCli.Org.Runtime.home (), ".local", "share")
     | v -> v
 
 let xdgCacheHome () =
-    match Environment.GetEnvironmentVariable("XDG_CACHE_HOME") with
+    match OrgCli.Org.Runtime.environment ("XDG_CACHE_HOME") with
     | null
-    | "" -> Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cache")
+    | "" -> Path.Combine(OrgCli.Org.Runtime.home (), ".cache")
     | v -> v
 
 let orgCliConfigDir () =
@@ -121,7 +121,7 @@ let parseDateWithRepeat (date: string) (repeater: string option) (delay: string 
 
 /// Expand a leading ~/ (or bare ~) to the user's home directory.
 let expandHome (path: string) : string =
-    let home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)
+    let home = OrgCli.Org.Runtime.home ()
 
     if path = "~" then
         home
@@ -138,35 +138,26 @@ let isOrgFile (filePath: string) : bool =
 /// List all org files in a directory recursively.
 /// Silently skips inaccessible subdirectories.
 let listOrgFiles (directory: string) : string list =
-    if not (Directory.Exists(directory)) then
+    let root = Runtime.fullPath directory
+
+    if not (Runtime.directoryExists root) then
         []
     else
-        let opts =
-            EnumerationOptions(RecurseSubdirectories = true, IgnoreInaccessible = true)
-
-        let filter (f: string) =
-            let fileName = Path.GetFileName(f)
-
-            not (fileName.StartsWith("."))
-            && not (f.Contains("/.git/"))
-            && not (f.Contains("\\.git\\"))
-
-        let orgFiles =
-            Directory.EnumerateFiles(directory, "*.org", opts) |> Seq.filter filter
-
-        let gpgFiles =
-            Directory.EnumerateFiles(directory, "*.org.gpg", opts) |> Seq.filter filter
-
-        let ageFiles =
-            Directory.EnumerateFiles(directory, "*.org.age", opts) |> Seq.filter filter
-
-        Seq.concat [ orgFiles; gpgFiles; ageFiles ] |> Seq.toList
+        (Runtime.host ()).EnumerateFiles root
+        |> List.filter (fun p ->
+            p.EndsWith(".org", StringComparison.OrdinalIgnoreCase)
+            && not (Path.GetFileName(p).StartsWith(".")))
+        |> List.map Runtime.fullPath
+        |> List.distinct
+        |> List.sort
 
 /// Get file modification time
-let getFileMtime (filePath: string) : DateTime = File.GetLastWriteTimeUtc(filePath)
+let getFileMtime (filePath: string) : DateTime =
+    OrgCli.Org.Runtime.lastWriteTime (filePath)
 
 /// Get file access time
-let getFileAtime (filePath: string) : DateTime = File.GetLastAccessTimeUtc(filePath)
+let getFileAtime (filePath: string) : DateTime =
+    OrgCli.Org.Runtime.lastWriteTime (filePath)
 
 /// Format DateTime to ISO8601 (same as org-roam)
 let formatIso8601 (dt: DateTime) : string = dt.ToString("yyyy-MM-ddTHH:mm:ss")

@@ -54,7 +54,7 @@ let findCitationsInText (text: string) : (string * int) list =
 
 /// Update the database for a single file
 let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: string) =
-    let fullPath = Path.GetFullPath(filePath)
+    let fullPath = OrgCli.Org.Runtime.fullPath (filePath)
 
     // Compute file hash
     let contentHash = Utils.computeFileHash fullPath
@@ -90,7 +90,10 @@ let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: strin
 
         // Get file-level node if present
         let fileNodeId = Types.tryGetId doc.FileProperties
-        let isFileNode = fileNodeId.IsSome && not (Types.isRoamExcluded doc.FileProperties)
+
+        let isFileNode =
+            fileNodeId.IsSome
+            && not (OrgCli.RoamProperties.isRoamExcluded doc.FileProperties)
 
         match fileNodeId with
         | Some nodeId when isFileNode ->
@@ -126,13 +129,13 @@ let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: strin
                 db.InsertTag({ NodeId = nodeId; Tag = tag })
 
             // Insert aliases
-            let aliases = Types.getRoamAliases doc.FileProperties
+            let aliases = OrgCli.RoamProperties.getRoamAliases doc.FileProperties
 
             for alias in aliases do
                 db.InsertAlias({ NodeId = nodeId; Alias = alias })
 
             // Insert refs
-            let refs = Types.getRoamRefs doc.FileProperties
+            let refs = OrgCli.RoamProperties.getRoamRefs doc.FileProperties
 
             for refStr in refs do
                 match parseRef refStr with
@@ -148,7 +151,7 @@ let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: strin
         // Process headline nodes
         for headline in doc.Headlines do
             let headlineId = Types.tryGetId headline.Properties
-            let isExcluded = Types.isRoamExcluded headline.Properties
+            let isExcluded = OrgCli.RoamProperties.isRoamExcluded headline.Properties
 
             match headlineId with
             | Some nodeId when not isExcluded ->
@@ -195,13 +198,13 @@ let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: strin
                     db.InsertTag({ NodeId = nodeId; Tag = tag })
 
                 // Insert aliases
-                let aliases = Types.getRoamAliases headline.Properties
+                let aliases = OrgCli.RoamProperties.getRoamAliases headline.Properties
 
                 for alias in aliases do
                     db.InsertAlias({ NodeId = nodeId; Alias = alias })
 
                 // Insert refs
-                let refs = Types.getRoamRefs headline.Properties
+                let refs = OrgCli.RoamProperties.getRoamRefs headline.Properties
 
                 for refStr in refs do
                     match parseRef refStr with
@@ -243,7 +246,7 @@ let updateFile (db: Database.OrgRoamDb) (roamDirectory: string) (filePath: strin
                 )
 
         // Process citations from body text
-        let content = File.ReadAllText(fullPath)
+        let content = OrgCli.Org.Runtime.readText (fullPath)
         let citations = findCitationsInText content
 
         for (citeKey, pos) in citations do
@@ -272,7 +275,7 @@ let sync (db: Database.OrgRoamDb) (roamDirectory: string) (force: bool) : (strin
         if force then
             db.ClearAll()
 
-        let roamDir = Path.GetFullPath(roamDirectory)
+        let roamDir = OrgCli.Org.Runtime.fullPath (roamDirectory)
         let orgFiles = Utils.listOrgFiles roamDir
 
         // Get current files in database

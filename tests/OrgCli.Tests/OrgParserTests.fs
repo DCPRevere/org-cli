@@ -42,7 +42,7 @@ Content under headline.
     Assert.Equal(1, headline.Level)
     Assert.Equal(Some "abcd-1234", Types.tryGetId headline.Properties)
 
-    let aliases = Types.getRoamAliases headline.Properties
+    let aliases = OrgCli.RoamProperties.getRoamAliases headline.Properties
     Assert.Equal(2, aliases.Length)
     Assert.Contains("Alias One", aliases)
     Assert.Contains("AliasTwo", aliases)
@@ -167,7 +167,7 @@ let ``Parse ROAM_REFS`` () =
     let doc = Document.parse content
 
     let headline = doc.Headlines.[0]
-    let refs = Types.getRoamRefs headline.Properties
+    let refs = OrgCli.RoamProperties.getRoamRefs headline.Properties
 
     Assert.Equal(2, refs.Length)
     Assert.Contains("@citationKey", refs)
@@ -187,7 +187,7 @@ let ``ROAM_EXCLUDE is detected`` () =
     let doc = Document.parse content
 
     let headline = doc.Headlines.[0]
-    Assert.True(Types.isRoamExcluded headline.Properties)
+    Assert.True(OrgCli.RoamProperties.isRoamExcluded headline.Properties)
 
 [<Fact>]
 let ``Parse filetags`` () =

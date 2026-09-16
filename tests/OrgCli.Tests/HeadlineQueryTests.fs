@@ -308,9 +308,9 @@ let ``outline path handles multiple top-level headlines`` () =
 // --- resolveHeadlinePos tests ---
 
 [<Fact>]
-let ``resolveHeadlinePos resolves by position number`` () =
+let ``resolveHeadlinePos resolves by explicit position selector`` () =
     let content = "* First\n* Second\n"
-    let result = Headlines.resolveHeadlinePos content "8"
+    let result = Headlines.resolveHeadlinePos content "pos:8"
     Assert.Equal(Ok 8L, result)
 
 [<Fact>]

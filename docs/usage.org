@@ -122,14 +122,14 @@ Recognized words: =logdone=, =lognotedone=, =nologdone=, =logrepeat=, =lognotere
 
 Wherever =<headline>= appears in the commands below, you can pass:
 
-- An integer character position.
+- An explicit character position, =pos:<offset>= (with a file).
 - An org-id (the value of an =:ID:= property on a headline).
 - A CUSTOM_ID (the value of a =:CUSTOM_ID:= property).
 - An exact headline title string (matched against parsed headlines in the file).
 
-Resolution is attempted in that order: number, then =:ID:=, then =:CUSTOM_ID:=, then title match.
+Use =id:<value>= or =custom:<value>= for explicit identity types. Bare selectors try ID, CUSTOM_ID, then exact title; ambiguity is an error. Numeric text is not interpreted as an offset.
 
-When an index exists (see =org index= below), most mutating commands also accept a bare CUSTOM_ID without a file argument. The index resolves the ID to its file automatically:
+Most mutating commands also accept an ID without a file argument. The owned index is created and refreshed automatically:
 
 #+begin_example
 org todo k4t DONE
@@ -375,7 +375,7 @@ All agenda subcommands accept =--tag TAG= to filter results.
 
 * Roam commands
 
-All roam commands require a database. The database path defaults to =~/.emacs.d/org-roam.db= but can be set with the global =--db <path>= option. When =--db= is specified, both roam tables and index tables coexist in the same file.
+Roam is an optional extension over the CLI-owned =<directory>/.org-index.db= (override with =--db=). It shares parsed Org documents with core queries and never writes Emacs org-roam databases. See [[file:architecture.md][architecture and migration]].
 
 ** Sync
 
@@ -445,13 +445,13 @@ org index [-d <dir>] [--force] [--quiet]
 
 Scans all =.org= files under =-d= and builds (or updates) a SQLite headline index at =.org-index.db= in the target directory (or at the path given by =--db=). Without =--force=, only files modified since the last index are re-parsed. With =--force=, all files are re-indexed from scratch.
 
-The index is also updated automatically after mutations (=todo=, =add=, =refile=, etc.) when the database already exists. You must run =org index= once to create it; after that, incremental sync keeps it current.
+Queries create and refresh the index automatically. Mutations refresh affected files. Content and parser-configuration fingerprints detect changes even when timestamps are unchanged; unchanged documents reuse their parsed snapshot.
 
 ** CUSTOM_ID
 
 Headlines can be addressed by short CUSTOM_ID strings (e.g. =k4t=) stored in the standard =:CUSTOM_ID:= property. These are base36 (a-z, 0-9), starting at 3 characters and growing as needed to stay unique across the index.
 
-=org add= auto-assigns a CUSTOM_ID when an index database exists. To stamp IDs onto existing headlines:
+=org add= always assigns a standard UUID =ID=. CUSTOM_ID stamping remains available for legacy workflows:
 
 #+begin_example
 org id stamp [-d <dir>] [--dry-run]

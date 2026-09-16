@@ -233,6 +233,7 @@ let private endDrawerRegex =
 /// Find the start of the real :PROPERTIES: drawer at or after nodePosition,
 /// skipping occurrences inside source blocks.
 let private findPropertiesDrawer (content: string) (nodePosition: int) : (int * int) option =
+    Document.ensureEditable content
     let blockRanges = Document.computeBlockRanges content
     let mutable m = propsDrawerRegex.Match(content, nodePosition)
     let mutable found = None

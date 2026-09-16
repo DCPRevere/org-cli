@@ -59,7 +59,9 @@ CREATE VIRTUAL TABLE IF NOT EXISTS index_headlines_fts USING fts5(
 """
 
 type OrgIndexDb(dbPath: string) =
-    let connectionString = sprintf "Data Source=%s;Foreign Keys=True" dbPath
+    let connectionString =
+        (OrgCli.Org.Runtime.host ()).DatabaseConnectionString(OrgCli.Org.Runtime.fullPath dbPath)
+
     let mutable connection: SqliteConnection option = None
     let connectionLock = obj ()
 
@@ -127,6 +129,8 @@ type OrgIndexDb(dbPath: string) =
         if r.IsDBNull(i) then None else Some(r.GetString(i))
 
     member _.Initialize() =
+        let parent = Path.GetDirectoryName(OrgCli.Org.Runtime.fullPath dbPath)
+        OrgCli.Org.Runtime.createDirectory parent
         let conn = ensureConnection ()
         use cmd = conn.CreateCommand()
         cmd.CommandText <- createTablesSql
@@ -135,20 +139,76 @@ type OrgIndexDb(dbPath: string) =
         ftsCmd.CommandText <- createFtsSql
         ftsCmd.ExecuteNonQuery() |> ignore
 
-        // Migrate: add custom_id column if not present
-        try
-            use alterCmd = conn.CreateCommand()
-            alterCmd.CommandText <- "ALTER TABLE index_headlines ADD COLUMN custom_id TEXT"
-            alterCmd.ExecuteNonQuery() |> ignore
-        with :? SqliteException ->
-            () // column already exists
+        let columns =
+            executeReader "PRAGMA table_info(index_headlines)" [] (fun r -> r.GetString 1)
+
+        if not (List.contains "custom_id" columns) then
+            executeNonQuery "ALTER TABLE index_headlines ADD COLUMN custom_id TEXT" []
+            |> ignore
 
         use idxCmd = conn.CreateCommand()
 
         idxCmd.CommandText <-
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_headlines_custom_id ON index_headlines(custom_id) WHERE custom_id IS NOT NULL"
+            """
+DROP INDEX IF EXISTS idx_headlines_custom_id;
+CREATE INDEX IF NOT EXISTS idx_headlines_custom_id_lookup ON index_headlines(custom_id);
+CREATE VIRTUAL TABLE IF NOT EXISTS index_roots_fts USING fts5(file UNINDEXED,title,body);
+CREATE TABLE IF NOT EXISTS index_documents(file TEXT PRIMARY KEY REFERENCES index_files(path) ON DELETE CASCADE, snapshot TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS index_identity(file TEXT NOT NULL REFERENCES index_files(path) ON DELETE CASCADE, pos INTEGER NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_identity_value ON index_identity(value,kind);
+"""
 
         idxCmd.ExecuteNonQuery() |> ignore
+
+    member _.StoreRoot(file: string, title: string, body: string) =
+        executeNonQuery "DELETE FROM index_roots_fts WHERE file=@file" [ "@file", box file ]
+        |> ignore
+
+        if not (String.IsNullOrWhiteSpace title && String.IsNullOrWhiteSpace body) then
+            executeNonQuery
+                "INSERT INTO index_roots_fts(file,title,body) VALUES (@file,@title,@body)"
+                [ "@file", box file; "@title", box title; "@body", box body ]
+            |> ignore
+
+    member _.StoreDocument(file: string, document: OrgCli.Org.OrgDocument) =
+        executeNonQuery
+            "INSERT OR REPLACE INTO index_documents VALUES (@file,@snapshot)"
+            [ "@file", box file; "@snapshot", box (Snapshot.encode document) ]
+        |> ignore
+
+        executeNonQuery "DELETE FROM index_identity WHERE file=@file" [ "@file", box file ]
+        |> ignore
+
+        let add pos kind value =
+            executeNonQuery
+                "INSERT INTO index_identity VALUES (@file,@pos,@kind,@value)"
+                [ "@file", box file; "@pos", box pos; "@kind", box kind; "@value", box value ]
+            |> ignore
+
+        OrgCli.Org.Types.tryGetId document.FileProperties |> Option.iter (add -1L "id")
+
+        for h in document.Headlines do
+            OrgCli.Org.Types.tryGetId h.Properties |> Option.iter (add h.Position "id")
+
+            OrgCli.Org.Types.tryGetProperty "CUSTOM_ID" h.Properties
+            |> Option.iter (add h.Position "custom")
+
+    member _.GetDocuments() =
+        executeReader "SELECT file,snapshot FROM index_documents ORDER BY file" [] (fun r ->
+            let file = r.GetString 0
+            file, Snapshot.decode file (r.GetString 1))
+
+    member _.IdentityAt(file: string, pos: int64) =
+        executeScalarObj
+            "SELECT value FROM index_identity WHERE file=@file AND pos=@pos AND kind='id'"
+            [ "@file", box file; "@pos", box pos ]
+        |> Option.map string
+
+    member _.FindIdentity(kind: string, value: string) =
+        executeReader
+            "SELECT file,pos FROM index_identity WHERE kind=@kind AND value=@value"
+            [ "@kind", box kind; "@value", box value ]
+            (fun r -> r.GetString 0, r.GetInt64 1)
 
     member _.Close() =
         lock connectionLock (fun () ->
@@ -360,6 +420,9 @@ type OrgIndexDb(dbPath: string) =
     // ── FTS ──
 
     member _.DeleteFtsForFile(file: string) =
+        executeNonQuery "DELETE FROM index_roots_fts WHERE file=@file" [ "@file", box file ]
+        |> ignore
+
         executeNonQuery
             "INSERT INTO index_headlines_fts(index_headlines_fts, rowid, title, body) SELECT 'delete', rowid, title, body FROM index_headlines WHERE file = @file"
             [ "@file", box file ]
@@ -383,14 +446,30 @@ type OrgIndexDb(dbPath: string) =
             ORDER BY rank
         """
 
-        executeReader sql [ "@query", box query ] (fun r ->
-            { File = r.GetString(0)
-              CharPos = r.GetInt64(1)
-              Title = r.GetString(2)
-              OutlinePath = readOptString r 3
-              Context = readOptString r 4
-              Rank = r.GetDouble(5)
-              CustomId = readOptString r 6 })
+        let headings =
+            executeReader sql [ "@query", box query ] (fun r ->
+                { File = r.GetString(0)
+                  CharPos = r.GetInt64(1)
+                  Title = r.GetString(2)
+                  OutlinePath = readOptString r 3
+                  Context = readOptString r 4
+                  Rank = r.GetDouble(5)
+                  CustomId = readOptString r 6 })
+
+        let roots =
+            executeReader
+                "SELECT file,title,snippet(index_roots_fts,2,'>>>','<<<','...',32),rank FROM index_roots_fts WHERE index_roots_fts MATCH @query"
+                [ "@query", box query ]
+                (fun r ->
+                    { File = r.GetString 0
+                      CharPos = -1L
+                      Title = r.GetString 1
+                      OutlinePath = None
+                      Context = Some(r.GetString 2)
+                      Rank = r.GetDouble 3
+                      CustomId = None })
+
+        headings @ roots |> List.sortBy (fun r -> r.Rank)
 
     // ── Query ──
 
