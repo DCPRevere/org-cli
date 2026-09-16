@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Detect direct requirement edits during claims and review; block stale completion evidence, preserve claims across refiling, and show actionable recovery in the board.
+
 - Add a shared human/agent task workflow: dependency-aware ready queues, project/owner assignment, expiring claims, handoffs, evidence-backed submission, and separate-actor review. Existing Org TODOs can be adopted without migration.
 - Add `org task` commands, four task API/MCP operations, and a browser task board embedded in the same executable.
 - Fix repeated directory traversal in CLI full-text search; avoid redundant timestamp writes and configuration formatting during cache refresh.

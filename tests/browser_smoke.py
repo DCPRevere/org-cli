@@ -56,12 +56,47 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.locator('#evidence').fill('Regression suite passed; behavior inspected.')
             page.get_by_role('button', name='Submit work', exact=True).click()
             expect(page.locator('#detail > .badge')).to_have_text('review')
+            # An editor changes requirements while work is awaiting review.
+            task_file = Path(workspace, 'tasks.org')
+            task_file.write_text(task_file.read_text().replace(
+                'Tests pass; documentation matches behavior', 'Tests pass; direct edits are covered'))
+            for _ in range(30):
+                page.get_by_role('button', name='Refresh', exact=True).click()
+                expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
+                if page.get_by_text('Requirements changed after submission.', exact=False).count():
+                    break
+                page.wait_for_timeout(200)
+            expect(page.get_by_text('Requirements changed after submission.', exact=False)).to_be_visible()
+            expect(page.get_by_role('button', name='Approve', exact=True)).to_have_count(0)
+            page.locator('#actor').fill('reviewer')
+            page.locator('#evidence').fill('Please address the edited requirements.')
+            page.get_by_role('button', name='Request changes', exact=True).click()
+            try:
+                expect(page.locator('#detail > .badge')).to_have_text('ready')
+            except AssertionError:
+                print('Board message:', page.locator('#message').inner_text(), flush=True)
+                raise
+            page.locator('#actor').fill('worker')
+            page.get_by_role('button', name='Claim task', exact=True).click()
+            expect(page.locator('#detail > .badge')).to_have_text('working')
+            page.locator('#evidence').fill('Revised requirements tested.')
+            page.get_by_role('button', name='Submit work', exact=True).click()
+            expect(page.locator('#detail > .badge')).to_have_text('review')
             page.locator('#actor').fill('reviewer')
             page.locator('#evidence').fill('Acceptance criteria verified independently.')
             page.get_by_role('button', name='Approve', exact=True).click()
             expect(page.locator('#detail > .badge')).to_have_text('done')
             page.locator('#status').select_option('done')
             expect(page.locator('#list .task')).to_have_count(1)
+            task_file.write_text(task_file.read_text().replace('* DONE ', '* TODO '))
+            for _ in range(30):
+                page.get_by_role('button', name='Refresh', exact=True).click()
+                expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
+                if page.locator('#list .task').count() == 0:
+                    break
+                page.wait_for_timeout(200)
+            expect(page.locator('#list .task')).to_have_count(0)
+            expect(page.get_by_text('This task is no longer in this view.', exact=False)).to_be_visible()
             screenshot = os.environ.get('ORG_BOARD_SCREENSHOT')
             if screenshot:
                 page.screenshot(path=screenshot, full_page=True)
@@ -70,7 +105,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             assert not errors, errors
             browser.close()
         assert ':TASK_REVIEWED_BY: reviewer' in Path(workspace, 'tasks.org').read_text()
-        print('PASS browser: authentication, create, claim, submit, separate review, completed view, literal content, mobile layout')
+        print('PASS browser: authentication, create, claim, submit, separate review, direct-edit invalidation and recovery, manual state changes, literal content, mobile layout')
     finally:
         process.send_signal(signal.SIGINT)
         try:

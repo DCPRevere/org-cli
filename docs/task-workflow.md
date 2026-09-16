@@ -96,3 +96,13 @@ python3 -m venv /tmp/org-browser-tests
 /tmp/org-browser-tests/bin/pip install playwright
 CHROMIUM=/usr/bin/chromium /tmp/org-browser-tests/bin/python tests/browser_smoke.py
 ```
+
+### Editing files directly
+
+Org text is authoritative. Use any editor: the server watches saves, renames and deletions, and periodically reconciles to recover missed events. Standalone CLI commands reconcile on invocation. Refresh the board to see external changes; disappearing tasks are removed from the selected view.
+
+Claims and review submissions record a fingerprint of the task's own heading and body, including acceptance, dependencies, assignment and scheduling. Changing that text outside org-cli marks `claim_stale` or `submission_stale`, even if a caller fetches a fresh file revision. A stale claim cannot renew or submit: release it, inspect the new requirements, and obtain a new claim. A stale submission cannot be approved: request changes and submit fresh evidence. Older claims without a fingerprint also require this recovery.
+
+Moving a task with its standard Org ID between files, changing its heading depth, adding LOGBOOK history, or editing another task does not invalidate its requirements fingerprint. Child headings are separate sections; requirements needed for a task's acceptance belong in its own section or explicit dependency tasks. Manual completion is authoritative and manual deletion removes the task. Workflow properties are ordinary editable Org properties: when manually undoing a workflow phase, clear `TASK_PHASE` and claim properties as appropriate, or use `org task reopen` for a completed task.
+
+These checks coordinate cooperative clients. They cannot prevent an editor from changing files after a check or from changing workflow properties themselves; the watcher reconciles the resulting text. Review actor names remain attribution, not authenticated approval identities.

@@ -440,3 +440,67 @@ let ``completed contracts require reopening and malformed CLI JSON remains struc
     let code, output, _ = run h [ "task"; "create"; "--input"; "{"; "-f"; "json" ]
     Assert.Equal(1, code)
     Assert.Equal("invalid_arguments", field (JsonNode.Parse(output).["error"]) "code")
+
+[<Fact>]
+let ``direct requirement edits invalidate claims and submissions even with fresh revisions`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    svc.EnableWatching()
+    let entry = create svc "Original requirements" true
+    let claimed = claim svc entry "agent:one"
+
+    let change (before: string) (after: string) =
+        h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace(before, after))
+        svc.InvalidatePath("/work/tasks.org")
+
+    change "Original requirements" "Changed requirements"
+    let current = (tasks svc "working")[0]
+    Assert.True(current["claim_stale"].GetValue<bool>())
+    fails "conflict" (fun () -> submit svc claimed "agent:one")
+    fails "conflict" (fun () -> action svc claimed "agent:one" "renew" [ "claim_id", field claimed "claim_id" ])
+
+    let released =
+        action svc claimed "agent:one" "release" [ "claim_id", field claimed "claim_id" ]
+
+    let fresh = claim svc released "agent:one"
+    Assert.False(fresh["claim_stale"].GetValue<bool>())
+    let submitted = submit svc fresh "agent:one"
+    Assert.False(submitted["submission_stale"].GetValue<bool>())
+    change "Verified result" "Additional acceptance requirement"
+    let pending = (tasks svc "review")[0]
+    Assert.True(pending["submission_stale"].GetValue<bool>())
+    fails "conflict" (fun () -> action svc submitted "human" "approve" [ "evidence", "Old evidence" ])
+
+    let rejected =
+        action svc submitted "human" "reject" [ "evidence", "Please meet the revised requirements" ]
+
+    let fresh = claim svc rejected "agent:one"
+    let submitted = submit svc fresh "agent:one"
+
+    let approved =
+        action svc submitted "human" "approve" [ "evidence", "New requirements verified" ]
+
+    Assert.Equal("done", field approved "status")
+
+[<Fact>]
+let ``direct moves preserve claims while completion and deletion are authoritative`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    svc.EnableWatching()
+    let claimed = create svc "Move me" true |> fun task -> claim svc task "agent:one"
+    let content = (h.Text "/work/tasks.org")
+    h.Put("/work/moved.org", content.Replace("* TODO Move me", "** TODO Move me"))
+    h.Put("/work/tasks.org", "* TODO Unrelated new task\n")
+    svc.InvalidateAll()
+    let moved = (tasks svc "working")[0]
+    Assert.Equal("moved.org", field moved "file")
+    Assert.False(moved["claim_stale"].GetValue<bool>())
+    let submitted = submit svc claimed "agent:one"
+    h.Put("/work/moved.org", (h.Text "/work/moved.org").Replace("** TODO Move me", "** DONE Move me"))
+    svc.InvalidatePath("/work/moved.org")
+    Assert.Single(tasks svc "done") |> ignore
+    fails "conflict" (fun () -> action svc submitted "human" "approve" [ "evidence", "Already completed in editor" ])
+    h.Put("/work/moved.org", "")
+    svc.InvalidatePath("/work/moved.org")
+    Assert.Empty(tasks svc "done")
+    fails "not_found" (fun () -> fetch svc submitted)

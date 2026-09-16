@@ -168,6 +168,55 @@ let private entries (ctx: Context) docs =
               Heading = h
               Config = cfg }))
 
+// Fingerprints cover the task's own text, not its location or coordination history.
+// Editors remain free to change files; stale work is detected without rewriting them.
+let private contractText (content: string) e =
+    let start = int e.Heading.Position
+
+    let finish =
+        e.Doc.Headlines
+        |> List.tryFind (fun h -> h.Position > e.Heading.Position)
+        |> Option.map (fun h -> int h.Position)
+        |> Option.defaultValue content.Length
+
+    let section = content.Substring(start, finish - start).Replace("\r\n", "\n")
+
+    let withoutHistory =
+        System.Text.RegularExpressions.Regex.Replace(
+            section,
+            @"(?im)^[ \t]*:LOGBOOK:[ \t]*\n.*?^[ \t]*:END:[ \t]*(?:\n|$)",
+            "",
+            System.Text.RegularExpressions.RegexOptions.Singleline
+        )
+
+    let stable =
+        withoutHistory.Split('\n')
+        |> Array.filter (fun line ->
+            not (
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    line,
+                    @"(?i)^[ \t]*:(?:ID|TASK_MANAGED|TASK_CREATE_HASH|TASK_CLAIM_[A-Z_]+|TASK_SUBMISSION_CONTRACT|TASK_PHASE|TASK_SUBMITTED_BY|TASK_REVIEWED_BY):"
+                )
+            ))
+        |> Array.map (fun line -> line.TrimEnd())
+        |> String.concat "\n"
+    // Refiling under a different parent changes stars, not requirements.
+    System.Text.RegularExpressions.Regex.Replace(stable.Trim(), @"^\*+ ", "* ")
+    |> hash
+
+let private contract e =
+    contractText (Runtime.readText e.File) e
+
+let private stale property e =
+    let saved = prop property e.Heading
+    saved = "" || saved <> contract e
+
+let private claimStale e =
+    prop "TASK_CLAIM_ID" e.Heading <> "" && stale "TASK_CLAIM_CONTRACT" e
+
+let private submissionStale e =
+    prop "TASK_PHASE" e.Heading = "REVIEW" && stale "TASK_SUBMISSION_CONTRACT" e
+
 let private isCancelled e =
     prop "TASK_PHASE" e.Heading = "CANCELLED"
     || List.contains (e.Heading.TodoKeyword |> Option.defaultValue "") [ "CANCELLED"; "CANCELED" ]
@@ -256,6 +305,8 @@ let private row ctx graph e =
           "review_required", flag (reviewRequired h)
           "claimed_by", text (if active h then prop "TASK_CLAIM_OWNER" h else "")
           "claim_until", text (prop "TASK_CLAIM_UNTIL" h)
+          "claim_stale", flag (claimStale e)
+          "submission_stale", flag (submissionStale e)
           "claim_expired", flag (prop "TASK_CLAIM_ID" h <> "" && not (active h))
           "submitted_by", text (prop "TASK_SUBMITTED_BY" h) ]
 
@@ -371,7 +422,8 @@ let private clearClaim content pos =
     [ "TASK_CLAIM_ID"
       "TASK_CLAIM_OWNER"
       "TASK_CLAIM_UNTIL"
-      "TASK_CLAIM_MINUTES" ]
+      "TASK_CLAIM_MINUTES"
+      "TASK_CLAIM_CONTRACT" ]
     |> List.fold (fun text key -> Mutations.removeProperty text pos key) content
 
 let private note actor action (evidence: string) content pos =
@@ -657,6 +709,8 @@ let invoke (ctx: Context) operation (args: JsonObject) =
             && prop "TASK_CLAIM_ID" h = claimId
             && prop "TASK_CLAIM_OWNER" h = actor
             && active h
+            && not (claimStale e)
+            && not (isDone e || isCancelled e)
             && prop "TASK_CLAIM_MINUTES" h = string lease
         then
             let result = row ctx graph e
@@ -671,6 +725,18 @@ let invoke (ctx: Context) operation (args: JsonObject) =
 
                 if action <> "release" && not (active h) then
                     fail "conflict" 409 "Claim expired; obtain a new claim before continuing"
+
+            if List.contains action [ "renew"; "submit" ] && claimStale e then
+                fail
+                    "conflict"
+                    409
+                    "Task changed outside this claim; release it, inspect the current requirements and claim again"
+
+            if action = "approve" && submissionStale e then
+                fail
+                    "conflict"
+                    409
+                    "Task changed after submission; reject the stale submission and request fresh evidence"
 
             if action = "configured" then
                 if isDone e || isCancelled e then
@@ -759,6 +825,27 @@ let invoke (ctx: Context) operation (args: JsonObject) =
             after <- Mutations.setProperty after pos "ID" taskId
             after <- Mutations.setProperty after pos "TASK_MANAGED" "true"
             after <- note actor action evidence after pos
+
+            if action = "claim" || action = "submit" then
+                // Hash the final text (including an ID assigned when adopting a task).
+                let updatedDoc = Document.parseWithConfig ctx.Config after
+                let updatedHeading = updatedDoc.Headlines |> List.find (fun h -> h.Position = pos)
+
+                let fingerprint =
+                    contractText
+                        after
+                        { e with
+                            Doc = updatedDoc
+                            Heading = updatedHeading }
+
+                let key =
+                    if action = "claim" then
+                        "TASK_CLAIM_CONTRACT"
+                    else
+                        "TASK_SUBMISSION_CONTRACT"
+
+                after <- Mutations.setProperty after pos key fingerprint
+
             let result = finish file pos before after
 
             if action = "claim" || action = "renew" then

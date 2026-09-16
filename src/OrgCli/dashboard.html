@@ -472,6 +472,7 @@
             async function run(fn) {
                 if (busy) return;
                 busy = true;
+                document.body.setAttribute("aria-busy", "true");
                 message("");
                 try {
                     await fn();
@@ -479,6 +480,7 @@
                     message(error.message);
                 } finally {
                     busy = false;
+                    document.body.setAttribute("aria-busy", "false");
                     document
                         .querySelectorAll("button[data-write]")
                         .forEach((b) => (b.disabled = !canWrite));
@@ -569,6 +571,17 @@
                     el("h2", row.title, "detail-title"),
                     el("div", row.file + " · " + row.ref, "meta"),
                 );
+                if (row.claim_stale || row.submission_stale) {
+                    root.append(
+                        el(
+                            "p",
+                            row.claim_stale
+                                ? "Requirements changed since this claim. Release it, inspect the changes, and claim again."
+                                : "Requirements changed after submission. Reject it and request fresh evidence.",
+                            "box",
+                        ),
+                    );
+                }
                 const criteria = el("section", undefined, "box");
                 criteria.append(
                     el("h3", "Acceptance"),
@@ -604,12 +617,15 @@
                 if (row.status === "ready")
                     button("Claim task", "claim", "primary");
                 if (row.status === "working") {
-                    button("Submit work", "submit", "primary");
-                    button("Renew claim", "renew");
+                    if (!row.claim_stale) {
+                        button("Submit work", "submit", "primary");
+                        button("Renew claim", "renew");
+                    }
                     button("Release", "release");
                 }
                 if (row.status === "review") {
-                    button("Approve", "approve", "primary");
+                    if (!row.submission_stale)
+                        button("Approve", "approve", "primary");
                     button("Request changes", "reject");
                 }
                 if (["done", "cancelled"].includes(row.status))
@@ -809,6 +825,16 @@
                             (r) => r.ref === selected.ref,
                         );
                         if (current) await choose(current);
+                        else {
+                            selected = null;
+                            $("detail").replaceChildren(
+                                el(
+                                    "p",
+                                    "This task is no longer in this view. It may have moved, changed status, or been deleted.",
+                                    "empty",
+                                ),
+                            );
+                        }
                     }
                 });
             $("status").onchange = () => run(() => load());
