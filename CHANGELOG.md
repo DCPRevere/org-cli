@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.0.0-rc.2 — 2026-09-17
+
+Shared task management for humans and agents, with Org files authoritative across the CLI, browser board, API, MCP, and direct editor changes.
 
 - Recover stale task workflows with an audited reset, respect manually reopened cancellations, and automatically refresh the board without overwriting drafts.
 - Keep routine CI Linux-only; native macOS and Windows smoke tests were verified during development.
