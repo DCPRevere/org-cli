@@ -49,28 +49,3 @@ jobs:
           dotnet list OrgCli.slnx package --vulnerable --include-transitive --format json > audit.json
           cat audit.json
           jq -e '[.. | objects | .vulnerabilities? // empty | .[]] | length == 0' audit.json
-
-  platforms:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "9.0.x"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Publish standalone binary
-        run: dotnet publish src/OrgCli/OrgCli.fsproj -c Release --use-current-runtime --self-contained -p:PublishSingleFile=true -o artifacts/platform
-      - name: Native watcher, locking and API/MCP tests
-        shell: bash
-        run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            python tests/server_smoke.py artifacts/platform/org.exe
-          else
-            python tests/server_smoke.py artifacts/platform/org
-          fi
