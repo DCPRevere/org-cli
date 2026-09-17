@@ -3,7 +3,8 @@
 import json
 import os
 from pathlib import Path
-import select
+import queue
+import threading
 import signal
 import socket
 import sqlite3
@@ -16,12 +17,15 @@ import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-BINARY = str(Path(sys.argv[1] if len(sys.argv) > 1 else "src/OrgCli/bin/Debug/net9.0/org").resolve())
+BINARY = str(Path(sys.argv[1] if len(sys.argv) > 1 else "src/OrgCli/bin/Debug/net9.0/" + ("org.exe" if os.name == "nt" else "org")).resolve())
 
 
 def stop(process):
     if process.poll() is None:
-        process.send_signal(signal.SIGINT)
+        if os.name == "nt":
+            process.terminate()
+        else:
+            process.send_signal(signal.SIGINT)
         try:
             process.wait(timeout=10)
         except subprocess.TimeoutExpired:
@@ -33,6 +37,12 @@ def stdio(root):
     with tempfile.TemporaryFile(mode="w+") as errors:
         p = subprocess.Popen([BINARY, "mcp", "--stdio", "-d", root], stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1)
+        output = queue.Queue()
+        def read_output():
+            for line in p.stdout:
+                output.put(line)
+            output.put(None)
+        threading.Thread(target=read_output, daemon=True).start()
         sequence = 0
         def rpc(method, params=None):
             nonlocal sequence
@@ -41,12 +51,14 @@ def stdio(root):
             p.stdin.flush()
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
-                if select.select([p.stdout], [], [], max(0, deadline-time.monotonic()))[0]:
-                    line = p.stdout.readline()
-                    assert line, "MCP process closed stdout"
-                    response = json.loads(line)  # Any console noise is a protocol failure.
-                    if response.get("id") == sequence:
-                        return response
+                try:
+                    line = output.get(timeout=max(0.001, deadline-time.monotonic()))
+                except queue.Empty:
+                    break
+                assert line, "MCP process closed stdout"
+                response = json.loads(line)  # Any console noise is a protocol failure.
+                if response.get("id") == sequence:
+                    return response
             raise AssertionError("MCP response timed out")
         try:
             result = rpc("initialize", {"protocolVersion":"2025-11-25", "capabilities":{}, "clientInfo":{"name":"org-smoke", "version":"1"}})
@@ -178,14 +190,15 @@ def http(root):
             status,body = request("/mcp",init,{"Accept":"application/json, text/event-stream"})
             assert status == 200 and "org-cli" in body, (status,body)
             stop(p)
-            assert p.returncode == 0
+            if os.name != "nt":
+                assert p.returncode == 0
         except Exception:
             errors.seek(0)
             print(errors.read(), file=sys.stderr)
             raise
         finally:
             stop(p)
-    print("PASS HTTP: authentication, origin/host checks, concurrent capture retries, MCP, graceful shutdown")
+    print("PASS HTTP: authentication, origin/host checks, concurrent capture retries, MCP, process shutdown")
 
 
 with tempfile.TemporaryDirectory(prefix="org-server-smoke-") as root:

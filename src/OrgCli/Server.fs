@@ -83,7 +83,7 @@ let tools readOnly =
           [ "ref"; "expected_revision"; "actor" ],
           [ entryRef; expected; actor ] @ taskFields
           "task_action",
-          "Coordinate execution: claim, renew, release, submit, approve, reject, cancel, reopen. Claims require a caller-generated UUID claim_id; renew/release/submit need that token and actor. Leases expire. Submit/approve/reject/cancel require evidence. A different actor reviews. Fetch before edits; after a lost response, fetch to inspect the outcome before retrying.",
+          "Coordinate execution: claim, renew, release, submit, approve, reject, cancel, reopen. Claims require a caller-generated UUID claim_id; renew/release/submit need that token and actor. Leases expire. Submit/approve/reject/cancel require evidence. Reopen can also reset stale work with evidence, preserving an active editor-selected state. A different actor reviews. Fetch before edits; after a lost response, fetch to inspect the outcome before retrying.",
           false,
           [ "ref"; "expected_revision"; "actor"; "action" ],
           [ entryRef

@@ -218,7 +218,8 @@ let private submissionStale e =
     prop "TASK_PHASE" e.Heading = "REVIEW" && stale "TASK_SUBMISSION_CONTRACT" e
 
 let private isCancelled e =
-    prop "TASK_PHASE" e.Heading = "CANCELLED"
+    (prop "TASK_PHASE" e.Heading = "CANCELLED"
+     && Agenda.isDoneState e.Config e.Heading.TodoKeyword)
     || List.contains (e.Heading.TodoKeyword |> Option.defaultValue "") [ "CANCELLED"; "CANCELED" ]
 
 let private isDone e =
@@ -756,6 +757,7 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                 if prop "TASK_CLAIM_ID" h = claimId then
                     fail "conflict" 409 "Use a new claim_id after a lease expires"
 
+                after <- Mutations.removeProperty after pos "TASK_PHASE"
                 after <- Mutations.setProperty after pos "TASK_CLAIM_ID" claimId
                 after <- Mutations.setProperty after pos "TASK_CLAIM_OWNER" actor
             elif action = "renew" then
@@ -807,12 +809,28 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                 after <- state cfg true after pos
                 after <- Mutations.setProperty after pos "TASK_PHASE" "CANCELLED"
             elif action = "reopen" then
-                if not (isDone e || isCancelled e) then
-                    fail "conflict" 409 "Only completed or cancelled tasks can be reopened"
+                let closed = isDone e || isCancelled e
+
+                if
+                    not closed
+                    && not (claimStale e || submissionStale e || prop "TASK_PHASE" h = "CANCELLED")
+                then
+                    fail "conflict" 409 "Only completed, cancelled or stale work can be reopened"
+
+                if not closed && String.IsNullOrWhiteSpace evidence then
+                    fail "invalid_arguments" 400 "Recovering stale work needs a reason in evidence"
 
                 after <- clearClaim after pos
-                after <- Mutations.removeProperty after pos "TASK_PHASE"
-                after <- state cfg false after pos
+
+                for key in
+                    [ "TASK_PHASE"
+                      "TASK_SUBMISSION_CONTRACT"
+                      "TASK_SUBMITTED_BY"
+                      "TASK_REVIEWED_BY" ] do
+                    after <- Mutations.removeProperty after pos key
+                // Preserve a manually chosen active state (e.g. WAITING) during recovery.
+                if closed then
+                    after <- state cfg false after pos
             else
                 fail "invalid_arguments" 400 "Unknown task action"
 

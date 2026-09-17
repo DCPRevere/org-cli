@@ -428,6 +428,8 @@
                 rows = [],
                 canWrite = false,
                 busy = false,
+                connected = false,
+                draftDirty = false,
                 selectionVersion = 0,
                 createRequest = null,
                 claimRequest = null;
@@ -469,11 +471,11 @@
                     );
                 return payload.data ?? payload;
             }
-            async function run(fn) {
+            async function run(fn, background = false) {
                 if (busy) return;
                 busy = true;
                 document.body.setAttribute("aria-busy", "true");
-                message("");
+                if (!background) message("");
                 try {
                     await fn();
                 } catch (error) {
@@ -534,10 +536,17 @@
                     list.append(b);
                 }
             }
-            async function choose(row) {
+            async function choose(row, preserveDraft = false) {
                 const version = ++selectionVersion;
                 const data = await request("fetch", { ref: row.ref });
                 if (version !== selectionVersion) return;
+                if (preserveDraft && draftDirty) {
+                    message(
+                        "This task changed outside the board. Your draft is preserved; select the task again to load its current version before submitting.",
+                    );
+                    return;
+                }
+                draftDirty = false;
                 selected = row;
                 fetched = data;
                 renderList();
@@ -628,6 +637,8 @@
                         button("Approve", "approve", "primary");
                     button("Request changes", "reject");
                 }
+                if (row.claim_stale || row.submission_stale)
+                    button("Reset stale workflow", "reopen");
                 if (["done", "cancelled"].includes(row.status))
                     button("Reopen", "reopen");
                 else button("Cancel task", "cancel", "danger");
@@ -804,6 +815,7 @@
                 );
                 $("new").disabled = !canWrite;
                 $("refresh").disabled = false;
+                connected = true;
                 await load();
                 if (selected) {
                     const current = rows.find((r) => r.ref === selected.ref);
@@ -817,26 +829,55 @@
                 }
             }
             $("connect").onclick = () => run(connect);
-            $("refresh").onclick = () =>
-                run(async () => {
-                    await load();
-                    if (selected) {
-                        const current = rows.find(
-                            (r) => r.ref === selected.ref,
+            $("detail").addEventListener("input", () => {
+                draftDirty = true;
+            });
+            $("detail").addEventListener("change", () => {
+                draftDirty = true;
+            });
+            async function refreshView() {
+                // Preserve all loaded pages, so polling does not collapse pagination.
+                const count = Math.max(rows.length, 50);
+                await load();
+                while (next !== null && rows.length < count) await load(true);
+                if (!selected) return;
+                const current = rows.find((r) => r.ref === selected.ref);
+                if (draftDirty) {
+                    if (!current || current.revision !== fetched?.revision)
+                        message(
+                            "This task changed outside the board. Your draft is preserved; select the task again to load its current version before submitting.",
                         );
-                        if (current) await choose(current);
-                        else {
-                            selected = null;
-                            $("detail").replaceChildren(
-                                el(
-                                    "p",
-                                    "This task is no longer in this view. It may have moved, changed status, or been deleted.",
-                                    "empty",
-                                ),
-                            );
-                        }
-                    }
-                });
+                    return; // Keep the original revision: never submit a draft against unseen edits.
+                }
+                if (current) {
+                    if (
+                        current.revision !== fetched?.revision ||
+                        JSON.stringify(current) !== JSON.stringify(selected)
+                    )
+                        await choose(current, true);
+                } else {
+                    selected = null;
+                    fetched = null;
+                    $("detail").replaceChildren(
+                        el(
+                            "p",
+                            "This task is no longer in this view. It may have moved, changed status, or been deleted.",
+                            "empty",
+                        ),
+                    );
+                }
+            }
+            $("refresh").onclick = () => run(refreshView);
+            // Poll only while visible, connected and idle. Do not touch the creation dialog.
+            setInterval(() => {
+                if (
+                    connected &&
+                    !busy &&
+                    !document.hidden &&
+                    !$("create-dialog").open
+                )
+                    run(refreshView, true);
+            }, 3000);
             $("status").onchange = () => run(() => load());
             $("project-filter").onchange = () => run(() => load());
             $("more").onclick = () => run(() => load(true));

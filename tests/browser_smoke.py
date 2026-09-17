@@ -60,13 +60,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             task_file = Path(workspace, 'tasks.org')
             task_file.write_text(task_file.read_text().replace(
                 'Tests pass; documentation matches behavior', 'Tests pass; direct edits are covered'))
-            for _ in range(30):
-                page.get_by_role('button', name='Refresh', exact=True).click()
-                expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
-                if page.get_by_text('Requirements changed after submission.', exact=False).count():
-                    break
-                page.wait_for_timeout(200)
-            expect(page.get_by_text('Requirements changed after submission.', exact=False)).to_be_visible()
+            expect(page.get_by_text('Requirements changed after submission.', exact=False)).to_be_visible(timeout=15000)
             expect(page.get_by_role('button', name='Approve', exact=True)).to_have_count(0)
             page.locator('#actor').fill('reviewer')
             page.locator('#evidence').fill('Please address the edited requirements.')
@@ -89,13 +83,27 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.locator('#status').select_option('done')
             expect(page.locator('#list .task')).to_have_count(1)
             task_file.write_text(task_file.read_text().replace('* DONE ', '* TODO '))
-            for _ in range(30):
-                page.get_by_role('button', name='Refresh', exact=True).click()
-                expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
-                if page.locator('#list .task').count() == 0:
-                    break
-                page.wait_for_timeout(200)
-            expect(page.locator('#list .task')).to_have_count(0)
+            expect(page.locator('#list .task')).to_have_count(0, timeout=15000)
+            expect(page.get_by_text('This task is no longer in this view.', exact=False)).to_be_visible()
+            # Automatic refresh must preserve drafts and their original revision.
+            page.locator('#status').select_option('open')
+            expect(page.locator('#list .task')).to_have_count(1)
+            page.locator('#list .task').click()
+            page.locator('#evidence').fill('Unsaved human evidence')
+            page.get_by_text('Task settings', exact=True).click()
+            page.locator('#edit-acceptance').fill('Unsaved acceptance draft')
+            task_file.write_text(task_file.read_text().replace('direct edits are covered', 'external revision arrived'))
+            expect(page.locator('#message')).to_contain_text('Your draft is preserved', timeout=15000)
+            expect(page.locator('#evidence')).to_have_value('Unsaved human evidence')
+            expect(page.locator('#edit-acceptance')).to_have_value('Unsaved acceptance draft')
+            page.get_by_role('button', name='Claim task', exact=True).click()
+            expect(page.locator('#message')).to_contain_text('File changed')
+            assert ':TASK_CLAIM_ID:' not in task_file.read_text()
+            # Explicit selection reloads the current version; deletion also arrives without Refresh.
+            page.locator('#list .task').click()
+            expect(page.locator('#edit-acceptance')).to_have_value('Tests pass; external revision arrived')
+            task_file.write_text('')
+            expect(page.locator('#list .task')).to_have_count(0, timeout=15000)
             expect(page.get_by_text('This task is no longer in this view.', exact=False)).to_be_visible()
             screenshot = os.environ.get('ORG_BOARD_SCREENSHOT')
             if screenshot:
@@ -104,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             assert not errors, errors
             browser.close()
-        assert ':TASK_REVIEWED_BY: reviewer' in Path(workspace, 'tasks.org').read_text()
+        assert Path(workspace, 'tasks.org').read_text() == ''
         print('PASS browser: authentication, create, claim, submit, separate review, direct-edit invalidation and recovery, manual state changes, literal content, mobile layout')
     finally:
         process.send_signal(signal.SIGINT)

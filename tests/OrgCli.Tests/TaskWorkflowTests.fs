@@ -504,3 +504,44 @@ let ``direct moves preserve claims while completion and deletion are authoritati
     svc.InvalidatePath("/work/moved.org")
     Assert.Empty(tasks svc "done")
     fails "not_found" (fun () -> fetch svc submitted)
+
+
+[<Fact>]
+let ``manually reopening cancellation respects the TODO keyword without property cleanup`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    let task = create svc "Cancelled then reconsidered" true
+    let cancelled = action svc task "human" "cancel" [ "evidence", "Postponed" ]
+    h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace("* DONE ", "* TODO "))
+    let ready = (tasks svc "ready")[0]
+    Assert.Equal(field cancelled "id", field ready "id")
+    let claimed = claim svc ready "worker"
+    Assert.Equal("working", field claimed "status")
+    Assert.DoesNotContain(":TASK_PHASE: CANCELLED", h.Text "/work/tasks.org")
+    Assert.Equal("review", field (submit svc claimed "worker") "status")
+
+[<Fact>]
+let ``stale workflow recovery clears metadata with evidence and preserves editor state`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    let claimed = create svc "Original" true |> fun t -> claim svc t "worker"
+    fails "conflict" (fun () -> action svc claimed "human" "reopen" [ "evidence", "Cannot steal valid work" ])
+    h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace("Original", "Revised"))
+    fails "invalid_arguments" (fun () -> action svc claimed "human" "reopen" [])
+
+    let recovered =
+        action svc claimed "human" "reopen" [ "evidence", "Requirements changed in editor" ]
+
+    Assert.Equal("ready", field recovered "status")
+    Assert.DoesNotContain(":TASK_CLAIM_ID:", h.Text "/work/tasks.org")
+    let submitted = claim svc recovered "worker" |> fun c -> submit svc c "worker"
+    h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace("* TODO Revised", "* WAITING Revised"))
+
+    let recovered =
+        action svc submitted "human" "reopen" [ "evidence", "Awaiting new requirements" ]
+
+    Assert.Equal("WAITING", field recovered "state")
+    Assert.Equal("blocked", field recovered "status")
+    Assert.DoesNotContain(":TASK_PHASE:", h.Text "/work/tasks.org")
+    Assert.DoesNotContain(":TASK_SUBMISSION_CONTRACT:", h.Text "/work/tasks.org")
+    Assert.Contains("Requirements changed in editor", h.Text "/work/tasks.org")

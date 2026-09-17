@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Recover stale task workflows with an audited reset, respect manually reopened cancellations, and automatically refresh the board without overwriting drafts.
+- Run packaged watcher, locking and API/MCP smoke tests on native macOS and Windows CI runners.
+
 - Detect direct requirement edits during claims and review; block stale completion evidence, preserve claims across refiling, and show actionable recovery in the board.
 
 - Add a shared human/agent task workflow: dependency-aware ready queues, project/owner assignment, expiring claims, handoffs, evidence-backed submission, and separate-actor review. Existing Org TODOs can be adopted without migration.
