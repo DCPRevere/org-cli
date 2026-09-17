@@ -4,6 +4,14 @@
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>Org · Tasks</title>
+        <script>
+            // Apply the saved preference before painting; storage may be unavailable.
+            try {
+                const theme = localStorage.getItem("org-theme");
+                if (theme === "light" || theme === "dark")
+                    document.documentElement.dataset.theme = theme;
+            } catch {}
+        </script>
         <style>
             :root {
                 color-scheme: light;
@@ -15,6 +23,51 @@
                 --green: #23624c;
                 --accent: #eaf2eb;
                 --warn: #94620e;
+                --primary-ink: #ffffff;
+                --primary-hover: #194b39;
+                --warning-bg: #fff0cf;
+                --blocked-bg: #f7e8e4;
+                --danger: #983b2d;
+                --working-bg: #e5eef7;
+                --working-ink: #335d86;
+            }
+            :root[data-theme="dark"] {
+                color-scheme: dark;
+                --bg: #151b18;
+                --paper: #1e2722;
+                --ink: #e5ece6;
+                --muted: #a6b5aa;
+                --line: #405047;
+                --green: #8ad5ad;
+                --accent: #293e32;
+                --warn: #f0ca80;
+                --primary-ink: #14291e;
+                --primary-hover: #a7e5c3;
+                --warning-bg: #3d3220;
+                --blocked-bg: #402923;
+                --danger: #f2a18f;
+                --working-bg: #25374a;
+                --working-ink: #a2c7ed;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root:not([data-theme="light"]) {
+                    color-scheme: dark;
+                    --bg: #151b18;
+                    --paper: #1e2722;
+                    --ink: #e5ece6;
+                    --muted: #a6b5aa;
+                    --line: #405047;
+                    --green: #8ad5ad;
+                    --accent: #293e32;
+                    --warn: #f0ca80;
+                    --primary-ink: #14291e;
+                    --primary-hover: #a7e5c3;
+                    --warning-bg: #3d3220;
+                    --blocked-bg: #402923;
+                    --danger: #f2a18f;
+                    --working-bg: #25374a;
+                    --working-ink: #a2c7ed;
+                }
             }
             * {
                 box-sizing: border-box;
@@ -44,13 +97,6 @@
             h1 span {
                 font-weight: 400;
                 color: var(--muted);
-            }
-            .eyebrow {
-                text-transform: uppercase;
-                letter-spacing: 0.14em;
-                font-size: 11px;
-                color: var(--muted);
-                margin: 0 0 3px;
             }
             .connection {
                 display: flex;
@@ -107,11 +153,11 @@
             }
             .primary {
                 background: var(--green);
-                color: white;
+                color: var(--primary-ink);
                 border-color: var(--green);
             }
             .primary:hover {
-                background: #194b39;
+                background: var(--primary-hover);
             }
             .connection label {
                 margin: 0;
@@ -188,16 +234,16 @@
                 color: var(--green);
             }
             .badge.review {
-                background: #fff0cf;
+                background: var(--warning-bg);
                 color: var(--warn);
             }
             .badge.blocked {
-                background: #f7e8e4;
-                color: #9b4932;
+                background: var(--blocked-bg);
+                color: var(--danger);
             }
             .badge.working {
-                background: #e5eef7;
-                color: #335d86;
+                background: var(--working-bg);
+                color: var(--working-ink);
             }
             .empty {
                 padding: 44px 12px;
@@ -237,9 +283,9 @@
             }
             #message:not(:empty) {
                 padding: 12px 36px;
-                background: #fff0cf;
-                color: #6b4300;
-                border-bottom: 1px solid #ead3a0;
+                background: var(--warning-bg);
+                color: var(--warn);
+                border-bottom: 1px solid var(--line);
             }
             .actions {
                 display: flex;
@@ -280,7 +326,7 @@
                 margin-bottom: 18px;
             }
             .danger {
-                color: #983b2d;
+                color: var(--danger);
             }
             #more {
                 width: 100%;
@@ -325,10 +371,14 @@
     <body>
         <header>
             <div>
-                <p class="eyebrow">Shared work, clear ownership</p>
                 <h1>Org <span>/ Tasks</span></h1>
             </div>
             <div class="connection">
+                <label>Theme<select id="theme">
+                    <option value="system">System</option>
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                </select></label>
                 <label
                     >Your actor name<input
                         id="actor"
@@ -422,6 +472,16 @@
         <script>
             "use strict";
             const $ = (id) => document.getElementById(id);
+            $("theme").value = document.documentElement.dataset.theme || "system";
+            $("theme").onchange = () => {
+                const theme = $("theme").value;
+                if (theme === "system") delete document.documentElement.dataset.theme;
+                else document.documentElement.dataset.theme = theme;
+                try {
+                    if (theme === "system") localStorage.removeItem("org-theme");
+                    else localStorage.setItem("org-theme", theme);
+                } catch {}
+            };
             let selected = null,
                 fetched = null,
                 next = null,
