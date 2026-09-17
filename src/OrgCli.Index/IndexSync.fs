@@ -201,7 +201,7 @@ let syncFile (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
         | None -> ()
         | Some text ->
             let hash =
-                computeSha256 ("projection-v3\n" + sprintf "%A" (Config.load ()) + "\n" + text)
+                computeSha256 ("projection-v4\n" + sprintf "%A" (Config.load ()) + "\n" + text)
 
             let mtime = getUnixEpochSeconds filePath
 
@@ -219,7 +219,7 @@ let syncFile (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
 
 /// Incremental sync for a single file during directory scan.
 /// Uses mtime/hash checks to skip unchanged files.
-let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit =
+let private syncIncremental fingerprint (db: IndexDatabase.OrgIndexDb) existingFile (filePath: string) : unit =
     let filePath = Runtime.fullPath filePath
 
     if isEncryptedFile filePath then
@@ -230,18 +230,18 @@ let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit
         match content with
         | None -> ()
         | Some text ->
-            let hash =
-                computeSha256 ("projection-v3\n" + sprintf "%A" (Config.load ()) + "\n" + text)
+            let hash = computeSha256 (fingerprint + text)
 
             let mtime = getUnixEpochSeconds filePath
-            let existingFile = db.GetFile(filePath)
 
             let needsReindex =
                 match existingFile with
                 | None -> true
                 | Some ef ->
                     if ef.Hash = hash then
-                        db.UpdateFileMtime(filePath, mtime)
+                        if ef.Mtime <> mtime then
+                            db.UpdateFileMtime(filePath, mtime)
+
                         false
                     else
                         true
@@ -259,12 +259,22 @@ let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) : unit
 
                     indexFileContent db filePath text)
 
+let private fingerprint () =
+    "projection-v4\n" + sprintf "%A" (Config.load ()) + "\n"
+
+let syncFileIncremental (db: IndexDatabase.OrgIndexDb) (filePath: string) =
+    let path = Runtime.fullPath filePath
+    syncIncremental (fingerprint ()) db (db.GetFile path) path
+
 /// Remove missing files, then transactionally replace each changed file projection.
 let syncFiles (db: IndexDatabase.OrgIndexDb) (files: string list) (force: bool) =
     let files = files |> List.map Runtime.fullPath |> List.distinct |> List.sort
 
+    let existing = db.GetAllFiles() |> List.map (fun f -> f.Path, f) |> Map.ofList
+    let prefix = fingerprint ()
+
     db.ExecuteInTransaction(fun () ->
-        for f in db.GetAllFiles() do
+        for KeyValue(_, f) in existing do
             if not (Runtime.fileExists f.Path) then
                 db.DeleteFtsForFile f.Path
                 db.DeleteFile f.Path)
@@ -273,7 +283,7 @@ let syncFiles (db: IndexDatabase.OrgIndexDb) (files: string list) (force: bool) 
         if force then
             syncFile db file
         else
-            syncFileIncremental db file
+            syncIncremental prefix db (existing.TryFind file) file
 
 let syncDirectory (db: IndexDatabase.OrgIndexDb) (directory: string) =
     if not (Runtime.directoryExists directory) then

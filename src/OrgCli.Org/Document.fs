@@ -27,7 +27,7 @@ let parseFileSection (content: string) : Keyword list * PropertyDrawer option * 
     let fileSection = content.Substring(0, fileSectionEnd)
 
     // Parse keywords
-    let keywordPattern = Regex(@"^#\+([^:]+):\s*(.*)$", RegexOptions.Multiline)
+    let keywordPattern = Regex(@"^#\+([^:\r\n]+):[ \t]*(.*)$", RegexOptions.Multiline)
 
     let keywords =
         keywordPattern.Matches(fileSection)
@@ -46,7 +46,9 @@ let parseFileSection (content: string) : Keyword list * PropertyDrawer option * 
     let properties =
         if propsMatch.Success then
             let propsContent = propsMatch.Groups.[1].Value
-            let propLinePattern = Regex(@"^\s*:([^:]+):\s*(.*)$", RegexOptions.Multiline)
+
+            let propLinePattern =
+                Regex(@"^[ \t]*:([^:\r\n]+):[ \t]*(.*)$", RegexOptions.Multiline)
 
             let props: Property list =
                 propLinePattern.Matches(propsContent)
@@ -133,7 +135,9 @@ let parseHeadlineSectionWith (headlinePattern: Regex) (text: string) (startPos: 
 
                 if propsMatch.Success then
                     let propsContent = propsMatch.Groups.[1].Value
-                    let propLinePattern = Regex(@"^\s*:([^:]+):\s*(.*)$", RegexOptions.Multiline)
+
+                    let propLinePattern =
+                        Regex(@"^[ \t]*:([^:\r\n]+):[ \t]*(.*)$", RegexOptions.Multiline)
 
                     let props: Property list =
                         propLinePattern.Matches(propsContent)

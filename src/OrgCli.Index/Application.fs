@@ -37,13 +37,93 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
     let readOnly = defaultArg readOnly false
     let inbox = Path.Combine(root, "inbox.org")
 
+    let pendingGate = System.Object()
+    let pending = Collections.Generic.HashSet<string>()
+    let mutable watching = false
+    let mutable reconcile = false
+    let mutable cached: Map<string, OrgDocument> = Map.empty
+
+    let invalidateAll () =
+        lock pendingGate (fun () ->
+            reconcile <- true
+            pending.Clear())
+
+    let invalidatePath path =
+        let path = Path.GetFullPath(path, root)
+        let relative = Path.GetRelativePath(root, path)
+
+        if
+            not (Path.IsPathRooted relative)
+            && relative <> ".."
+            && not (relative.StartsWith(".." + string Path.DirectorySeparatorChar))
+        then
+            lock pendingGate (fun () ->
+                if not reconcile then
+                    pending.Add path |> ignore
+
+                    if pending.Count > 4096 then
+                        reconcile <- true
+                        pending.Clear())
+
     let files () =
         if not (Runtime.directoryExists root) then
             fail "not_found" 404 "Workspace directory does not exist"
 
         Utils.listOrgFiles root
 
-    let documents () = Workspace.documents database (files ())
+    // Call only under gate with the workspace host/configuration installed. Events use a
+    // separate short lock so notifications arriving during a refresh remain pending.
+    let refresh () =
+        if watching then
+            let full, paths =
+                lock pendingGate (fun () ->
+                    let batch = reconcile, List.ofSeq pending
+                    reconcile <- false
+                    pending.Clear()
+                    batch)
+
+            if full || not paths.IsEmpty then
+                try
+                    let selected = files () |> Set.ofList
+                    use db = new IndexDatabase.OrgIndexDb(database)
+                    db.Initialize()
+
+                    if full then
+                        IndexSync.syncFiles db (Set.toList selected) false
+
+                        cached <-
+                            db.GetDocuments()
+                            |> List.filter (fun (file, _) -> selected.Contains file)
+                            |> Map.ofList
+                    else
+                        let mutable next = cached
+
+                        for path in paths do
+                            if selected.Contains path then
+                                IndexSync.syncFileIncremental db path
+
+                                match db.GetDocument path with
+                                | Some doc -> next <- next.Add(path, doc)
+                                | None -> next <- next.Remove path
+                            else
+                                db.ExecuteInTransaction(fun () ->
+                                    db.DeleteFtsForFile path
+                                    db.DeleteFile path)
+
+                                next <- next.Remove path
+
+                        cached <- next
+                with _ ->
+                    invalidateAll ()
+                    reraise ()
+
+    let documents () =
+        if watching then
+            refresh ()
+            Map.toList cached
+        else
+            Workspace.documents database (files ())
+
     let relative path = Path.GetRelativePath(root, path)
     let read path = Runtime.readText path
 
@@ -126,7 +206,12 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             locator file pos content)
 
     let resolve (identifier: string) =
-        let selected = files ()
+        let selected =
+            if watching then
+                refresh ()
+                cached |> Map.keys |> Seq.toList
+            else
+                files ()
 
         if identifier.StartsWith("loc:", StringComparison.Ordinal) then
             let data =
@@ -159,7 +244,13 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             | ServiceError _ -> reraise ()
             | _ -> fail "invalid_arguments" 400 "Invalid entry reference"
         else
-            match Workspace.resolve database selected identifier with
+            let lookup =
+                if watching then
+                    Workspace.resolveIndexed
+                else
+                    Workspace.resolve
+
+            match lookup database selected identifier with
             | Error e ->
                 fail
                     (if e.Type = CliErrorType.HeadlineNotFound then
@@ -217,9 +308,16 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
         try
             use db = new IndexDatabase.OrgIndexDb(database)
             db.Initialize()
-            IndexSync.syncFiles db [ path ] false
+            IndexSync.syncFileIncremental db path
+
+            if watching then
+                match db.GetDocument path with
+                | Some doc -> cached <- cached.Add(path, doc)
+                | None -> invalidatePath path
+
             None
         with ex ->
+            invalidatePath path
             Some("File saved; index refresh failed: " + ex.Message)
 
     let saved path pos before after =
@@ -243,6 +341,10 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
     let invoke operation (args: JsonObject) =
         let allowed =
             match operation with
+            | "tasks"
+            | "task_create"
+            | "task_update"
+            | "task_action" -> TaskWorkflow.allowed operation
             | "search" -> [ "query"; "limit"; "offset" ]
             | "fetch" -> [ "ref"; "limit"; "offset" ]
             | "agenda" -> [ "from"; "through"; "limit"; "offset" ]
@@ -256,10 +358,34 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             if not (List.contains pair.Key allowed) then
                 fail "invalid_arguments" 400 ("Unknown argument: " + pair.Key)
 
-        if readOnly && List.contains operation [ "capture"; "append_note"; "update_task" ] then
+        if
+            readOnly
+            && (List.contains operation [ "capture"; "append_note"; "update_task" ]
+                || TaskWorkflow.isMutation operation)
+        then
             fail "read_only" 403 "This server is read-only"
 
         match operation with
+        | "tasks"
+        | "task_create"
+        | "task_update"
+        | "task_action" ->
+            try
+                TaskWorkflow.invoke
+                    { Root = root
+                      Config = config
+                      Documents = documents
+                      Resolve = resolve
+                      Reference = reference
+                      Save = save
+                      Reconcile =
+                        fun () ->
+                            invalidateAll ()
+                            refresh () }
+                    operation
+                    args
+            with TaskWorkflow.TaskError(code, status, message) ->
+                fail code status message
         | "search" ->
             let query = required args "query"
             let limit = integer args "limit" 20 1 100
@@ -311,7 +437,7 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
                 optional args "from" ((Runtime.now ()).ToString("yyyy-MM-dd")) |> date
 
             let throughDate =
-                optional args "through" (fromDate.AddDays(7).ToString("yyyy-MM-dd")) |> date
+                optional args "through" (fromDate.AddDays(6).ToString("yyyy-MM-dd")) |> date
 
             if throughDate < fromDate || (throughDate - fromDate).TotalDays > 366 then
                 fail "invalid_arguments" 400 "Agenda range must be between 0 and 366 days"
@@ -321,14 +447,7 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             let limit = integer args "limit" 50 1 100
             let offset = integer args "offset" 0 0 1000000
 
-            let items =
-                Agenda.collectDatedItemsFromDocs config docs
-                |> List.filter (fun item ->
-                    let cfg = FileConfig.mergeFileConfig config byFile[item.File].Keywords
-
-                    item.Date.Date <= throughDate
-                    && not (Agenda.isDoneState cfg item.Headline.TodoKeyword))
-                |> List.sortBy (fun item -> item.Date, item.File, item.Headline.Position)
+            let items = Agenda.openThrough config throughDate docs
 
             let rows =
                 items
@@ -455,6 +574,12 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             let cfg = FileConfig.mergeFileConfig config doc.Keywords
             let mutable after = content
 
+            if
+                Types.tryGetProperty "TASK_MANAGED" (doc.Headlines |> List.find (fun h -> h.Position = pos)).Properties = Some
+                    "true"
+            then
+                fail "conflict" 409 "Use task_update or task_action for managed tasks"
+
             if args.ContainsKey "state" then
                 let state = optional args "state" ""
 
@@ -535,6 +660,33 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
                    else
                        null) ]
         | _ -> fail "unknown_operation" 404 "Unknown operation"
+
+    /// Native watching is only attached to the physical host. Virtual hosts inject
+    /// notifications through the same methods without observing the user's disk.
+    member _.WatchDirectory =
+        match host with
+        | :? Runtime.PhysicalHost -> Some root
+        | _ -> None
+
+    member _.EnableWatching() =
+        lock gate (fun () ->
+            watching <- true
+            invalidateAll ())
+
+    member _.DisableWatching() =
+        lock gate (fun () ->
+            watching <- false
+            cached <- Map.empty
+            invalidateAll ())
+
+    member _.InvalidatePath(path) = invalidatePath path
+    member _.InvalidateAll() = invalidateAll ()
+
+    member _.Refresh() =
+        lock gate (fun () ->
+            use hostScope = Runtime.useHost host
+            use configScope = Config.useConfig config
+            refresh ())
 
     member _.ReadOnly = readOnly
 

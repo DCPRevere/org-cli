@@ -22,10 +22,12 @@ type VirtualHost() =
     let mutable failMove = 0
     let mutable writes = 0
     let mutable reads = 0
+    let mutable enumerations = 0
     let mutable clock = DateTime(2026, 9, 16, 12, 0, 0)
     member _.Files = files
     member _.Writes = writes
     member _.Reads = reads
+    member _.Enumerations = enumerations
     member _.Environment = env
 
     member _.FailMove
@@ -82,6 +84,8 @@ type VirtualHost() =
         member _.DeleteDirectory p = directories.Remove p |> ignore
 
         member _.EnumerateFiles p =
+            enumerations <- enumerations + 1
+
             files.Keys
             |> Seq.filter (fun f -> f.StartsWith(p.TrimEnd('/') + "/"))
             |> Seq.toList

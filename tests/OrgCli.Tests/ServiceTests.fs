@@ -267,3 +267,117 @@ let ``external changes after fetch are preserved`` () =
     expectError "conflict" (fun () -> svc.Invoke("update_task", change entry [ "state", "DONE" ]))
     Assert.Contains("External task", h.Text "/work/inbox.org")
     Assert.DoesNotContain("DONE", h.Text "/work/inbox.org")
+
+let watchedNote id word =
+    $"* {word}\n:PROPERTIES:\n:ID: {id}\n:END:\n"
+
+let watchedSearch (svc: WorkspaceService) word =
+    let a = JsonObject()
+    a["query"] <- JsonValue.Create(word: string)
+    svc.Invoke("search", a).["results"].AsArray()
+
+[<Fact>]
+let ``watched queries avoid corpus reads and refresh only notified files`` () =
+    use h = new VirtualHost()
+
+    for i in 1..20 do
+        h.Put($"/work/{i}.org", watchedNote (string i) "oldword")
+
+    let svc = service h false
+    svc.EnableWatching()
+    svc.Refresh()
+    let reads = h.Reads
+    let enumerations = h.Enumerations
+    Assert.Equal(20, (watchedSearch svc "oldword").Count)
+    svc.Invoke("agenda", args "{}") |> ignore
+    Assert.Equal(reads, h.Reads)
+    Assert.Equal(enumerations, h.Enumerations)
+    // VirtualHost never advances mtimes, and these replacements have equal size.
+    h.Put("/work/1.org", watchedNote "1" "newword")
+    svc.InvalidatePath "/work/1.org"
+    svc.InvalidatePath "/work/1.org"
+    Assert.Single(watchedSearch svc "newword") |> ignore
+    Assert.Equal(reads + 1, h.Reads)
+    Assert.Equal(19, (watchedSearch svc "oldword").Count)
+
+[<Fact>]
+let ``watched refresh handles rename deletion and new files`` () =
+    use h = new VirtualHost()
+    h.Put("/work/old.org", watchedNote "one" "renameword")
+    let svc = service h false
+    svc.EnableWatching()
+    svc.Refresh()
+    (h :> Runtime.IHost).MoveFile("/work/old.org", "/work/new.org", false)
+    svc.InvalidatePath "/work/old.org"
+    svc.InvalidatePath "/work/new.org"
+    let hits = watchedSearch svc "renameword"
+    Assert.Single(hits) |> ignore
+    Assert.Equal("new.org", field hits[0] "file")
+    (h :> Runtime.IHost).DeleteFile "/work/new.org"
+    svc.InvalidatePath "/work/new.org"
+    Assert.Empty(watchedSearch svc "renameword")
+    h.Put("/work/created.org", watchedNote "two" "createdword")
+    svc.InvalidatePath "/work/created.org"
+    Assert.Single(watchedSearch svc "createdword") |> ignore
+
+[<Fact>]
+let ``watcher reconciliation repairs missed events and retries failed refresh`` () =
+    use h = new VirtualHost()
+    h.Put("/work/note.org", watchedNote "one" "beforeword")
+    let svc = service h false
+    svc.EnableWatching()
+    svc.Refresh()
+    h.Put("/work/note.org", watchedNote "one" "afterword")
+    // Same path used for startup, overflow, directory events and periodic repair.
+    svc.InvalidateAll()
+    Assert.Single(watchedSearch svc "afterword") |> ignore
+    h.Files["/work/note.org"] <- [| 0xffuy |]
+    svc.InvalidatePath "/work/note.org"
+    Assert.ThrowsAny<Exception>(Action(fun () -> svc.Refresh())) |> ignore
+    h.Put("/work/note.org", watchedNote "one" "repairedword")
+    // A failed batch remains pending even without another event.
+    Assert.Single(watchedSearch svc "repairedword") |> ignore
+    Assert.Empty(watchedSearch svc "afterword")
+
+[<Fact>]
+let ``server writes update watched projections without relying on watcher events`` () =
+    use h = new VirtualHost()
+    let svc = service h false
+    svc.EnableWatching()
+    svc.Refresh()
+    let entry = svc.Invoke("capture", args capture)
+    Assert.Single(watchedSearch svc "Useful") |> ignore
+    let updated = svc.Invoke("append_note", change entry [ "text", "immediateword" ])
+    Assert.Single(watchedSearch svc "immediateword") |> ignore
+    let doneEntry = svc.Invoke("update_task", change updated [ "state", "DONE" ])
+    Assert.Contains("DONE", field doneEntry "text")
+    let again = svc.Invoke("capture", args capture)
+    Assert.Equal(field entry "ref", field again "ref")
+
+[<Fact>]
+let ``stopping monitoring restores scan based freshness and excludes outside paths`` () =
+    use h = new VirtualHost()
+    h.Put("/work/note.org", watchedNote "one" "beforeword")
+    h.Put("/home/test/outside.org", watchedNote "outside" "outsideword")
+    let svc = service h false
+    svc.EnableWatching()
+    svc.InvalidatePath "/home/test/outside.org"
+    Assert.Empty(watchedSearch svc "outsideword")
+    svc.DisableWatching()
+    h.Put("/work/note.org", watchedNote "one" "afterword")
+    Assert.Single(watchedSearch svc "afterword") |> ignore
+
+[<Fact>]
+let ``watcher event queue overflow reconciles changes without an individual event`` () =
+    use h = new VirtualHost()
+    h.Put("/work/note.org", watchedNote "one" "beforeword")
+    let svc = service h false
+    svc.EnableWatching()
+    svc.Refresh()
+    h.Put("/work/note.org", watchedNote "one" "afterword")
+
+    for i in 0..4096 do
+        svc.InvalidatePath $"/work/burst-{i}.org"
+
+    Assert.Single(watchedSearch svc "afterword") |> ignore
+    Assert.Empty(watchedSearch svc "beforeword")

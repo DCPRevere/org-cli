@@ -10,9 +10,17 @@ org mcp --stdio -d ~/org                  # Local client starts this on demand
 
 Both server modes accept `--db`, `--config`, and `--read-only`. The selected directory is the workspace boundary. Capture writes to its `inbox.org`; requests cannot choose arbitrary file paths. `--read-only` disables mutations and removes them from discovery. Source files and the CLI-owned index are shared with ordinary CLI use; org-roam is unnecessary.
 
+## External edits and cache freshness
+
+Both `org serve` and `org mcp --stdio` watch the physical workspace recursively. File notifications are coalesced and processed in the background approximately every 200 ms; a request also processes pending notifications before using the index. Unchanged requests reuse parsed snapshots and do not scan or hash the corpus. Writes made through the service update the affected projection immediately, without waiting for a watcher event.
+
+External edits are eventually visible, not transactionally synchronized with an editor: a request can race an event that has not arrived yet. Atomic saves, file creation/deletion, and renames are supported. Directory changes, watcher errors/overflow, and startup trigger full reconciliation. The server also verifies content every 60 seconds to recover from silently missed events (including on filesystems with unreliable notifications). These full passes can delay requests while refreshing a large workspace. Failed refreshes remain pending and are retried; requests requiring that refresh fail rather than silently returning the old cache.
+
+The watcher is owned by the server process and stops with it. Ordinary CLI commands retain their existing scan-based freshness. Virtual-host tests inject notifications directly; they never attach a watcher to the user's filesystem.
+
 ## HTTP
 
-The listener is loopback-only. Set `ORG_API_TOKEN` before starting the process to require `Authorization: Bearer <token>` on every endpoint. Without it, local clients can call the API without credentials. Requests with unrelated Host or Origin headers are rejected; no cross-origin browser access is enabled. Request bodies are limited to 1 MiB. This is a local bridge, not a public multi-user service: OAuth and remote binding are not implemented.
+The listener is loopback-only. Set `ORG_API_TOKEN` before starting the process to require `Authorization: Bearer <token>` on data and tool endpoints. Without it, local clients can call the API without credentials. Requests with unrelated Host or Origin headers are rejected; no cross-origin browser access is enabled. Request bodies are limited to 1 MiB. This is a local bridge, not a public multi-user service: OAuth and remote binding are not implemented.
 
 - `GET /health`: readiness of the process.
 - `GET /api/v1/tools`: operation names, input schemas, descriptions, and annotations.
@@ -33,7 +41,11 @@ curl -s http://127.0.0.1:8765/api/v1/capture \
 
 Generate a new UUID for each new capture. Reuse it only when retrying the identical request. Replays survive process restarts because capture identity and a request fingerprint are stored in the Org heading. Reusing a UUID with a different request is a conflict.
 
-## Operations
+## Task workflow
+
+The built-in browser board is at `/`. The empty page shell loads without a token; all data requests still require the configured bearer token. `tasks`, `task_create`, `task_update`, and `task_action` expose the same workflow to HTTP and MCP clients. See the [task workflow guide](task-workflow.md) for schemas, leases, dependency rules, review, and examples.
+
+## Note operations
 
 | Name | Arguments | Result |
 | --- | --- | --- |
@@ -68,7 +80,7 @@ A local client can launch the executable directly:
 
 The exact configuration file depends on the client. Stdio emits only protocol messages on stdout; logs go to stderr. Closing stdin shuts down the process. HTTP clients use `http://127.0.0.1:8765/mcp` after starting `org serve --mcp`; a remote assistant needs an appropriate local bridge/tunnel. Direct ChatGPT account connection has not been tested by this change.
 
-MCP exposes the same seven operations and structured result envelopes as HTTP. Writes are annotated; tool-level failures set `isError`. The SDK handles initialization, protocol negotiation, message framing, cancellation messages, and transport lifecycle. No assistant-specific database is created.
+MCP exposes the same operations and structured result envelopes as HTTP. Writes are annotated; tool-level failures set `isError`. The SDK handles initialization, protocol negotiation, message framing, cancellation messages, and transport lifecycle. No assistant-specific database is created.
 
 ## Implementation and tests
 
