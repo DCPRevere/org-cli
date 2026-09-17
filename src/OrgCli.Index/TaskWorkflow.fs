@@ -836,9 +836,6 @@ let invoke (ctx: Context) operation (args: JsonObject) =
 
                 after <- Mutations.setProperty after pos "TASK_REVIEWED_BY" actor
             elif action = "cancel" then
-                if String.IsNullOrWhiteSpace evidence then
-                    fail "invalid_arguments" 400 "Cancellation needs a reason"
-
                 after <- clearClaim after pos
                 after <- state cfg true after pos
                 after <- Mutations.setProperty after pos "TASK_PHASE" "CANCELLED"

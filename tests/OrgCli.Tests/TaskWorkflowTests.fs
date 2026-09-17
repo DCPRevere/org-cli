@@ -572,3 +572,16 @@ let ``task cards expose planning and source context without changing Org files``
     Assert.Null(undated["scheduled"])
     Assert.Null(undated["deadline"])
     Assert.Equal(content, h.Text "/work/project.org")
+
+[<Fact>]
+let ``cancellation without a reason revokes claims and preserves history`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    let task = create svc "No longer needed" true
+    let claimed = claim svc task "worker"
+    let cancelled = action svc claimed "human" "cancel" []
+    Assert.Equal("cancelled", field cancelled "status")
+    Assert.Equal("", field cancelled "claimed_by")
+    Assert.DoesNotContain(":TASK_CLAIM_ID:", h.Text "/work/tasks.org")
+    Assert.Contains("Task cancel by human", h.Text "/work/tasks.org")
+    Assert.Contains("Task claim by worker", h.Text "/work/tasks.org")

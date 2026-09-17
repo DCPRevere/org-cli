@@ -41,7 +41,7 @@ org serve -d ~/org --mcp
 org mcp --stdio -d ~/org
 ```
 
-Set `ORG_API_TOKEN` before starting the server to require a bearer token for data and tools. The board's empty HTML shell is available without a token so a person can enter it; no workspace data is embedded in that shell. The board keeps the token in the current page's memory. Use an actor name for attribution. Read-only servers expose inspection and disable editing in the board.
+Set `ORG_API_TOKEN` before starting the server to require a bearer token for data and tools. The board's empty HTML shell is available without a token so a person can enter it; no workspace data is embedded in that shell. The board keeps the token in the current page's memory. The page loads automatically, showing an unlock prompt only when a token is required. Enter Your name to attribute changes; the browser remembers it locally. This name is not a login or authenticated identity. Read-only servers expose inspection and disable editing in the board.
 
 Existing Org TODO headings appear in the task queue. They need no conversion. Editing or claiming an existing heading assigns a standard UUID if needed and opts that heading into the managed workflow. New tasks go into `tasks.org`. File-local TODO and completion keywords remain authoritative.
 
@@ -97,7 +97,7 @@ Actions:
 - `release`: same actor and token; optional `evidence` for a handoff. An expired claim can be released if it has not been replaced.
 - `submit`: same actor and unexpired token; nonempty `evidence`. Outstanding dependencies prevent submission. Review defaults to required; explicitly setting `review_required: false` permits direct completion upon submission.
 - `approve` / `reject`: requires a pending submission, a different actor, and `evidence` describing the decision. Approval rechecks dependencies.
-- `cancel`: requires a reason in `evidence`, revokes the lease, and records cancellation. Cancellation does not satisfy dependencies.
+- `cancel`: revokes the lease and records cancellation; a reason in `evidence` is optional. Cancellation does not satisfy dependencies.
 - `reopen`: restores completed/cancelled tasks to an active TODO state. It also resets stale claims or submissions when supplied a reason in `evidence`, clearing coordination properties while preserving an already-active state chosen in an editor. Valid active claims cannot be reset this way. Existing downstream dependencies see reopened tasks as unfinished.
 
 Queue statuses are `ready`, `blocked`, `working`, `review`, `done`, and `cancelled`; `open` and `all` are aggregate filters. Expired leases are shown and make eligible work claimable again. Waiting/hold/someday/project states and future scheduled dates are not treated as immediately executable. Rows include a reference, file revision, assignment, acceptance criteria, blockers, dependency IDs, and lease information. Ranking puts overdue deadlines first, then priority and deadline. The system does not invent urgency or silently schedule time.

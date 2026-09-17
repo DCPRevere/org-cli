@@ -69,6 +69,7 @@
                     --working-ink: #a2c7ed;
                 }
             }
+            [hidden] { display: none !important; }
             * {
                 box-sizing: border-box;
             }
@@ -405,16 +406,17 @@
                     <option value="dark">Dark</option>
                 </select></label>
                 <label
-                    >Your actor name<input
+                    >Your name<input
                         id="actor"
-                        placeholder="daniel"
+                        placeholder="Name for task history"
+                        title="Used to record your changes and claims; this is not a login."
                         autocomplete="off" /></label
-                ><label
-                    >Access token, if configured<input
+                ><label id="token-label" hidden
+                    >Access token<input
                         id="token"
                         type="password"
                         autocomplete="off" /></label
-                ><button id="connect" class="primary">Connect</button>
+                ><button id="connect" class="primary" hidden>Unlock workspace</button>
             </div>
         </header>
         <div id="message" role="status" aria-live="polite"></div>
@@ -457,7 +459,7 @@
                 </div>
                 <p id="coverage" class="meta" role="status"></p>
                 <div id="list" class="list">
-                    <p class="empty">Connect to load your workspace.</p>
+                    <p class="empty">Loading your workspace…</p>
                 </div>
                 <button id="more" hidden>Load more</button>
                 <footer>
@@ -521,6 +523,15 @@
                     else localStorage.setItem("org-theme", theme);
                 } catch {}
             };
+            try { $("actor").value = localStorage.getItem("org-actor") || ""; } catch {}
+            function rememberName() {
+                try {
+                    const name = $("actor").value.trim();
+                    if (name) localStorage.setItem("org-actor", name);
+                    else localStorage.removeItem("org-actor");
+                } catch {}
+            }
+            $("actor").onchange = rememberName;
             let selected = null,
                 fetched = null,
                 next = null,
@@ -544,7 +555,8 @@
             const actor = () => {
                 const value = $("actor").value.trim();
                 if (!value)
-                    throw Error("Enter your actor name before making changes.");
+                    throw Error("Enter your name above so this change can be recorded in the task history.");
+                rememberName();
                 return value;
             };
             async function request(operation, args) {
@@ -556,10 +568,13 @@
                     headers,
                     body: args === undefined ? undefined : JSON.stringify(args),
                 });
-                if (response.status === 401)
-                    throw Error(
-                        "Enter the access token configured for this server, then connect.",
-                    );
+                if (response.status === 401) {
+                    connected = false;
+                    $("token-label").hidden = false;
+                    $("connect").hidden = false;
+                    $("connect").textContent = "Unlock workspace";
+                    throw Error("This workspace requires an access token. Enter it above to unlock.");
+                }
                 const payload = await response.json();
                 if (!response.ok || payload.ok === false)
                     throw Error(
@@ -579,6 +594,10 @@
                     await fn();
                 } catch (error) {
                     message(error.message);
+                    if (!connected) {
+                        $("connect").hidden = false;
+                        if ($("token-label").hidden) $("connect").textContent = "Retry loading";
+                    }
                 } finally {
                     busy = false;
                     document.body.setAttribute("aria-busy", "false");
@@ -821,7 +840,7 @@
                     root.append(box);
                 }
                 const evidence = labelled(
-                    "Evidence, review feedback, or handoff note",
+                    "Evidence or feedback (optional when cancelling)",
                     "evidence",
                     "",
                     "textarea",
@@ -1000,7 +1019,7 @@
                         );
                 }
                 if (
-                    ["submit", "approve", "reject", "cancel"].includes(
+                    ["submit", "approve", "reject"].includes(
                         action,
                     ) &&
                     !evidence.trim()
@@ -1028,8 +1047,10 @@
                 );
                 $("new").disabled = !canWrite;
                 $("refresh").disabled = false;
-                connected = true;
                 await load();
+                connected = true;
+                $("token-label").hidden = true;
+                $("connect").hidden = true;
                 if (selected) {
                     const current = rows.find((r) => r.ref === selected.ref);
                     if (current) await choose(current);
@@ -1042,6 +1063,9 @@
                 }
             }
             $("connect").onclick = () => run(connect);
+            $("token").onkeydown = (event) => {
+                if (event.key === "Enter") run(connect);
+            };
             $("detail").addEventListener("input", () => {
                 draftDirty = true;
             });

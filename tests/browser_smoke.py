@@ -57,10 +57,14 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.emulate_media(color_scheme='dark')
             expect(page.locator('body')).to_have_css('background-color', 'rgb(21, 27, 24)')
             expect(page.locator('#message')).to_contain_text('access token')
+            expect(page.locator('#actor')).to_have_value('')
+            expect(page.locator('#actor')).to_have_attribute('placeholder', 'Name for task history')
             page.locator('#actor').fill('worker')
             page.locator('#token').fill('browser-test-token')
-            page.get_by_role('button', name='Connect', exact=True).click()
+            page.get_by_role('button', name='Unlock workspace', exact=True).click()
             expect(page.get_by_role('button', name='+ New task')).to_be_enabled()
+            expect(page.locator('#connect')).to_be_hidden()
+            expect(page.locator('#token')).to_be_hidden()
             page.get_by_role('button', name='+ New task').click()
             page.locator('#create-title').fill('Ship the release <script>alert(1)</script>')
             page.locator('#create-acceptance').fill('Tests pass; documentation matches behavior')
@@ -193,12 +197,54 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                     print(page.evaluate("[...document.querySelectorAll('body *')].filter(e => e.getBoundingClientRect().right > innerWidth).map(e => [e.tagName, e.id, e.className, e.getBoundingClientRect().right]).slice(0, 20)"))
                     raise AssertionError(layout + ' overflow')
             page.set_viewport_size({'width': 1400, 'height': 1000})
+            page.locator('#evidence').fill('')
+            page.get_by_role('button', name='Cancel task', exact=True).click()
+            expect(page.locator('#detail > .badge')).to_have_text('cancelled')
+            assert 'Task cancel by reviewer' in source.read_text()
+            page.reload()
+            expect(page.locator('#actor')).to_have_value('reviewer')
+            expect(page.locator('#token')).to_have_value('')
+            expect(page.get_by_role('button', name='Unlock workspace')).to_be_visible()
             screenshot = os.environ.get('ORG_BOARD_SCREENSHOT')
             if screenshot:
                 page.screenshot(path=screenshot, full_page=False)
             page.set_viewport_size({'width': 390, 'height': 844})
             assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth')
             assert not errors, errors
+            # The usual local server needs neither a token nor a Connect action.
+            with tempfile.TemporaryDirectory(prefix='org-board-local-') as local_workspace:
+                with socket.socket() as probe:
+                    probe.bind(('127.0.0.1', 0))
+                    local_port = probe.getsockname()[1]
+                local_env = dict(os.environ)
+                local_env.pop('ORG_API_TOKEN', None)
+                local_process = subprocess.Popen(
+                    [binary, 'serve', '-d', local_workspace, '--port', str(local_port)],
+                    env=local_env, stdout=log, stderr=log)
+                try:
+                    local_url = f'http://127.0.0.1:{local_port}'
+                    for _ in range(200):
+                        try:
+                            urllib.request.urlopen(local_url, timeout=1).close()
+                            break
+                        except OSError:
+                            assert local_process.poll() is None
+                            time.sleep(.05)
+                    local_page = browser.new_page()
+                    local_page.goto(local_url)
+                    expect(local_page.get_by_role('button', name='+ New task')).to_be_enabled()
+                    expect(local_page.locator('#coverage')).to_have_text('All matching tasks loaded.')
+                    expect(local_page.locator('#connect')).to_be_hidden()
+                    expect(local_page.locator('#token')).to_be_hidden()
+                    expect(local_page.locator('#actor')).to_have_value('')
+                    local_page.close()
+                finally:
+                    local_process.send_signal(signal.SIGINT)
+                    try:
+                        local_process.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        local_process.kill()
+                        local_process.wait()
             browser.close()
         assert Path(workspace, 'tasks.org').read_text() == ''
         print('PASS browser: authentication, create, claim, submit, separate review, direct-edit invalidation and recovery, manual state changes, literal content, multi-page board/agenda/calendar, shared filters, mobile layout')
