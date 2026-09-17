@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 
 BINARY = str(Path(sys.argv[1] if len(sys.argv) > 1 else "src/OrgCli/bin/Debug/net9.0/" + ("org.exe" if os.name == "nt" else "org")).resolve())
 
@@ -135,7 +136,7 @@ def http(root):
             # Observe the index directly: requests must not be what refreshes it.
             database = Path(root) / ".org-index.db"
             def indexed(title):
-                with sqlite3.connect(database) as connection:
+                with closing(sqlite3.connect(database)) as connection:
                     return connection.execute("SELECT file FROM index_headlines WHERE title=?", (title,)).fetchall()
             def eventually(predicate):
                 until = time.monotonic() + 15
@@ -143,7 +144,9 @@ def http(root):
                     if predicate(): return
                     assert p.poll() is None, "Watcher process exited"
                     time.sleep(0.05)
-                raise AssertionError("Watcher did not refresh the index")
+                with closing(sqlite3.connect(database)) as connection:
+                    observed = connection.execute("SELECT file, title FROM index_headlines").fetchall()
+                raise AssertionError(f"Watcher did not refresh the index; observed: {observed!r}")
             folder = Path(root) / "watcher-folder"
             folder.mkdir()
             note = folder / "external.org"
@@ -157,7 +160,10 @@ def http(root):
             eventually(lambda: len(indexed("watchafterx")) == 1 and not indexed("watchbefore"))
             renamed = Path(root) / "watcher-renamed"
             folder.rename(renamed)
-            eventually(lambda: indexed("watchafterx") == [(str(renamed / "external.org"),)])
+            def renamed_projection():
+                matches = indexed("watchafterx")
+                return len(matches) == 1 and os.path.normcase(os.path.realpath(matches[0][0])) == os.path.normcase(os.path.realpath(renamed / "external.org"))
+            eventually(renamed_projection)
             # Renaming away from .org must remove the old projection.
             (renamed / "external.org").rename(renamed / "external.txt")
             eventually(lambda: not indexed("watchafterx"))
