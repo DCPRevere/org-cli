@@ -15,7 +15,7 @@ buildDotnetModule rec {
   executables = [ "org" ];
 
   meta = with lib; {
-    description = "CLI for org-mode file manipulation and org-roam database management";
+    description = "Standalone Org notes and task management for humans and agents";
     homepage = "https://github.com/dcprevere/org-cli";
 
     mainProgram = "org";

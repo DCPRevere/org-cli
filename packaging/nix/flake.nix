@@ -1,5 +1,5 @@
 {
-  description = "CLI for org-mode file manipulation and org-roam database management";
+  description = "Standalone Org notes and task management for humans and agents";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";

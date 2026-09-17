@@ -2,7 +2,7 @@
 pkgname=org-cli-bin
 pkgver=@@VERSION@@
 pkgrel=1
-pkgdesc='CLI for org-mode file manipulation and org-roam database management'
+pkgdesc='Standalone Org notes and task management for humans and agents'
 arch=('x86_64')
 url='https://github.com/dcprevere/org-cli'
 provides=('org-cli')

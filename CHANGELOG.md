@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.0.0 — 2026-09-17
+
+Stable release of the standalone Org engine and shared human/agent task workflow. Promotes the tested RC2 implementation; no task or storage behavior changes from RC2.
+
+- Org files are authoritative; the disposable search index refreshes through content checks and a server filesystem watcher. Direct editor changes are supported.
+- One binary provides the CLI, browser task board, optional HTTP API and MCP. Org-roam is an optional extension.
+- Tasks support dependencies, assignment, expiring claims, handoffs, evidence submission, review and recovery from externally edited requirements. The board refreshes automatically without replacing unsaved drafts.
+- Includes search/cache performance fixes, consistent overdue agendas, and corrected empty-property parsing.
+- Correct package descriptions to describe standalone Org/task management rather than Emacs database synchronization.
+
+### Upgrading from 1.x
+
+Keep your Org files and IDs. Use a CLI-owned `.org-index.db`, never an Emacs `org-roam.db`; the index is rebuilt automatically. Consumers should use standard `id` values and explicit `pos:` selectors. OpenClaw plugins and skills are retired; use the CLI, API or MCP instead.
+
+Start the task board with `org serve -d ~/org --mcp`. See the [task workflow guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/task-workflow.md) and [architecture/migration guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/architecture.md).
+
+Validation: 868 automated tests passed, with 8 legacy Emacs tests skipped; browser and real-process API/MCP, watcher and competing-worker checks passed. Native macOS and Windows smoke tests passed during development; routine CI runs on Linux. Actor names are cooperative attribution, not authenticated approval identities; task leases coordinate one local filesystem, not independent synced replicas.
+
 ## 2.0.0-rc.2 — 2026-09-17
 
 Shared task management for humans and agents, with Org files authoritative across the CLI, browser board, API, MCP, and direct editor changes.

@@ -8,8 +8,8 @@
     <projectUrl>https://github.com/dcprevere/org-cli</projectUrl>
 
     <tags>org-mode org-roam cli emacs</tags>
-    <summary>CLI for org-mode file manipulation and org-roam database management</summary>
-    <description>org-cli provides commands for querying, mutating, and searching org-mode files, plus org-roam database synchronization.</description>
+    <summary>Standalone Org notes and task management for humans and agents</summary>
+    <description>org-cli manages and searches Org files with a rebuildable index, shared task workflows, an optional browser board and API, MCP, and an org-roam extension.</description>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />
