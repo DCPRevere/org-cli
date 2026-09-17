@@ -2,7 +2,13 @@
 
 ## 2.0.0 — 2026-09-17
 
-Stable release of the standalone Org engine and shared human/agent task workflow. Reissued on 2026-09-17 with opt-in systemd user service installation. GitHub downloads replace the original 2.0.0 build; AUR uses package revision 2 (`2.0.0-2`). NuGet.org cannot replace a published version, so its 2.0.0 package remains the original build; use GitHub binaries or AUR for the service-enabled build.
+Stable release of the standalone Org engine and shared human/agent task workflow. Reissued on 2026-09-17 with opt-in systemd user service installation and the updated browser UI. GitHub downloads replace the original 2.0.0 build; AUR uses package revision 3 (`2.0.0-3`). NuGet.org cannot replace a published version, so its 2.0.0 package remains the original build; use GitHub binaries or AUR for the updated build.
+
+- Add remembered System/Light/Dark themes and remove the header tagline.
+- Add Board, Agenda and month/week Calendar views with shared filters, source files, ownership, planning dates, tags and workflow warnings. Calendar shows recorded occurrences; future repeats are not expanded.
+- Load the workspace automatically, prompt for a token only when required, and remember the explicitly entered name for task history.
+- Make cancellation reasons optional across CLI, HTTP, MCP and the UI; show cancellation progress and completion.
+- Queue navigation during refreshes, show loading activity, prevent duplicate writes while busy, and report request failures/timeouts. Browser regressions cover delayed cancellation and subsequent actions without external file edits.
 
 - Anchor HTTP host configuration discovery to the executable directory, avoiding accidental scans of the user’s home when started by systemd.
 
@@ -21,7 +27,7 @@ Keep your Org files and IDs. Use a CLI-owned `.org-index.db`, never an Emacs `or
 
 Start the task board with `org serve -d ~/org --mcp`. See the [task workflow guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/task-workflow.md) and [architecture/migration guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/architecture.md).
 
-Validation: 876 automated tests passed, with 8 legacy Emacs tests skipped; browser and real-process API/MCP, watcher and competing-worker checks passed. Native macOS and Windows smoke tests passed during development; routine CI runs on Linux. Actor names are cooperative attribution, not authenticated approval identities; task leases coordinate one local filesystem, not independent synced replicas.
+Validation: 878 automated tests passed, with 8 legacy Emacs tests skipped; browser and real-process API/MCP, watcher and competing-worker checks passed. Native macOS and Windows smoke tests passed during development; routine CI runs on Linux. Actor names are cooperative attribution, not authenticated approval identities; task leases coordinate one local filesystem, not independent synced replicas.
 
 ## 2.0.0-rc.2 — 2026-09-17
 

@@ -163,7 +163,7 @@ use `org recover` with the relevant manifest rather than deleting recovery state
 - [HTTP/MCP schemas and configuration](docs/api.md)
 - [Architecture and migration](docs/architecture.md)
 - [Installation and CLI examples](README.md)
-- [Optional Linux user service](docs/service.md) (reissued GitHub 2.0.0 / AUR 2.0.0-2; unavailable in the original NuGet.org 2.0.0 package)
+- [Optional Linux user service](docs/service.md) (reissued GitHub 2.0.0 / AUR 2.0.0-3; unavailable in the original NuGet.org 2.0.0 package)
 
 When developing org-cli itself, preserve these distinctions between supported
 layouts, recommended conventions, and implemented defaults. Validate changes

@@ -1,6 +1,6 @@
 # Optional Linux user service
 
-These commands are included in the reissued GitHub 2.0.0 binaries and AUR package `org-cli-bin 2.0.0-2`. The original 2.0.0 downloads and the immutable NuGet.org 2.0.0 package do not include them. Check `org service --help` to identify a service-enabled build.
+These commands are included in the reissued GitHub 2.0.0 binaries and AUR package `org-cli-bin 2.0.0-3`. The original 2.0.0 downloads and the immutable NuGet.org 2.0.0 package do not include them. Check `org service --help` to identify a service-enabled build.
 
 Install org-cli normally, then opt into a persistent local server:
 

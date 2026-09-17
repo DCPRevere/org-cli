@@ -1,7 +1,7 @@
 # Maintainer: dcprevere
 pkgname=org-cli-bin
 pkgver=@@VERSION@@
-pkgrel=2
+pkgrel=3
 pkgdesc='Standalone Org notes and task management for humans and agents'
 arch=('x86_64')
 url='https://github.com/dcprevere/org-cli'
