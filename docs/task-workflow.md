@@ -12,11 +12,22 @@ present. Source folders do not determine ownership. Selecting a card opens the
 same full Org content, settings, evidence, history, and workflow actions in every
 layout. Switching layouts preserves drafts.
 
-Board groups work by workflow status; Done and Cancelled columns start collapsed.
-Use the Status filter to include completed work. Changes use the checked actions
-in the details panel rather than unrestricted card dragging.
+Board columns use exact Org keywords in configured order, including file-local
+workflows. Coordination badges (ready, blocked, claimed, review) are separate.
+Filter by File or Workflow to inspect a single sequence; the combined board uses
+the union of states. Drag a card, or use its Org state selector, to change its
+keyword. Invalid cross-workflow transitions and bypasses of managed review are
+rejected. Terminal columns start collapsed; use Coordination → Everything to
+include completed/cancelled work.
 
-Agenda shows overdue deadlines and earlier scheduled work first, followed by
+Drag column headings or use their left/right buttons to reorder columns. This
+changes presentation only. Shared order is revision-checked and saved outside the
+notes in `$XDG_CONFIG_HOME/org-cli/workspaces/<hash>/board.json` (default
+`~/.config`). New states remain visible. Personal filters, layout, calendar and
+collapsed sections are remembered per workspace in the browser. Save view names
+store reusable personal filter/layout combinations in the same browser.
+
+Agenda separates overdue deadlines from earlier planned work, followed by
 dated entries and an Unscheduled section. Calendar provides Monday-first month
 and week views with Previous, Today, and Next navigation. Scheduled work and
 deadlines are separate, labelled entries; a task with both appears twice. Timestamp
@@ -43,7 +54,11 @@ org mcp --stdio -d ~/org
 
 Set `ORG_API_TOKEN` before starting the server to require a bearer token for data and tools. The board's empty HTML shell is available without a token so a person can enter it; no workspace data is embedded in that shell. The board keeps the token in the current page's memory. The page loads automatically, showing an unlock prompt only when a token is required. Enter Your name to attribute changes; the browser remembers it locally. This name is not a login or authenticated identity. Read-only servers expose inspection and disable editing in the board.
 
-Existing Org TODO headings appear in the task queue. They need no conversion. Editing or claiming an existing heading assigns a standard UUID if needed and opts that heading into the managed workflow. New tasks go into `tasks.org`. File-local TODO and completion keywords remain authoritative.
+Existing Org TODO headings appear in the task queue. They need no conversion. Editing or claiming an existing heading assigns a standard UUID if needed and opts that heading into the managed workflow. Choose a destination file and optional parent when creating tasks. Without an
+explicit file the API uses an existing owner's folder's `inbox.org`, otherwise
+workspace `inbox.org`. The UI offers the selected file as a starting point and lets
+you choose another. Creation in a fresh workspace with default configuration uses
+`WAIT TODO PROG | DONE KILL`; it does not rewrite an existing workflow. File-local TODO and completion keywords remain authoritative.
 
 ## Human CLI
 
@@ -97,10 +112,10 @@ Actions:
 - `release`: same actor and token; optional `evidence` for a handoff. An expired claim can be released if it has not been replaced.
 - `submit`: same actor and unexpired token; nonempty `evidence`. Outstanding dependencies prevent submission. Review defaults to required; explicitly setting `review_required: false` permits direct completion upon submission.
 - `approve` / `reject`: requires a pending submission, a different actor, and `evidence` describing the decision. Approval rechecks dependencies.
-- `cancel`: revokes the lease and records cancellation; a reason in `evidence` is optional. Cancellation does not satisfy dependencies.
+- `cancel`: uses KILL/CANCELLED/CANCELED when defined as a terminal keyword (otherwise the file’s completion keyword with cancellation metadata), revokes the lease and records cancellation; a reason in `evidence` is optional. Cancellation does not satisfy dependencies.
 - `reopen`: restores completed/cancelled tasks to an active TODO state. It also resets stale claims or submissions when supplied a reason in `evidence`, clearing coordination properties while preserving an already-active state chosen in an editor. Valid active claims cannot be reset this way. Existing downstream dependencies see reopened tasks as unfinished.
 
-Queue statuses are `ready`, `blocked`, `working`, `review`, `done`, and `cancelled`; `open` and `all` are aggregate filters. Expired leases are shown and make eligible work claimable again. Waiting/hold/someday/project states and future scheduled dates are not treated as immediately executable. Rows include a reference, file revision, assignment, acceptance criteria, blockers, dependency IDs, and lease information. Ranking puts overdue deadlines first, then priority and deadline. The system does not invent urgency or silently schedule time.
+Queue statuses are `ready`, `blocked`, `working`, `review`, `done`, and `cancelled`; `open` and `all` are aggregate filters. Expired leases are shown and make eligible work claimable again. WAIT/waiting/hold/someday/project states are not actionable. A scheduled date is a planned execution time, never a dependency blocker. A deadline is the latest completion time. Future-scheduled tasks can be claimed now. Rows include a reference, file revision, assignment, acceptance criteria, blockers, dependency IDs, and lease information. Ranking puts overdue deadlines first, then priority and deadline. The system does not invent urgency or silently schedule time.
 
 ## Storage and consistency
 
@@ -134,3 +149,32 @@ Claims and review submissions record a fingerprint of the task's own heading and
 Moving a task with its standard Org ID between files, changing its heading depth, adding LOGBOOK history, or editing another task does not invalidate its requirements fingerprint. Child headings are separate sections; requirements needed for a task's acceptance belong in its own section or explicit dependency tasks. Manual completion is authoritative and manual deletion removes the task. Changing a cancelled task back to an active TODO keyword makes it actionable again without manually removing cancellation properties. For stale claims or submissions, use `org task reopen --evidence "Requirements changed in editor"` or the board's Reset stale workflow button to clear coordination metadata. History is retained. An edit from DONE to TODO that happens entirely between observations cannot be distinguished from unchanged text; explicit reset is available when the final task requirements differ.
 
 These checks coordinate cooperative clients. They cannot prevent an editor from changing files after a check or from changing workflow properties themselves; the watcher reconciles the resulting text. Review actor names remain attribution, not authenticated approval identities.
+
+## Editing, moving and undo
+
+Task settings edit title, description, tags, priority, owner, dates and task
+contract fields. Description edits preserve children, property drawers and
+history; headings and managed drawers cannot be injected through this field.
+Planning dates accept `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`, with no timezone shift.
+Repeat/delay markers are preserved when a date changes. Edit ranged dates in the
+Org file, where both endpoints are visible. Claimed work must be released before
+changing its contract; pending submissions must be reviewed or rejected.
+
+Move task chooses an existing file and optional parent. API/CLI can also target a
+new file. Source and destination revisions are checked, the subtree (including
+children and identity) moves transactionally, and incompatible states or changes
+in their active/terminal meaning are rejected.
+
+Undo last change restores the latest task mutation by the same actor, across all
+affected files. Receipts are persisted in `undo.json` beside the shared settings,
+inside a private workspace configuration directory. Any intervening file edit
+makes undo refuse to overwrite it. Undo restores the previous file contents and
+history; undoing creation may leave an empty file. It is a single latest operation,
+not an unlimited history or a substitute for version control.
+
+On conflict, drafts remain tied to their original revision. Compare with file
+shows current contents without replacing the draft; Reload task explicitly discards
+the draft. Ambiguous or deleted tasks require selecting the correct task again.
+Requests show progress and success/errors. Writes are disabled while pending;
+read/navigation actions queue behind them. After a timed-out write, inspect the
+file before retrying because the change may have succeeded.

@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
     with socket.socket() as probe:
         probe.bind(('127.0.0.1', 0))
         port = probe.getsockname()[1]
-    env = dict(os.environ, ORG_API_TOKEN='browser-test-token')
+    env = dict(os.environ, XDG_CONFIG_HOME=workspace + "/config", ORG_API_TOKEN='browser-test-token')
     process = subprocess.Popen([binary, 'serve', '-d', workspace, '--port', str(port)], env=env, stdout=log, stderr=log)
     base = f'http://127.0.0.1:{port}'
     try:
@@ -66,18 +66,20 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             expect(page.locator('#connect')).to_be_hidden()
             expect(page.locator('#token')).to_be_hidden()
             page.get_by_role('button', name='+ New task').click()
+            page.locator('#create-file').fill('tasks.org')
+            page.locator('#create-file').press('Tab')
             page.locator('#create-title').fill('Ship the release <script>alert(1)</script>')
             page.locator('#create-acceptance').fill('Tests pass; documentation matches behavior')
             page.locator('#create-project').fill('Release')
             page.locator('#create-text').fill('Coordinate implementation and review.')
             page.get_by_role('button', name='Create task', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('ready')
+            expect(page.locator('#detail > .coordination')).to_have_text('ready')
             expect(page.locator('#detail .detail-title')).to_contain_text('<script>')
             page.get_by_role('button', name='Claim task', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('working')
+            expect(page.locator('#detail > .coordination')).to_have_text('working')
             page.locator('#evidence').fill('Regression suite passed; behavior inspected.')
             page.get_by_role('button', name='Submit work', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('review')
+            expect(page.locator('#detail > .coordination')).to_have_text('review')
             # An editor changes requirements while work is awaiting review.
             task_file = Path(workspace, 'tasks.org')
             task_file.write_text(task_file.read_text().replace(
@@ -88,20 +90,20 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.locator('#evidence').fill('Please address the edited requirements.')
             page.get_by_role('button', name='Request changes', exact=True).click()
             try:
-                expect(page.locator('#detail > .badge')).to_have_text('ready')
+                expect(page.locator('#detail > .coordination')).to_have_text('ready')
             except AssertionError:
                 print('Board message:', page.locator('#message').inner_text(), flush=True)
                 raise
             page.locator('#actor').fill('worker')
             page.get_by_role('button', name='Claim task', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('working')
+            expect(page.locator('#detail > .coordination')).to_have_text('working')
             page.locator('#evidence').fill('Revised requirements tested.')
             page.get_by_role('button', name='Submit work', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('review')
+            expect(page.locator('#detail > .coordination')).to_have_text('review')
             page.locator('#actor').fill('reviewer')
             page.locator('#evidence').fill('Acceptance criteria verified independently.')
             page.get_by_role('button', name='Approve', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('done')
+            expect(page.locator('#detail > .coordination')).to_have_text('done')
             page.locator('#status').select_option('done')
             expect(page.locator('#list .task')).to_have_count(1)
             task_file.write_text(task_file.read_text().replace('* DONE ', '* TODO '))
@@ -152,7 +154,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.locator('#view').select_option('agenda')
             expect(page.locator('#list')).to_contain_text('Unscheduled · 105')
             expect(page.locator('#list')).to_contain_text('Today · ' + str(today))
-            expect(page.locator('#list')).to_contain_text('Overdue / scheduled earlier')
+            expect(page.locator('#list')).to_contain_text('Overdue deadlines')
             expect(page.locator('#evidence')).to_have_value('Preserve across views')
             page.locator('#view').select_option('calendar')
             expect(page.locator('.calendar-day[data-date="' + str(today) + '"]')).to_contain_text('Scheduled:')
@@ -208,7 +210,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             page.locator('#view').select_option('list')
             assert held_cancel
             held_cancel[0].continue_()
-            expect(page.locator('#detail > .badge')).to_have_text('cancelled')
+            expect(page.locator('#detail > .coordination')).to_have_text('cancelled')
             expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
             expect(page.locator('#activity')).to_be_empty()
             assert 'Task cancel by reviewer' in source.read_text()
@@ -217,14 +219,14 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
             expect(page.locator('#detail .detail-title')).to_have_text('Undated 000')
             page.get_by_role('button', name='Cancel task', exact=True).click()
             expect(page.locator('#message')).to_have_text('Task cancelled.')
-            expect(page.locator('#detail > .badge')).to_have_text('cancelled')
+            expect(page.locator('#detail > .coordination')).to_have_text('cancelled')
             expect(page.locator('#list .task').filter(has_text='Undated 000')).to_have_count(0)
             page.locator('#status').select_option('cancelled')
             expect(page.locator('#list .task')).to_have_count(2)
             page.locator('#list .task').filter(has_text='Undated 000').click()
             expect(page.locator('#detail .detail-title')).to_have_text('Undated 000')
             page.get_by_role('button', name='Reopen', exact=True).click()
-            expect(page.locator('#detail > .badge')).to_have_text('ready')
+            expect(page.locator('#detail > .coordination')).to_have_text('ready')
             page.reload()
             expect(page.locator('#actor')).to_have_value('reviewer')
             expect(page.locator('#token')).to_have_value('')
@@ -243,6 +245,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                 Path(local_workspace, 'example.org').write_text('* TODO Open task\n* DONE Finished task\n')
                 local_env = dict(os.environ)
                 local_env.pop('ORG_API_TOKEN', None)
+                local_env['XDG_CONFIG_HOME'] = local_workspace + '/config'
                 local_process = subprocess.Popen(
                     [binary, 'serve', '-d', local_workspace, '--port', str(local_port)],
                     env=local_env, stdout=log, stderr=log)
@@ -270,6 +273,9 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                     expect(local_page.locator('#activity')).to_contain_text('Loading')
                     expect(local_page.locator('#new')).to_be_disabled()
                     local_page.locator('#status').select_option('done')
+                    for _ in range(100):
+                        if held: break
+                        local_page.wait_for_timeout(20)
                     assert held
                     held[0].continue_()
                     expect(local_page.locator('#list .task')).to_contain_text('Finished task')

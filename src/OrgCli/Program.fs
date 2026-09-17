@@ -444,7 +444,10 @@ let printUsage () =
 
     printfn ""
     printfn "Task Workflow:"
-    printfn "  task list|ready|review|create|show|edit|claim|renew|release|submit|approve|reject|cancel|reopen"
+
+    printfn
+        "  task list|ready|review|create|show|edit|move|state|claim|renew|release|submit|approve|reject|cancel|reopen"
+
     printfn "  Use org task --help for human/agent coordination commands."
     printfn ""
     printfn "Org Commands:"

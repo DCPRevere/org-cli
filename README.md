@@ -39,7 +39,7 @@ org serve -d ~/org --mcp
 # Human board: http://127.0.0.1:8765/
 ```
 
-Humans use the CLI or built-in browser board; agents use the same operations through MCP or HTTP. See the [task workflow guide](docs/task-workflow.md) for claims, handoffs, review, and the agent operating loop.
+Humans use the CLI or built-in browser board; agents use the same operations through MCP or HTTP. Development builds add exact Org-state kanban columns, shared column ordering, file/parent-aware creation and moves, ordinary field editing, saved personal views, and revision-checked one-step undo. Scheduling is planning, not a blocker. See the [task workflow guide](docs/task-workflow.md) for claims, handoffs, review, and the agent operating loop.
 
 ## What it is
 

@@ -344,7 +344,11 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             | "tasks"
             | "task_create"
             | "task_update"
-            | "task_action" -> TaskWorkflow.allowed operation
+            | "task_action"
+            | "task_move" -> TaskWorkflow.allowed operation
+            | "workspace" -> []
+            | "board_settings" -> [ "expected_revision"; "settings" ]
+            | "task_undo" -> [ "token"; "actor" ]
             | "search" -> [ "query"; "limit"; "offset" ]
             | "fetch" -> [ "ref"; "limit"; "offset" ]
             | "agenda" -> [ "from"; "through"; "limit"; "offset" ]
@@ -360,32 +364,151 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
 
         if
             readOnly
-            && (List.contains operation [ "capture"; "append_note"; "update_task" ]
+            && (List.contains operation [ "capture"; "append_note"; "update_task"; "board_settings"; "task_undo" ]
                 || TaskWorkflow.isMutation operation)
         then
             fail "read_only" 403 "This server is read-only"
 
         match operation with
+        | "workspace" ->
+            let result = TaskStorage.settings root
+
+            result["default_states"] <-
+                (config.TodoKeywords.ActiveStates @ config.TodoKeywords.DoneStates)
+                |> Seq.map (fun k -> str k.Keyword)
+                |> array
+
+            result["default_done_states"] <- config.TodoKeywords.DoneStates |> Seq.map (fun k -> str k.Keyword) |> array
+            result["undo"] <- TaskStorage.undoInfo root
+
+            result["files"] <-
+                documents ()
+                |> Seq.map (fun (file, doc) ->
+                    let cfg = FileConfig.mergeFileConfig config doc.Keywords
+
+                    obj
+                        [ "file", str (relative file)
+                          "revision", str (revision (read file))
+                          "states",
+                          (cfg.TodoKeywords.ActiveStates @ cfg.TodoKeywords.DoneStates)
+                          |> Seq.map (fun k -> str k.Keyword)
+                          |> array
+                          "done_states", cfg.TodoKeywords.DoneStates |> Seq.map (fun k -> str k.Keyword) |> array
+                          "parents",
+                          doc.Headlines
+                          |> Seq.map (fun h ->
+                              obj
+                                  [ "ref", str (reference file doc h.Position)
+                                    "title", str h.Title
+                                    "level", number h.Level ])
+                          |> array ])
+                |> array
+
+            result
+        | "board_settings" ->
+            TaskStorage.prepare root
+            use settingsLock = host.AcquireLock(TaskStorage.path root "board-lock")
+            let before = TaskStorage.read root "board"
+
+            if required args "expected_revision" <> revision before then
+                fail "conflict" 409 "Board settings changed; reload before saving"
+
+            let settings = args["settings"]
+
+            if
+                isNull settings
+                || not (settings :? JsonObject)
+                || settings.ToJsonString().Length > 65536
+            then
+                fail "invalid_arguments" 400 "settings must be an object of at most 64 KiB"
+
+            for pair in settings.AsObject() do
+                if pair.Key <> "column_order" then
+                    fail "invalid_arguments" 400 "Only column_order is a shared board setting"
+
+                match pair.Value with
+                | :? JsonArray as values when values.Count <= 100 ->
+                    for v in values do
+                        if isNull v || not (v :? JsonValue) then
+                            fail "invalid_arguments" 400 "Column names must be strings"
+
+                        let mutable name = ""
+
+                        if
+                            not (v.AsValue().TryGetValue<string>(&name))
+                            || name.Length > 100
+                            || String.IsNullOrWhiteSpace name
+                        then
+                            fail "invalid_arguments" 400 "Invalid column name"
+                | _ -> fail "invalid_arguments" 400 "column_order must be an array"
+
+            let p = TaskStorage.path root "board"
+
+            if Runtime.fileExists p then
+                Runtime.commit [ Runtime.editExpected p before (settings.ToJsonString()) ]
+            else
+                Runtime.writeText (p, settings.ToJsonString())
+
+            TaskStorage.settings root
+        | "task_undo" ->
+            use taskLock = host.AcquireLock(Path.Combine(root, ".org-tasks.lock"))
+
+            try
+                TaskStorage.undo root (required args "token") (required args "actor")
+            with :? InvalidOperationException as ex ->
+                fail "conflict" 409 ex.Message
+
+            invalidateAll ()
+            refresh ()
+            obj [ "undone", boolean true ]
         | "tasks"
         | "task_create"
         | "task_update"
-        | "task_action" ->
+        | "task_action"
+        | "task_move" ->
+            let mutable saved = false
+
+            let saveTasks changes =
+                try
+                    TaskStorage.commit root (required args "actor") changes
+                with :? IOException as ex ->
+                    fail "conflict" 409 ex.Message
+
+                saved <- true
+
+                try
+                    for file, _, _ in changes do
+                        invalidatePath file
+
+                    refresh ()
+                    None
+                with ex ->
+                    Some("Saved; index refresh failed: " + ex.Message)
+
             try
-                TaskWorkflow.invoke
-                    { Root = root
-                      Config = config
-                      Documents = documents
-                      Resolve = resolve
-                      Reference = reference
-                      Save = save
-                      Reconcile =
-                        fun () ->
-                            invalidateAll ()
-                            refresh () }
-                    operation
-                    args
-            with TaskWorkflow.TaskError(code, status, message) ->
-                fail code status message
+                let result =
+                    TaskWorkflow.invoke
+                        { Root = root
+                          Config = config
+                          Documents = documents
+                          Resolve = resolve
+                          Reference = reference
+                          Save = fun file before after -> saveTasks [ file, before, after ]
+                          SaveMany = saveTasks
+                          Reconcile =
+                            fun () ->
+                                invalidateAll ()
+                                refresh () }
+                        operation
+                        args
+
+                if saved then
+                    result["undo"] <- TaskStorage.undoInfo root
+
+                result
+            with
+            | TaskWorkflow.TaskError(code, status, message) -> fail code status message
+            | :? ArgumentException as ex -> fail "invalid_arguments" 400 ex.Message
         | "search" ->
             let query = required args "query"
             let limit = integer args "limit" 20 1 100

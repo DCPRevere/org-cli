@@ -53,33 +53,34 @@ conventions only to the gaps.
 Run `org --version` and consult `org --help` / `org task --help`, or inspect the
 API/MCP tool schemas. Do not invent options or assume proposed features exist.
 
-**In 2.0.0, routing is limited:**
+**Current development capabilities (check the installed version):**
 
-- `org task create` / `task_create`, including creation in the board, append to
-  `tasks.org` in the selected workspace. They cannot accept a destination file
-  or parent heading. This is an implementation default, not the recommended
-  organisation of the user's files.
-- API/MCP `capture` appends to the selected workspace's `inbox.org`; it cannot
-  select an arbitrary file or automatically route to an individual's inbox.
-- CLI `org add` accepts an explicit file, with `--under` for a parent heading.
-  For example, after choosing a destination:
+- `task_create` / `org task create` accepts a workspace-relative `file`, optional
+  `parent` reference and optional `destination_revision`. Prefer the relevant
+  existing file. Without a file, use an existing owner's folder's `inbox.org`
+  when available, otherwise workspace `inbox.org`. The creator is not the owner.
+- `workspace` returns file workflows, revisions and parent references. Use it
+  before choosing destinations. Creation in a fresh default workspace recommends
+  `#+TODO: WAIT TODO PROG | DONE KILL`; existing configurations are preserved.
+- `task_update` edits title, description, tags, owner, acceptance, dependencies,
+  priority and planning dates. It preserves child headings and managed drawers.
+- `task_action` with `action: state` changes an exact file-defined keyword.
+  Managed completion still requires review where configured. Claims and blockers
+  are separate from the Org keyword. Future scheduling is never a blocker.
+- `task_move` moves a subtree into a file/parent, checking both source and
+  destination revisions and rejecting incompatible state meanings.
+- `task_undo` restores the latest task mutation only for its original actor and
+  only while all affected files still match the post-mutation revisions. It is
+  one-step undo, not a merge tool; copy any draft before undoing.
+- API/MCP `capture` still appends to workspace `inbox.org`.
+- The released 2.0.0 builds before these changes route managed creation to
+  `tasks.org`. Never assume development capabilities exist in an older binary.
 
-  ```sh
-  org add /absolute/path/to/org/person/project.org "Prepare the proposal" --todo TODO
-  ```
-
-  Use the file's actual active TODO keyword. The new heading gets a standard
-  UUID. Existing TODOs can subsequently be adopted by `task edit` or `task claim`.
-
-If the destination required by the user's setup cannot be expressed through
-the available interface, explain the limitation and use an authorised
-explicit-file CLI operation or carefully checked direct edit. With only MCP
-access, ask for an appropriate interface or destination decision rather than
-silently creating a misplaced task. Do not narrow the workspace with `-d` just
-to redirect a write: that also changes identity and dependency visibility.
-Automatic routing, workspace adoption, and external workspace-policy discovery
-discussed as future designs are not implemented in 2.0.0. This file is guidance,
-not runtime enforcement, and MCP clients do not automatically receive it.
+Shared column order and the latest undo receipt live under
+`$XDG_CONFIG_HOME/org-cli/workspaces/<workspace-hash>/` (default `~/.config`).
+Personal saved views live in browser storage, scoped to the workspace. Do not
+copy these settings or this guide into the Org directory. Do not infer ownership
+from a file path or change TODO configuration just to arrange the board.
 
 ## Choose an interface
 

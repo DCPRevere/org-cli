@@ -147,7 +147,8 @@ type Context =
       Resolve: string -> string * int64 * string * OrgDocument
       Reference: string -> OrgDocument -> int64 -> string
       Save: string -> string -> string -> string option
-      Reconcile: unit -> unit }
+      Reconcile: unit -> unit
+      SaveMany: (string * string * string) list -> string option }
 
 type private Entry =
     { File: string
@@ -218,9 +219,9 @@ let private submissionStale e =
     prop "TASK_PHASE" e.Heading = "REVIEW" && stale "TASK_SUBMISSION_CONTRACT" e
 
 let private isCancelled e =
-    (prop "TASK_PHASE" e.Heading = "CANCELLED"
-     && Agenda.isDoneState e.Config e.Heading.TodoKeyword)
-    || List.contains (e.Heading.TodoKeyword |> Option.defaultValue "") [ "CANCELLED"; "CANCELED" ]
+    Agenda.isDoneState e.Config e.Heading.TodoKeyword
+    && (prop "TASK_PHASE" e.Heading = "CANCELLED"
+        || List.contains (e.Heading.TodoKeyword |> Option.defaultValue "") [ "KILL"; "CANCELLED"; "CANCELED" ])
 
 let private isDone e =
     Agenda.isDoneState e.Config e.Heading.TodoKeyword && not (isCancelled e)
@@ -264,12 +265,12 @@ let private blockers graph e =
           | Some [ _ ] -> ()
           | _ -> yield "Ambiguous dependency: " + dependency
       if
-          List.contains (e.Heading.TodoKeyword |> Option.defaultValue "") [ "WAITING"; "HOLD"; "SOMEDAY"; "PROJECT" ]
+          List.contains
+              (e.Heading.TodoKeyword |> Option.defaultValue "")
+              [ "WAIT"; "WAITING"; "HOLD"; "SOMEDAY"; "PROJECT" ]
       then
           yield "Task state is not actionable"
-      match e.Heading.Planning |> Option.bind (fun p -> p.Scheduled) with
-      | Some scheduled when scheduled.Date.Date > (Runtime.today ()) -> yield "Scheduled for a future date"
-      | _ -> ()
+
       if prop "TASK_CLAIM_ID" e.Heading <> "" && expiry e.Heading = None then
           yield "Invalid claim expiry" ]
 
@@ -294,6 +295,7 @@ let rec private planningJson (stamp: Timestamp) =
 
 let private row ctx graph e =
     let h = e.Heading
+    let content = Runtime.readText e.File
 
     let parents =
         e.Doc.Headlines
@@ -310,8 +312,18 @@ let private row ctx graph e =
         [ "ref", text (ctx.Reference e.File e.Doc h.Position)
           "id", (if id h = "" then null else text (id h))
           "title", text h.Title
+          "description",
+          text (
+              let finish =
+                  e.Doc.Headlines
+                  |> List.tryFind (fun candidate -> candidate.Position > h.Position)
+                  |> Option.map (fun h -> int h.Position)
+                  |> Option.defaultValue content.Length in
+
+              (HeadlineEdit.split (content.Substring(int h.Position, finish - int h.Position)) 0L).Body.TrimEnd()
+          )
           "file", text (Path.GetRelativePath(ctx.Root, e.File))
-          "revision", text (hash (Runtime.readText e.File))
+          "revision", text (hash content)
           "outline", parents |> Seq.map (fun parent -> text parent.Title) |> arr
           "tags", h.Tags |> Seq.map text |> arr
           "scheduled",
@@ -324,6 +336,12 @@ let private row ctx graph e =
            |> Option.bind (fun p -> p.Deadline)
            |> Option.map planningJson
            |> Option.defaultValue null)
+          "states",
+          (e.Config.TodoKeywords.ActiveStates @ e.Config.TodoKeywords.DoneStates)
+          |> Seq.map (fun k -> text k.Keyword)
+          |> arr
+          "done_states", e.Config.TodoKeywords.DoneStates |> Seq.map (fun k -> text k.Keyword) |> arr
+          "managed", flag (prop "TASK_MANAGED" h = "true")
           "state", text (h.TodoKeyword |> Option.defaultValue "")
           "status", text (status graph e)
           "project", text (prop "TASK_PROJECT" h)
@@ -347,9 +365,21 @@ let private row ctx graph e =
 
 let allowed operation =
     match operation with
-    | "tasks" -> [ "status"; "project"; "owner"; "limit"; "offset" ]
+    | "tasks" -> [ "status"; "project"; "owner"; "file"; "state"; "limit"; "offset" ]
+    | "task_move" ->
+        [ "ref"
+          "expected_revision"
+          "actor"
+          "file"
+          "parent"
+          "destination_revision" ]
     | "task_create" ->
         [ "request_id"
+          "file"
+          "parent"
+          "destination_revision"
+          "state"
+          "tags"
           "title"
           "text"
           "actor"
@@ -362,7 +392,10 @@ let allowed operation =
           "scheduled"
           "deadline" ]
     | "task_update" ->
-        [ "ref"
+        [ "title"
+          "text"
+          "tags"
+          "ref"
           "expected_revision"
           "actor"
           "acceptance"
@@ -378,13 +411,14 @@ let allowed operation =
           "expected_revision"
           "actor"
           "action"
+          "state"
           "claim_id"
           "lease_minutes"
           "evidence" ]
     | _ -> []
 
 let isMutation operation =
-    List.contains operation [ "task_create"; "task_update"; "task_action" ]
+    List.contains operation [ "task_create"; "task_update"; "task_action"; "task_move" ]
 
 let private requireRevision args content =
     if required args "expected_revision" <> hash content then
@@ -392,6 +426,74 @@ let private requireRevision args content =
 
 let private applyFields graph taskId cfg (args: JsonObject) content pos =
     let mutable result = content
+
+    if args.ContainsKey "title" || args.ContainsKey "tags" then
+        let section = HeadlineEdit.split result pos
+
+        let h =
+            (Document.parseWithConfig cfg result).Headlines
+            |> List.find (fun h -> h.Position = pos)
+
+        let title =
+            if args.ContainsKey "title" then
+                required args "title" |> single "title"
+            else
+                h.Title
+
+        let tags =
+            if args.ContainsKey "tags" then
+                (optional args "tags" "").Split([| ' '; ':' |], StringSplitOptions.RemoveEmptyEntries)
+                |> Array.toList
+            else
+                h.Tags
+
+        if
+            tags
+            |> List.exists (fun tag -> tag |> Seq.exists (fun c -> not (Char.IsLetterOrDigit c || "_@#%".Contains c)))
+        then
+            fail "invalid_arguments" 400 "Invalid tag characters"
+
+        let line =
+            Mutations.formatNewHeadline
+                title
+                h.Level
+                h.TodoKeyword
+                (h.Priority |> Option.map (fun (Priority c) -> c))
+                tags
+                None
+                None
+
+        result <-
+            HeadlineEdit.reassemble
+                { section with
+                    HeadlineLine = line.TrimEnd() }
+
+    if args.ContainsKey "text" then
+        let body = optional args "text" ""
+
+        if
+            body.Length > 65536
+            || not (Document.parseWithConfig cfg body).Headlines.IsEmpty
+            || body.Contains(":PROPERTIES:")
+            || body.Contains(":LOGBOOK:")
+        then
+            fail "invalid_arguments" 400 "Description must be at most 64 KiB, without headings or managed drawers"
+
+        let section = HeadlineEdit.split result pos
+
+        let next =
+            (Document.parseWithConfig cfg result).Headlines
+            |> List.tryFind (fun h -> h.Position > pos)
+
+        let tail =
+            next
+            |> Option.map (fun h -> result.Substring(int h.Position))
+            |> Option.defaultValue ""
+
+        result <-
+            HeadlineEdit.reassemble
+                { section with
+                    Body = body.TrimEnd() + "\n" + tail }
 
     for key, property in
         [ "acceptance", "TASK_ACCEPTANCE"
@@ -441,7 +543,7 @@ let private applyFields graph taskId cfg (args: JsonObject) content pos =
                 match
                     DateTime.TryParseExact(
                         value,
-                        "yyyy-MM-dd",
+                        [| "yyyy-MM-dd"; "yyyy-MM-ddTHH:mm" |],
                         Globalization.CultureInfo.InvariantCulture,
                         Globalization.DateTimeStyles.None
                     )
@@ -449,7 +551,47 @@ let private applyFields graph taskId cfg (args: JsonObject) content pos =
                 | true, _ -> ()
                 | _ -> fail "invalid_arguments" 400 (key + " must be yyyy-MM-dd or empty")
 
-            result <- setter cfg result pos (if value = "" then None else Some(Utils.parseDate value)) (Runtime.now ())
+            let stamp =
+                if value = "" then
+                    None
+                else
+                    Some
+                        { Type = TimestampType.Active
+                          Date =
+                            DateTime.ParseExact(
+                                value,
+                                [| "yyyy-MM-dd"; "yyyy-MM-ddTHH:mm" |],
+                                Globalization.CultureInfo.InvariantCulture,
+                                Globalization.DateTimeStyles.None
+                            )
+                          HasTime = value.Contains("T")
+                          Repeater = None
+                          Delay = None
+                          RangeEnd = None }
+
+            let previous =
+                (Document.parseWithConfig cfg result).Headlines
+                |> List.find (fun h -> h.Position = pos)
+                |> fun h ->
+                    h.Planning
+                    |> Option.bind (fun p -> if key = "scheduled" then p.Scheduled else p.Deadline)
+
+            let stamp =
+                match stamp, previous with
+                | Some next, Some old ->
+                    if old.RangeEnd.IsSome then
+                        fail
+                            "invalid_arguments"
+                            400
+                            "Edit ranged planning dates in the Org file; the date editor cannot change their endpoints"
+
+                    Some
+                        { next with
+                            Repeater = old.Repeater
+                            Delay = old.Delay }
+                | _ -> stamp
+
+            result <- setter cfg result pos stamp (Runtime.now ())
 
     result
 
@@ -480,10 +622,92 @@ let private state (cfg: OrgConfig) doneState content pos =
 
     match
         choices
-        |> List.tryFind (fun s -> not (List.contains s.Keyword [ "CANCELLED"; "CANCELED" ]))
+        |> List.sortBy (fun s ->
+            if s.Keyword = (if doneState then "DONE" else "TODO") then
+                0
+            else
+                1)
+        |> List.tryFind (fun s -> not (List.contains s.Keyword [ "KILL"; "CANCELLED"; "CANCELED" ]))
     with
     | Some choice -> Mutations.setTodoState cfg content pos (Some choice.Keyword) (Runtime.now ())
     | None -> fail "invalid_arguments" 400 "The file needs active and completed TODO keywords"
+
+let private destination (ctx: Context) docs args =
+    let owner = optional args "owner" ""
+
+    let fallback =
+        if
+            owner <> ""
+            && Path.GetFileName(owner) = owner
+            && owner <> "."
+            && owner <> ".."
+            && Runtime.directoryExists (Path.Combine(ctx.Root, owner))
+        then
+            Path.Combine(owner, "inbox.org")
+        else
+            "inbox.org"
+
+    let relative = optional args "file" fallback
+    let file = Path.GetFullPath(relative, ctx.Root)
+    let rel = Path.GetRelativePath(ctx.Root, file)
+
+    if
+        Path.IsPathRooted relative
+        || rel = ".."
+        || rel.StartsWith(".." + string Path.DirectorySeparatorChar)
+        || Path.GetExtension(file) <> ".org"
+    then
+        fail "invalid_arguments" 400 "Destination must be a workspace-relative .org file"
+
+    if
+        Runtime.fileExists file
+        && not (docs |> List.exists (fun (path, _) -> path = file))
+    then
+        fail "invalid_arguments" 400 "Destination is not a regular workspace Org file"
+
+    if not (Runtime.directoryExists (Path.GetDirectoryName file)) then
+        fail "invalid_arguments" 400 "Create the destination directory first"
+
+    match Runtime.host () with
+    | :? Runtime.PhysicalHost ->
+        let mutable path = file
+
+        while path <> ctx.Root do
+            if
+                (File.Exists path || Directory.Exists path)
+                && File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint)
+            then
+                fail "invalid_arguments" 400 "Destination may not traverse symbolic links"
+
+            path <- Path.GetDirectoryName path
+    | _ -> ()
+
+    let before =
+        if Runtime.fileExists file then
+            Runtime.readText file
+        else
+            ""
+
+    if
+        args.ContainsKey "destination_revision"
+        && optional args "destination_revision" "" <> hash before
+    then
+        fail "conflict" 409 "Destination changed; reload before saving"
+
+    let parent = optional args "parent" ""
+
+    let pos =
+        if parent = "" then
+            -1L
+        else
+            let parentFile, parentPos, _, _ = ctx.Resolve parent
+
+            if parentFile <> file || parentPos < 0L then
+                fail "invalid_arguments" 400 "Parent must be a heading in the destination file"
+
+            parentPos
+
+    file, before, pos
 
 let invoke (ctx: Context) operation (args: JsonObject) =
     for pair in args do
@@ -544,6 +768,8 @@ let invoke (ctx: Context) operation (args: JsonObject) =
 
         let project = optional args "project" ""
         let owner = optional args "owner" ""
+        let fileFilter = optional args "file" ""
+        let stateFilter = optional args "state" ""
         let limit = intArg args "limit" 50 1 100
         let offset = intArg args "offset" 0 0 1000000
 
@@ -556,7 +782,9 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                  || (selectedStatus = "open" && phase <> "done" && phase <> "cancelled")
                  || selectedStatus = phase)
                 && (project = "" || prop "TASK_PROJECT" e.Heading = project)
-                && (owner = "" || prop "TASK_OWNER" e.Heading = owner))
+                && (owner = "" || prop "TASK_OWNER" e.Heading = owner)
+                && (fileFilter = "" || Path.GetRelativePath(ctx.Root, e.File) = fileFilter)
+                && (stateFilter = "" || e.Heading.TodoKeyword = Some stateFilter))
 
         let sorted =
             filtered
@@ -579,6 +807,7 @@ let invoke (ctx: Context) operation (args: JsonObject) =
 
         obj
             [ "tasks", page |> Seq.map (row ctx graph) |> arr
+              "board", TaskStorage.settings ctx.Root
               "total", num sorted.Length
               "next_offset",
               (if offset + page.Length < sorted.Length then
@@ -618,36 +847,36 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                   Config = FileConfig.mergeFileConfig ctx.Config doc.Keywords }
         | _ :: _ -> fail "conflict" 409 "request_id already exists with a different task payload"
         | [] ->
-            let file = Path.Combine(ctx.Root, "tasks.org")
-
-            if
-                Runtime.fileExists file
-                && not (docs |> List.exists (fun (path, _) -> path = file))
-            then
-                fail "invalid_arguments" 400 "tasks.org is not a regular workspace Org file"
-
-            let before =
-                if Runtime.fileExists file then
-                    Runtime.readText file
-                else
-                    ""
+            let file, before, parentPos = destination ctx docs args
 
             Document.ensureEditable before
 
+            let seed =
+                if
+                    before = ""
+                    && docs.IsEmpty
+                    && Path.GetFileName(file) = "inbox.org"
+                    && ctx.Config.TodoKeywords = Types.defaultConfig.TodoKeywords
+                then
+                    "#+TODO: WAIT TODO PROG | DONE KILL\n"
+                else
+                    before
+
             let cfg =
-                FileConfig.mergeFileConfig ctx.Config (Document.parseWithConfig ctx.Config before).Keywords
+                FileConfig.mergeFileConfig ctx.Config (Document.parseWithConfig ctx.Config seed).Keywords
 
             let initial =
                 cfg.TodoKeywords.ActiveStates
+                |> List.sortBy (fun k -> if k.Keyword = "TODO" then 0 else 1)
                 |> List.tryHead
                 |> Option.map (fun k -> k.Keyword)
                 |> Option.defaultWith (fun () -> fail "invalid_arguments" 400 "No active TODO keyword configured")
 
             let prefix =
-                if before = "" || before.EndsWith("\n") then
-                    before
+                if seed = "" || seed.EndsWith("\n") then
+                    seed
                 else
-                    before + "\n"
+                    seed + "\n"
 
             let pos = int64 prefix.Length
 
@@ -658,13 +887,114 @@ let invoke (ctx: Context) operation (args: JsonObject) =
             after <- Mutations.setProperty after pos "TASK_MANAGED" "true"
             after <- Mutations.setProperty after pos "TASK_CREATE_HASH" fingerprint
             after <- applyFields graph requestId cfg args after pos
-            let body = optional args "text" ""
 
-            if body <> "" then
-                after <- Mutations.appendBody after pos body
+            if args.ContainsKey "state" then
+                let target = required args "state"
+
+                if not (cfg.TodoKeywords.ActiveStates |> List.exists (fun k -> k.Keyword = target)) then
+                    fail "invalid_arguments" 400 "New tasks require a configured active state"
+
+                after <- Mutations.setTodoState cfg after pos (Some target) (Runtime.now ())
 
             after <- note actor "created" "" after pos
-            finish file pos before after
+
+            if parentPos >= 0L then
+                let subtree = Subtree.extractSubtree after pos
+                after <- Subtree.insertSubtreeAsChild before parentPos (subtree + "\n")
+
+            let finalPos =
+                (Document.parseWithConfig cfg after).Headlines
+                |> List.find (fun h -> id h = requestId)
+                |> fun h -> h.Position
+
+            finish file finalPos before after
+    | "task_move" ->
+        required args "destination_revision" |> ignore
+        let actor = required args "actor" |> single "actor"
+        let file, pos, before, doc = ctx.Resolve(required args "ref")
+        requireRevision args before
+
+        if pos < 0L then
+            fail "invalid_arguments" 400 "Only tasks can be moved"
+
+        let h = doc.Headlines |> List.find (fun h -> h.Position = pos)
+
+        if h.TodoKeyword.IsNone then
+            fail "invalid_arguments" 400 "Only tasks can be moved"
+
+        let targetFile, targetBefore, parentPos = destination ctx docs args
+
+        let targetCfg =
+            FileConfig.mergeFileConfig ctx.Config (Document.parseWithConfig ctx.Config targetBefore).Keywords
+
+        let sourceCfg = FileConfig.mergeFileConfig ctx.Config doc.Keywords
+
+        let accepted =
+            (targetCfg.TodoKeywords.ActiveStates @ targetCfg.TodoKeywords.DoneStates)
+            |> List.map (fun s -> s.Keyword)
+
+        if
+            (Document.parseWithConfig sourceCfg (Subtree.extractSubtree before pos)).Headlines
+            |> List.exists (fun h ->
+                h.TodoKeyword
+                |> Option.exists (fun s ->
+                    not (List.contains s accepted)
+                    || Agenda.isDoneState sourceCfg (Some s) <> Agenda.isDoneState targetCfg (Some s)))
+        then
+            fail "conflict" 409 "Destination workflow does not support every state in this subtree"
+
+        let taskId = if id h = "" then Guid.NewGuid().ToString("D") else id h
+
+        let withId =
+            Mutations.setProperty before pos "ID" taskId
+            |> fun c -> note actor "moved" (Path.GetRelativePath(ctx.Root, targetFile)) c pos
+
+        let adjustedParent =
+            if file = targetFile && parentPos > pos then
+                parentPos + int64 (withId.Length - before.Length)
+            else
+                parentPos
+
+        let removed, inserted =
+            if parentPos >= 0L then
+                Mutations.refile
+                    sourceCfg
+                    withId
+                    pos
+                    (if file = targetFile then withId else targetBefore)
+                    adjustedParent
+                    (file = targetFile)
+                    (Runtime.now ())
+            else
+                let removed = Subtree.removeSubtree withId pos
+
+                removed,
+                Subtree.appendSubtree
+                    (if file = targetFile then removed else targetBefore)
+                    (Subtree.extractSubtree withId pos)
+                + "\n"
+
+        let changes =
+            if file = targetFile then
+                [ file, before, inserted ]
+            else
+                [ file, before, removed; targetFile, targetBefore, inserted ]
+
+        let warning = ctx.SaveMany changes
+        let updated = Document.parseWithConfig targetCfg inserted
+        let moved = updated.Headlines |> List.find (fun h -> id h = taskId)
+
+        let result =
+            row
+                ctx
+                graph
+                { File = targetFile
+                  Doc = updated
+                  Heading = moved
+                  Config = targetCfg }
+
+        warning |> Option.iter (fun w -> result["warning"] <- text w)
+        result
     | "task_update"
     | "task_action" ->
         let actor = required args "actor" |> single "actor"
@@ -699,6 +1029,7 @@ let invoke (ctx: Context) operation (args: JsonObject) =
         if operation = "task_action" then
             let specific =
                 match action with
+                | "state" -> [ "state"; "evidence" ]
                 | "claim"
                 | "renew" -> [ "claim_id"; "lease_minutes" ]
                 | "release"
@@ -714,7 +1045,10 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                     fail "invalid_arguments" 400 ("Argument does not apply to this action: " + pair.Key)
         elif
             not (
-                [ "acceptance"
+                [ "title"
+                  "text"
+                  "tags"
+                  "acceptance"
                   "project"
                   "owner"
                   "depends_on"
@@ -781,6 +1115,46 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                     fail "conflict" 409 "Release or reject active work before changing its task contract"
 
                 after <- applyFields graph taskId cfg args after pos
+            elif action = "state" then
+                let target = required args "state"
+
+                if
+                    not (
+                        (cfg.TodoKeywords.ActiveStates @ cfg.TodoKeywords.DoneStates)
+                        |> List.exists (fun k -> k.Keyword = target)
+                    )
+                then
+                    fail "invalid_arguments" 400 "State is not configured in this file"
+
+                let completing =
+                    cfg.TodoKeywords.DoneStates |> List.exists (fun k -> k.Keyword = target)
+
+                let cancelling =
+                    completing && List.contains target [ "KILL"; "CANCELLED"; "CANCELED" ]
+
+                if active h && prop "TASK_CLAIM_OWNER" h <> actor then
+                    fail "conflict" 409 "Another actor holds this claim"
+
+                if completing && not cancelling then
+                    if not (List.isEmpty (blockers graph e)) then
+                        fail "conflict" 409 "Dependencies are unfinished"
+
+                    if prop "TASK_MANAGED" h = "true" && reviewRequired h then
+                        fail "conflict" 409 "Submit and approve managed work before completing it"
+
+                if prop "TASK_PHASE" h = "REVIEW" && not cancelling then
+                    fail "conflict" 409 "Review or reject the submission first"
+
+                after <- clearClaim after pos
+
+                for key in
+                    [ "TASK_PHASE"
+                      "TASK_SUBMISSION_CONTRACT"
+                      "TASK_SUBMITTED_BY"
+                      "TASK_REVIEWED_BY" ] do
+                    after <- Mutations.removeProperty after pos key
+
+                after <- Mutations.setTodoState cfg after pos (Some target) (Runtime.now ())
             elif action = "claim" then
                 if status graph e <> "ready" then
                     fail "conflict" 409 "Task is not ready: inspect its status and blockers"
@@ -792,6 +1166,14 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                     fail "conflict" 409 "Use a new claim_id after a lease expires"
 
                 after <- Mutations.removeProperty after pos "TASK_PHASE"
+
+                match
+                    cfg.TodoKeywords.ActiveStates
+                    |> List.tryFind (fun k -> List.contains k.Keyword [ "PROG"; "DOING"; "STARTED"; "IN-PROGRESS" ])
+                with
+                | Some k -> after <- Mutations.setTodoState cfg after pos (Some k.Keyword) (Runtime.now ())
+                | None -> ()
+
                 after <- Mutations.setProperty after pos "TASK_CLAIM_ID" claimId
                 after <- Mutations.setProperty after pos "TASK_CLAIM_OWNER" actor
             elif action = "renew" then
@@ -837,7 +1219,14 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                 after <- Mutations.setProperty after pos "TASK_REVIEWED_BY" actor
             elif action = "cancel" then
                 after <- clearClaim after pos
-                after <- state cfg true after pos
+
+                match
+                    cfg.TodoKeywords.DoneStates
+                    |> List.tryFind (fun k -> List.contains k.Keyword [ "KILL"; "CANCELLED"; "CANCELED" ])
+                with
+                | Some k -> after <- Mutations.setTodoState cfg after pos (Some k.Keyword) (Runtime.now ())
+                | None -> after <- state cfg true after pos
+
                 after <- Mutations.setProperty after pos "TASK_PHASE" "CANCELLED"
             elif action = "reopen" then
                 let closed = isDone e || isCancelled e
@@ -872,7 +1261,10 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                 after <- Mutations.setProperty after pos "TASK_CLAIM_MINUTES" (string lease)
 
             after <- Mutations.setProperty after pos "ID" taskId
-            after <- Mutations.setProperty after pos "TASK_MANAGED" "true"
+
+            if action <> "state" then
+                after <- Mutations.setProperty after pos "TASK_MANAGED" "true"
+
             after <- note actor action evidence after pos
 
             if action = "claim" || action = "submit" then

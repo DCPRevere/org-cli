@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Keep scheduled dates separate from blockers; deadlines express latest completion.
+- Use exact file-defined Org keywords for cards and kanban columns; claims/review/blockers remain separate. Support card dragging and keyboard state changes, mixed workflow filtering and persisted shared column ordering outside notes.
+- Create tasks in a selected file/parent; otherwise use an existing owner's inbox or root inbox. Recommend WAIT TODO PROG | DONE KILL only in a fresh default workspace.
+- Edit titles, own descriptions, tags, priorities, ownership and planning dates while preserving children and history. Claims can select a configured progress keyword; cancellation selects a configured terminal cancellation keyword.
+- Move subtrees with source/destination revision checks and workflow compatibility checks. Persist one-step undo outside notes, rejecting intervening edits and other actors.
+- Remember personal views per workspace/browser; compare current file contents without losing drafts and reload explicitly on conflict.
+- Test workflows against virtual filesystems/environments and disposable browser workspaces, including shared settings, moves, undo, external edits and read-only access.
+
 ## 2.0.0 — 2026-09-17
 
 Stable release of the standalone Org engine and shared human/agent task workflow. Reissued on 2026-09-17 with opt-in systemd user service installation and the updated browser UI. GitHub downloads replace the original 2.0.0 build; AUR uses package revision 3 (`2.0.0-3`). NuGet.org cannot replace a published version, so its 2.0.0 package remains the original build; use GitHub binaries or AUR for the updated build.

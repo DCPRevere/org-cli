@@ -37,7 +37,7 @@ def stop(process):
 def stdio(root):
     with tempfile.TemporaryFile(mode="w+") as errors:
         p = subprocess.Popen([BINARY, "mcp", "--stdio", "-d", root], stdin=subprocess.PIPE,
-                             stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1)
+                             stdout=subprocess.PIPE, stderr=errors, text=True, bufsize=1, env=dict(os.environ, XDG_CONFIG_HOME=root + "/config"))
         output = queue.Queue()
         def read_output():
             for line in p.stdout:
@@ -69,7 +69,7 @@ def stdio(root):
             p.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             p.stdin.flush()
             names = {t["name"] for t in rpc("tools/list")["result"]["tools"]}
-            assert names == {"search","fetch","agenda","capture","append_note","update_task","related","tasks","task_create","task_update","task_action"}, names
+            assert names == {"search","fetch","agenda","capture","append_note","update_task","related","tasks","task_create","task_update","task_action","workspace","board_settings","task_move","task_undo"}, names
             payload = {"request_id":str(uuid.uuid4()),"title":"Stdio task","state":"TODO"}
             result = rpc("tools/call", {"name":"capture","arguments":payload})["result"]
             assert not result["isError"], result
@@ -110,7 +110,7 @@ def http(root):
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
-    env = dict(os.environ, ORG_API_TOKEN="smoke-secret")
+    env = dict(os.environ, XDG_CONFIG_HOME=root + "/config", ORG_API_TOKEN="smoke-secret")
     with tempfile.TemporaryFile(mode="w+") as errors:
         p = subprocess.Popen([BINARY,"serve","--mcp","--port",str(port),"-d",root], stdout=errors,stderr=errors,env=env)
         base = f"http://127.0.0.1:{port}"

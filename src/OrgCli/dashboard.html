@@ -344,6 +344,7 @@
             .box > .meta, .task .meta { display: block; overflow-wrap: anywhere; }
             .task-title { overflow-wrap: anywhere; }
             .preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+            .layout.wide .filters { grid-template-columns: repeat(4, minmax(0, 1fr)); }
             .view-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
             .view-controls label { margin: 0; }
             .layout.wide { max-width: none; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); }
@@ -365,6 +366,7 @@
             .overdue { color: var(--danger); }
             @media (max-width: 800px) {
                 .layout.wide { grid-template-columns: 1fr; }
+                .layout.wide .filters { grid-template-columns: 1fr 1fr; }
                 header {
                     padding: 20px;
                 }
@@ -439,7 +441,7 @@
                 </div>
                 <div class="filters">
                     <label
-                        >Status<select id="status">
+                        >Coordination<select id="status">
                             <option value="open">All open work</option>
                             <option value="ready">Ready to start</option>
                             <option value="working">In progress</option>
@@ -454,11 +456,16 @@
                             id="project-filter"
                             placeholder="All projects"
                     /></label>
-                </div>
-                <div class="filters">
+
                     <label>Owner<input id="owner-filter" placeholder="All owners" /></label>
                     <label>Search<input id="search-filter" type="search" placeholder="Title, file, tag or context" /></label>
+
+                    <label>File<select id="file-filter"><option value="">All files</option></select></label>
+                    <label>Workflow<select id="workflow-filter"><option value="">All workflows</option></select></label>
+                    <label>Org state<select id="state-filter"><option value="">All states</option></select></label>
+                    <label>Saved view<select id="saved-view"><option value="">Choose a saved view</option></select></label>
                 </div>
+                <div class="actions"><button id="save-view">Save view</button><button id="delete-view">Delete saved view</button><button id="undo" disabled>Undo last change</button></div>
                 <p id="coverage" class="meta" role="status"></p>
                 <div id="list" class="list">
                     <p class="empty">Loading your workspace…</p>
@@ -483,6 +490,10 @@
         <dialog id="create-dialog">
             <form id="create-form">
                 <h2>New task</h2>
+                <label>Destination file<input id="create-file" list="workspace-files" placeholder="Relevant file, or inbox.org" /></label>
+                <datalist id="workspace-files"></datalist>
+                <label>Parent heading<select id="create-parent"><option value="">File root</option></select></label>
+                <label>Initial state<select id="create-state"></select></label>
                 <label
                     >What needs to be done?<input
                         id="create-title"
@@ -534,6 +545,67 @@
                 } catch {}
             }
             $("actor").onchange = rememberName;
+            let workspace = null, savedViews = {}, draggedTask = null, draggedColumn = null;
+            const preferenceFields = ["view", "status", "project-filter", "owner-filter", "search-filter", "file-filter", "workflow-filter", "state-filter", "calendar-scale"];
+            const workflowKey = row => (row.states || []).join(" → ") + " | " + (row.done_states || []).join(" ");
+            const preferencesKey = () => "org-view-" + workspace.workspace;
+            function currentPreferences() {
+                return Object.fromEntries(preferenceFields.map(id => [id, $(id).value]).concat([["calendarDate", dayKey(calendarDate)], ["expanded", [...expandedGroups]]]));
+            }
+            function savePreferences() {
+                if (!workspace) return;
+                try { localStorage.setItem(preferencesKey(), JSON.stringify({current: currentPreferences(), saved: savedViews})); } catch {}
+            }
+            function applyPreferences(prefs) {
+                for (const id of preferenceFields) if (prefs[id] !== undefined) $(id).value = prefs[id];
+                for (const id of ["view", "status", "calendar-scale"]) if (!$(id).value) $(id).selectedIndex = 0;
+                if (/^\d{4}-\d{2}-\d{2}$/.test(prefs.calendarDate || "")) calendarDate = new Date(prefs.calendarDate + "T12:00:00");
+                expandedGroups.clear();
+                for (const key of prefs.expanded || []) expandedGroups.add(key);
+            }
+            function refreshSavedViews() {
+                $("saved-view").replaceChildren(new Option("Choose a saved view", ""));
+                for (const name of Object.keys(savedViews)) $("saved-view").append(new Option(name, name));
+            }
+            async function loadWorkspace(restore = false) {
+                workspace = await request("workspace", {});
+                const selectedFile = $("file-filter").value, selectedWorkflow = $("workflow-filter").value, selectedState = $("state-filter").value;
+                $("file-filter").replaceChildren(new Option("All files", ""));
+                $("workspace-files").replaceChildren();
+                $("workflow-filter").replaceChildren(new Option("All workflows", ""));
+                $("state-filter").replaceChildren(new Option("All states", ""));
+                const workflows = new Set(), states = new Set();
+                for (const file of workspace.files) {
+                    $("file-filter").append(new Option(file.file, file.file));
+                    $("workspace-files").append(new Option(file.file, file.file));
+                    workflows.add(workflowKey(file));
+                    file.states.forEach(state => states.add(state));
+                }
+                workflows.forEach(key => $("workflow-filter").append(new Option(key, key)));
+                states.forEach(state => $("state-filter").append(new Option(state, state)));
+                $("file-filter").value = selectedFile; $("workflow-filter").value = selectedWorkflow; $("state-filter").value = selectedState;
+                if (restore) {
+                    try { const prefs = JSON.parse(localStorage.getItem(preferencesKey()) || "{}"); savedViews = prefs.saved || {}; if (prefs.current) applyPreferences(prefs.current); } catch {}
+                    refreshSavedViews();
+                }
+                $("undo").disabled = !canWrite || !workspace.undo?.token;
+            }
+            function creationFile() {
+                const owner = $("create-owner").value.trim();
+                return $("create-file").value.trim() || (owner && workspace?.files.some(file => file.file.startsWith(owner + "/")) ? owner + "/inbox.org" : "inbox.org");
+            }
+            function destinationFields(prefix) {
+                const file = workspace?.files.find(file => file.file === (prefix === "create" ? creationFile() : $(prefix + "-file").value.trim()));
+                const previousParent = $(prefix + "-parent").value;
+                $(prefix + "-parent").replaceChildren(new Option("File root", ""));
+                for (const parent of file?.parents || []) $(prefix + "-parent").append(new Option("· ".repeat(parent.level - 1) + parent.title, parent.ref));
+                if ([...$(prefix + "-parent").options].some(option => option.value === previousParent)) $(prefix + "-parent").value = previousParent;
+                if ($(prefix + "-state")) {
+                    const active = file ? file.states.filter(state => !file.done_states.includes(state)) : (workspace?.default_states || ["TODO"]).filter(state => !(workspace?.default_done_states || []).includes(state));
+                    $(prefix + "-state").replaceChildren(...active.map(state => new Option(state, state)));
+                    if (active.includes("TODO")) $(prefix + "-state").value = "TODO";
+                }
+            }
             let selected = null,
                 fetched = null,
                 next = null,
@@ -577,7 +649,7 @@
                     });
                     if (response.status !== 401) payload = await response.json();
                 } catch (error) {
-                    const uncertainWrite = ["task_create", "task_update", "task_action"].includes(operation);
+                    const uncertainWrite = ["task_create", "task_update", "task_action", "task_move", "task_undo", "board_settings"].includes(operation);
                     throw Error((controller.signal.aborted ? "The server took too long to respond." : "Could not load the server response.") +
                         (uncertainWrite ? " The change may have been saved. Refresh and inspect the task before retrying." : " Check that the service is running, then retry."));
                 } finally {
@@ -643,6 +715,7 @@
                     if (!element.isConnected) return;
                     if (element.open) expandedGroups.add(key);
                     else expandedGroups.delete(key);
+                    savePreferences();
                 };
             }
             const dayKey = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
@@ -655,7 +728,8 @@
                     (stamp.repeater ? " (" + stamp.repeater + ")" : "");
             }
             async function load(more = false) {
-                const comprehensive = $("view").value !== "list" || $("search-filter").value.trim();
+                const comprehensive = $("view").value !== "list" || $("search-filter").value.trim() || $("workflow-filter").value;
+                savePreferences();
                 let offset = more ? (next ?? 0) : 0;
                 let collected = more ? [...rows] : [];
                 let response;
@@ -664,6 +738,8 @@
                         status: $("status").value,
                         project: $("project-filter").value,
                         owner: $("owner-filter").value,
+                        file: $("file-filter").value,
+                        state: $("state-filter").value,
                         limit: 100,
                         offset,
                     });
@@ -671,6 +747,7 @@
                     offset = response.next_offset;
                 } while (comprehensive && offset !== null);
                 rows = collected;
+                if (workspace && response.board) { workspace.settings = response.board.settings; workspace.revision = response.board.revision; }
                 next = offset;
                 $("more").hidden = next === null;
                 $("count").textContent = "· " + response.total;
@@ -680,7 +757,10 @@
             function taskCard(row, compact = false, eventLabel = "") {
                 const b = el("button", undefined, "task");
                 b.setAttribute("aria-pressed", String(selected?.ref === row.ref));
-                b.append(el("span", row.status, "badge " + row.status));
+                b.append(el("span", row.state, "badge org-state"), el("span", row.status, "badge coordination " + row.status));
+                b.draggable = canWrite;
+                b.ondragstart = event => { draggedTask = row; draggedColumn = null; event.dataTransfer.setData("text/plain", row.ref); };
+                b.ondragend = () => { draggedTask = null; };
                 if (eventLabel) b.append(el("span", eventLabel, "meta"));
                 b.append(el("span", row.title, "task-title"));
                 const add = (text, cls = "meta") => { if (text) b.append(el("span", text, cls)); };
@@ -691,17 +771,17 @@
                 if (!compact) {
                     if (row.outline?.length) add(row.outline.join(" / "));
                     if (row.project) add("Project: " + row.project);
-                    if (row.state && row.state.toLowerCase() !== row.status) add("Org state: " + row.state);
                     if (row.scheduled) add("Scheduled: " + dateLabel(row.scheduled));
                     if (row.deadline) add("Deadline: " + dateLabel(row.deadline));
                     if (row.tags?.length) add("Tags: " + row.tags.join(", "));
                     if (row.acceptance) add("Acceptance: " + row.acceptance, "meta preview");
+                    else if (row.description) add(row.description, "meta preview");
                     if (row.depends_on?.length) add("Dependencies: " + row.depends_on.length);
                     for (const blocker of row.blockers) add(blocker, "meta overdue");
-                    if (row.review_required && !finished(row)) add(row.status === "review" ? "Awaiting review" + (row.submitted_by ? " · submitted by " + row.submitted_by : "") : "Review required");
+                    if (row.managed && row.review_required && !finished(row)) add(row.status === "review" ? "Awaiting review" + (row.submitted_by ? " · submitted by " + row.submitted_by : "") : "Review required");
                 } else if (row.blockers.length) add(row.blockers.length + " blocker(s)", "meta overdue");
                 if (!finished(row) && row.deadline?.date < todayKey()) add("Overdue deadline", "meta overdue");
-                if (!finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta overdue");
+                if (!finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta");
                 if (row.claim_stale || row.submission_stale) add("Requirements changed", "meta overdue");
                 if (row.claim_expired) add("Claim expired", "meta overdue");
                 b.onclick = () => read(() => choose(row));
@@ -716,24 +796,49 @@
                 document.querySelector(".layout").classList.toggle("wide", view !== "list");
                 $("calendar-scale-label").hidden = view !== "calendar";
                 list.className = view === "board" ? "board" : "list";
+                if (view !== "board") list.style.gridTemplateColumns = "";
                 const calendarScroll = list.querySelector(".calendar-scroll")?.scrollLeft || 0;
                 list.replaceChildren();
                 const query = $("search-filter").value.trim().toLowerCase();
-                const visible = rows.filter(row => [row.title, row.file, row.owner, row.project, row.acceptance, ...(row.tags || []), ...(row.outline || [])].join(" ").toLowerCase().includes(query));
+                const visible = rows.filter(row => (!$("workflow-filter").value || workflowKey(row) === $("workflow-filter").value)).filter(row => [row.title, row.file, row.owner, row.project, row.acceptance, ...(row.tags || []), ...(row.outline || [])].join(" ").toLowerCase().includes(query));
                 if (view === "board") {
-                    for (const [status, name] of [["ready","Ready"],["working","In progress"],["review","Review"],["blocked","Blocked"],["done","Done"],["cancelled","Cancelled"]]) {
-                        const group = visible.filter(row => row.status === status);
-                        const column = el(["done","cancelled"].includes(status) ? "details" : "section", undefined, "column");
-                        if (column.tagName === "DETAILS") rememberExpansion(column, "board-" + status);
-                        column.append(el(column.tagName === "DETAILS" ? "summary" : "h3", name + " · " + group.length));
-                        group.forEach(row => column.append(taskCard(row)));
-                        list.append(column);
+                    const relevantFiles = (workspace?.files || []).filter(file => (!$("file-filter").value || file.file === $("file-filter").value) && (!$("workflow-filter").value || workflowKey(file) === $("workflow-filter").value));
+                    const discovered = [...new Set(relevantFiles.flatMap(file => file.states).concat(visible.flatMap(row => row.states || [row.state])))];
+                    const order = [...new Set((workspace?.settings.column_order || []).filter(state => discovered.includes(state)).concat(discovered))];
+                    list.style.gridTemplateColumns = "repeat(" + Math.max(1, order.length) + ", minmax(240px, 1fr))";
+                    for (const [index, state] of order.entries()) {
+                        const group = visible.filter(row => row.state === state);
+                        const column = el("section", undefined, "column"); column.dataset.state = state;
+                        const heading = el("h3", state + " · " + group.length);
+                        heading.draggable = canWrite;
+                        heading.title = "Drag to reorder this column";
+                        heading.ondragend = () => { draggedColumn = null; };
+                        heading.ondragstart = event => { draggedColumn = state; draggedTask = null; event.dataTransfer.setData("text/plain", state); };
+                        column.ondragover = event => event.preventDefault();
+                        column.ondrop = event => {
+                            event.preventDefault();
+                            if (draggedColumn) { const from = draggedColumn; draggedColumn = null; run(() => reorderColumn(order, from, state)); }
+                            else if (draggedTask) { const task = draggedTask; draggedTask = null; run(() => changeState(task, state)); }
+                        };
+                        column.append(heading);
+                        const controls = el("div", undefined, "actions");
+                        for (const [label, delta] of [["←", -1], ["→", 1]]) {
+                            const button = el("button", label); button.title = "Move " + state + (delta < 0 ? " left" : " right"); button.setAttribute("aria-label", button.title);
+                            button.disabled = !canWrite || index + delta < 0 || index + delta >= order.length;
+                            button.onclick = () => run(() => reorderColumn(order, state, order[index + delta])); controls.append(button);
+                        }
+                        column.append(controls);
+                        const terminal = relevantFiles.length && relevantFiles.every(file => !file.states.includes(state) || file.done_states.includes(state));
+                        const cards = el(terminal ? "details" : "div");
+                        if (terminal) { rememberExpansion(cards, "board-" + state); cards.append(el("summary", "Show tasks")); } else cards.open = true;
+                        group.forEach(row => cards.append(taskCard(row)));
+                        column.append(cards); list.append(column);
                     }
                 } else if (view === "agenda") {
                     const groups = new Map();
                     for (const event of planningEvents(visible)) {
                         const day = event.stamp.date;
-                        const key = day < todayKey() && !finished(event.row) ? "Overdue / scheduled earlier" : day === todayKey() ? "Today · " + day : day;
+                        const key = day < todayKey() && !finished(event.row) ? (event.kind === "deadline" ? "Overdue deadlines" : "Planned earlier") : day === todayKey() ? "Today · " + day : day;
                         if (!groups.has(key)) groups.set(key, []);
                         groups.get(key).push(event);
                     }
@@ -772,7 +877,7 @@
                         if (!delta) calendarDate = new Date();
                         else if (week) calendarDate.setDate(calendarDate.getDate() + delta * 7);
                         else calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + delta, 1);
-                        renderList();
+                        savePreferences(); renderList();
                     };
                     nav.append(button);
                 }
@@ -792,9 +897,30 @@
                 scroll.append(grid); root.append(scroll);
                 appendUnscheduled(root, tasks);
             }
+            async function reloadRows() {
+                const count = rows.length;
+                await load();
+                while (next !== null && rows.length < count) await load(true);
+            }
+            function currentRow(row) {
+                const candidates = rows.filter(task => row.id ? task.id === row.id : task.file === row.file && task.title === row.title && JSON.stringify(task.outline) === JSON.stringify(row.outline));
+                if (candidates.length !== 1) throw Error("Cannot identify this task uniquely after the edit. Copy your draft, then select the task from the list.");
+                return candidates[0];
+            }
+            async function fetchWhole(ref) {
+                const data = await request("fetch", {ref});
+                let offset = data.next_offset;
+                while (offset !== null) {
+                    const part = await request("fetch", {ref: data.ref, offset});
+                    if (part.revision !== data.revision) throw Error("The file changed while loading. Try selecting the task again.");
+                    data.text += part.text; offset = part.next_offset;
+                }
+                data.next_offset = null;
+                return data;
+            }
             async function choose(row, preserveDraft = false) {
                 const version = ++selectionVersion;
-                const data = await request("fetch", { ref: row.ref });
+                const data = await fetchWhole(row.ref);
                 if (version !== selectionVersion) return;
                 if (preserveDraft && draftDirty) {
                     message(
@@ -832,14 +958,15 @@
                 if (!selected) return;
                 const row = selected;
                 root.append(
-                    el("span", row.status, "badge " + row.status),
+                    el("span", row.state, "badge org-state"),
+                    el("span", row.status, "badge coordination " + row.status),
                     el("h2", row.title, "detail-title"),
                     el("div", row.file + " · " + row.ref, "meta"),
                 );
                 const metadata = taskCard(row);
                 const summary = el("section", undefined, "box");
                 // Reuse card metadata without nesting an interactive card in the details panel.
-                for (const node of [...metadata.children].slice(2)) summary.append(node);
+                for (const node of [...metadata.children].slice(3)) summary.append(node);
                 root.append(summary);
                 if (row.claim_stale || row.submission_stale) {
                     root.append(
@@ -852,6 +979,27 @@
                         ),
                     );
                 }
+                const stateLabel = labelled("Org state", "edit-state", "", "select");
+                for (const state of row.states) stateLabel.lastChild.append(new Option(state, state));
+                stateLabel.lastChild.value = row.state;
+                stateLabel.lastChild.disabled = !canWrite;
+                const change = el("button", "Change state"); change.dataset.write = "true"; change.disabled = !canWrite;
+                change.onclick = () => run(() => changeState({...row, revision: fetched.revision}, $("edit-state").value));
+                root.append(stateLabel, change);
+                const compare = el("button", "Compare with file");
+                compare.onclick = () => read(async () => {
+                    await reloadRows();
+                    const latest = await fetchWhole(currentRow(row).ref);
+                    const diff = el("details", undefined, "box"); diff.open = true;
+                    diff.append(el("summary", "Current file contents — your draft is unchanged"), el("pre", latest.text)); root.append(diff);
+                });
+                const reload = el("button", "Reload task (discard draft)");
+                reload.onclick = () => read(async () => {
+                    await reloadRows(); const latest = currentRow(row);
+                    if (!latest) throw Error("Task was removed or moved. Your draft is still available to copy.");
+                    await choose(latest);
+                });
+                root.append(compare, reload);
                 const criteria = el("section", undefined, "box");
                 criteria.append(
                     el("h3", "Acceptance"),
@@ -918,6 +1066,12 @@
                 contract.append(el("summary", "Task settings"));
                 const form = el("form");
                 form.append(
+                    labelled("Title", "edit-title", row.title),
+                    labelled("Description", "edit-text", row.description, "textarea"),
+                    labelled("Tags", "edit-tags", row.tags.join(" ")),
+                    labelled("Priority (A–Z)", "edit-priority", row.priority),
+                    labelled("Scheduled (planned date/time)", "edit-scheduled", row.scheduled ? row.scheduled.date + (row.scheduled.time ? "T" + row.scheduled.time : "") : ""),
+                    labelled("Deadline (latest completion date/time)", "edit-deadline", row.deadline ? row.deadline.date + (row.deadline.time ? "T" + row.deadline.time : "") : ""),
                     labelled(
                         "Acceptance criteria",
                         "edit-acceptance",
@@ -955,24 +1109,39 @@
                 form.onsubmit = (e) => {
                     e.preventDefault();
                     run(async () => {
-                        const result = await request("task_update", {
-                            ref: fetched.ref,
-                            expected_revision: fetched.revision,
-                            actor: actor(),
-                            acceptance: $("edit-acceptance").value,
-                            project: $("edit-project").value,
-                            owner: $("edit-owner").value,
-                            depends_on: $("edit-deps")
-                                .value.trim()
-                                .split(/\s+/)
-                                .filter(Boolean),
-                            review_required: $("edit-review").value === "true",
-                        });
+                        const args = {ref: fetched.ref, expected_revision: fetched.revision, actor: actor()};
+                        for (const [key, id, old] of [
+                            ["title", "edit-title", row.title], ["text", "edit-text", row.description],
+                            ["tags", "edit-tags", row.tags.join(" ")], ["priority", "edit-priority", row.priority],
+                            ["scheduled", "edit-scheduled", row.scheduled ? row.scheduled.date + (row.scheduled.time ? "T" + row.scheduled.time : "") : ""],
+                            ["deadline", "edit-deadline", row.deadline ? row.deadline.date + (row.deadline.time ? "T" + row.deadline.time : "") : ""],
+                            ["acceptance", "edit-acceptance", row.acceptance], ["project", "edit-project", row.project], ["owner", "edit-owner", row.owner]
+                        ]) if ($(id).value !== old) args[key] = $(id).value;
+                        if ($("edit-deps").value !== row.depends_on.join(" ")) args.depends_on = $("edit-deps").value.trim().split(/\s+/).filter(Boolean);
+                        if ($("edit-review").value !== String(row.review_required)) args.review_required = $("edit-review").value === "true";
+                        if (Object.keys(args).length === 3) { message("No changes to save."); return; }
+                        const result = await request("task_update", args);
                         await afterWrite(result);
+                        message(result.warning || "Task saved.");
                     });
                 };
                 contract.append(form);
                 root.append(contract);
+                const move = el("details"); move.append(el("summary", "Move to another file or heading"));
+                const destination = labelled("Destination file", "move-file", row.file); destination.lastChild.setAttribute("list", "workspace-files");
+                const parent = labelled("Parent heading", "move-parent", "", "select");
+                move.append(destination, parent);
+                const moveButton = el("button", "Move task"); moveButton.dataset.write = "true"; moveButton.disabled = !canWrite;
+                moveButton.onclick = () => run(async () => {
+                    const file = $("move-file").value.trim();
+                    const metadata = workspace.files.find(candidate => candidate.file === file);
+                    if (!metadata) throw Error("Choose an existing destination file so its workflow and revision can be checked.");
+                    const result = await request("task_move", {ref: fetched.ref, expected_revision: fetched.revision, actor: actor(), file, parent: $("move-parent").value, destination_revision: metadata.revision});
+                    await loadWorkspace(); await afterWrite(result); message("Task moved.");
+                });
+                move.append(moveButton); root.append(move);
+                destination.lastChild.onchange = () => destinationFields("move");
+                move.ontoggle = () => { if (move.open && move.isConnected) read(async () => { await loadWorkspace(); if (move.isConnected) destinationFields("move"); }); };
                 const history =
                     fetched.text.match(
                         /^:LOGBOOK:\s*\n([\s\S]*?)^:END:\s*$/m,
@@ -1010,6 +1179,7 @@
             }
             async function afterWrite(result) {
                 if (result.warning) message(result.warning);
+                if (result.undo) { workspace.undo = result.undo; $("undo").disabled = !canWrite || !result.undo.token; }
                 await load();
                 await choose(result);
             }
@@ -1079,11 +1249,13 @@
                 );
                 $("new").disabled = !canWrite;
                 $("refresh").disabled = false;
+                await loadWorkspace(true);
                 await load();
                 connected = true;
                 $("token-label").hidden = true;
                 $("connect").hidden = true;
                 if (selected) {
+                    if (draftDirty) { message("Workspace loaded. Your draft is preserved."); return; }
                     const current = rows.find((r) => r.ref === selected.ref);
                     if (current) await choose(current);
                     else {
@@ -1136,7 +1308,7 @@
                     );
                 }
             }
-            $("refresh").onclick = () => read(refreshView);
+            $("refresh").onclick = () => read(async () => { await loadWorkspace(); await refreshView(); });
             // Poll only while visible, connected and idle. Do not touch the creation dialog.
             setInterval(() => {
                 if (
@@ -1154,17 +1326,26 @@
             $("view").onchange = () => read(async () => { if (connected) await load(); else renderList(); });
             $("calendar-scale").onchange = renderList;
             $("more").onclick = () => read(() => load(true));
-            $("new").onclick = () => {
+            $("new").onclick = () => read(async () => {
+                await loadWorkspace();
                 createRequest = crypto.randomUUID();
+                $("create-file").value = $("file-filter").value || selected?.file || "";
+                destinationFields("create");
                 $("create-dialog").showModal();
                 $("create-title").focus();
-            };
+            });
+            $("create-file").onchange = () => destinationFields("create");
+            $("create-owner").onchange = () => { if (!$("create-file").value.trim()) destinationFields("create"); };
             $("create-cancel").onclick = () => $("create-dialog").close();
             $("create-form").onsubmit = (e) => {
                 e.preventDefault();
                 run(async () => {
                     const result = await request("task_create", {
                         request_id: createRequest,
+                        ...($("create-file").value.trim() ? {file: $("create-file").value.trim()} : {}),
+                        parent: $("create-parent").value,
+                        state: $("create-state").value || "TODO",
+                        ...(workspace.files.find(file => file.file === creationFile()) ? {destination_revision: workspace.files.find(file => file.file === creationFile()).revision} : {}),
                         title: $("create-title").value,
                         actor: actor(),
                         acceptance: $("create-acceptance").value,
@@ -1174,9 +1355,33 @@
                     });
                     $("create-dialog").close();
                     $("create-form").reset();
+                    await loadWorkspace();
                     await afterWrite(result);
+                    message(result.warning || "Task created.");
                 });
             };
+            async function changeState(row, state) {
+                if (row.state === state) return;
+                if (!row.states.includes(state)) throw Error("This file does not define " + state + ". Choose one of its configured states.");
+                const result = await request("task_action", {ref: row.ref, expected_revision: row.revision, actor: actor(), action: "state", state});
+                await afterWrite(result); message("State saved as " + state + ".");
+            }
+            async function reorderColumn(order, from, to) {
+                const next = [...order]; next.splice(next.indexOf(from), 1); next.splice(order.indexOf(to), 0, from);
+                const saved = await request("board_settings", {expected_revision: workspace.revision, settings: {...workspace.settings, column_order: next}});
+                workspace.settings = saved.settings; workspace.revision = saved.revision; renderList(); message("Column order saved.");
+            }
+            for (const id of ["file-filter", "state-filter", "workflow-filter"]) $(id).onchange = () => read(() => load());
+            $("calendar-scale").onchange = () => { savePreferences(); renderList(); };
+            $("save-view").onclick = () => { const name = prompt("Name this view"); if (!name?.trim() || !workspace) return; savedViews = {...savedViews, [name.trim()]: currentPreferences()}; savePreferences(); refreshSavedViews(); message("View saved in this browser."); };
+            $("saved-view").onchange = () => { const prefs = savedViews[$("saved-view").value]; if (prefs) { applyPreferences(prefs); read(() => load()); } };
+            $("delete-view").onclick = () => { delete savedViews[$("saved-view").value]; savePreferences(); refreshSavedViews(); };
+            $("undo").onclick = () => run(async () => {
+                if (!workspace.undo?.token) return;
+                await request("task_undo", {token: workspace.undo.token, actor: actor()});
+                selected = null; fetched = null; draftDirty = false; $("detail").replaceChildren(el("p", "Change undone. Select a task to continue.", "empty"));
+                await loadWorkspace(); await load(); message("Last change undone.");
+            });
             run(connect);
         </script>
     </body>

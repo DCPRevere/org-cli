@@ -25,6 +25,7 @@ let create (svc: WorkspaceService) title (review: bool) =
     let a =
         arg
             [ "request_id", Guid.NewGuid().ToString()
+              "file", "tasks.org"
               "title", title
               "actor", "human"
               "acceptance", "Verified result" ]
@@ -285,7 +286,7 @@ let ``stale task revisions and workspace contention do not change files`` () =
     Assert.Equal(before, h.Text "/work/tasks.org")
 
 [<Fact>]
-let ``claim respects assignment scheduled date and changed dependencies at submission`` () =
+let ``claim respects assignment but future scheduled date is not a blocker`` () =
     use h = new VirtualHost()
     let svc = service h
     let entry = create svc "Assigned" false
@@ -293,8 +294,7 @@ let ``claim respects assignment scheduled date and changed dependencies at submi
     let assigned =
         configure svc entry [ "owner", "agent:one"; "scheduled", "2026-09-17" ]
 
-    fails "conflict" (fun () -> claim svc assigned "agent:one")
-    h.Clock <- DateTime(2026, 9, 17, 12, 0, 0)
+    Assert.Equal("ready", field assigned "status")
     fails "conflict" (fun () -> claim svc assigned "agent:two")
     let claimed = claim svc assigned "agent:one"
     fails "conflict" (fun () -> configure svc claimed [ "acceptance", "Changed contract" ])
@@ -512,7 +512,7 @@ let ``manually reopening cancellation respects the TODO keyword without property
     let svc = service h
     let task = create svc "Cancelled then reconsidered" true
     let cancelled = action svc task "human" "cancel" [ "evidence", "Postponed" ]
-    h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace("* DONE ", "* TODO "))
+    h.Put("/work/tasks.org", (h.Text "/work/tasks.org").Replace("* CANCELLED ", "* TODO "))
     let ready = (tasks svc "ready")[0]
     Assert.Equal(field cancelled "id", field ready "id")
     let claimed = claim svc ready "worker"
@@ -585,3 +585,244 @@ let ``cancellation without a reason revokes claims and preserves history`` () =
     Assert.DoesNotContain(":TASK_CLAIM_ID:", h.Text "/work/tasks.org")
     Assert.Contains("Task cancel by human", h.Text "/work/tasks.org")
     Assert.Contains("Task claim by worker", h.Text "/work/tasks.org")
+
+[<Fact>]
+let ``planning dates do not block and exact file states distinguish KILL from DONE`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/custom.org",
+        "#+TODO: WAIT TODO PROG | DONE KILL\n* TODO Future\nSCHEDULED: <2030-01-01 Tue> DEADLINE: <2030-02-01 Fri>\n* WAIT Waiting\n* KILL Abandoned\n"
+    )
+
+    let svc = service h
+    let rows = tasks svc "all"
+    let future = rows |> Seq.find (fun row -> field row "title" = "Future")
+    Assert.Equal("ready", field future "status")
+    Assert.Empty(future["blockers"].AsArray())
+    let waiting = rows |> Seq.find (fun row -> field row "title" = "Waiting")
+    Assert.Equal("blocked", field waiting "status")
+    let killed = rows |> Seq.find (fun row -> field row "title" = "Abandoned")
+    Assert.Equal("KILL", field killed "state")
+    Assert.Equal("cancelled", field killed "status")
+    let claimed = claim svc future "worker"
+    Assert.Equal("PROG", field claimed "state")
+    let cancelled = action svc claimed "worker" "cancel" []
+    Assert.Equal("KILL", field cancelled "state")
+    Assert.Contains("* KILL Future", h.Text "/work/custom.org")
+
+[<Fact>]
+let ``creation targets relevant file and parent while fallback uses inbox`` () =
+    use h = new VirtualHost()
+    h.Put("/work/project.org", "#+TODO: TODO PROG | DONE KILL\n* Project\nBody\n")
+    let svc = service h
+    let metadata = svc.Invoke("workspace", JsonObject())
+    let file = metadata["files"][0]
+
+    let created =
+        svc.Invoke(
+            "task_create",
+            arg
+                [ "request_id", Guid.NewGuid().ToString()
+                  "actor", "human"
+                  "title", "Child"
+                  "file", "project.org"
+                  "parent", field (file["parents"][0]) "ref"
+                  "destination_revision", field file "revision" ]
+        )
+
+    Assert.Equal("project.org", field created "file")
+    Assert.Contains("** TODO Child", h.Text "/work/project.org")
+
+    let fallback =
+        svc.Invoke("task_create", arg [ "request_id", Guid.NewGuid().ToString(); "actor", "human"; "title", "Inbox" ])
+
+    Assert.Equal("inbox.org", field fallback "file")
+    Assert.False(h.Files.ContainsKey "/work/tasks.org")
+
+    fails "invalid_arguments" (fun () ->
+        svc.Invoke(
+            "task_create",
+            arg
+                [ "request_id", Guid.NewGuid().ToString()
+                  "actor", "human"
+                  "title", "Escape"
+                  "file", "../escape.org" ]
+        ))
+
+[<Fact>]
+let ``fresh workspace uses recommended states without altering existing workflow`` () =
+    use h = new VirtualHost()
+
+    let entry =
+        (service h)
+            .Invoke("task_create", arg [ "request_id", Guid.NewGuid().ToString(); "actor", "human"; "title", "First" ])
+
+    Assert.Equal("TODO", field entry "state")
+
+    Assert.Equal<string list>(
+        [ "WAIT"; "TODO"; "PROG"; "DONE"; "KILL" ],
+        entry["states"].AsArray()
+        |> Seq.map (fun v -> v.GetValue<string>())
+        |> Seq.toList
+    )
+
+[<Fact>]
+let ``plain field editing preserves children and history and supports date times`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/project.org",
+        "* TODO Parent :old:\n:LOGBOOK:\n- Existing history\n:END:\nOriginal body\n** TODO Child\nChild body\n"
+    )
+
+    let svc = service h
+    let entry = tasks svc "all" |> Seq.find (fun row -> field row "title" = "Parent")
+
+    let updated =
+        configure
+            svc
+            entry
+            [ "title", "Renamed"
+              "text", "New body"
+              "tags", "one two"
+              "priority", "A"
+              "scheduled", "2030-01-01T09:30" ]
+
+    Assert.Equal("Renamed", field updated "title")
+    Assert.Equal("New body", field updated "description")
+    Assert.Equal("09:30", field (updated["scheduled"]) "time")
+    Assert.Contains("** TODO Child\nChild body", h.Text "/work/project.org")
+    Assert.Contains("Existing history", h.Text "/work/project.org")
+    Assert.DoesNotContain("Original body", h.Text "/work/project.org")
+
+[<Fact>]
+let ``moving is atomic revision checked compatible with workflow and undoable`` () =
+    use h = new VirtualHost()
+    let source = "#+TODO: TODO PROG | DONE KILL\n* TODO Move me\n** TODO Child\n"
+    let target = "#+TODO: TODO PROG | DONE KILL\n* Destination\n"
+    h.Put("/work/source.org", source)
+    h.Put("/work/destination.org", target)
+    let svc = service h
+    let entry = tasks svc "all" |> Seq.find (fun row -> field row "title" = "Move me")
+    let meta = svc.Invoke("workspace", JsonObject())
+
+    let dest =
+        meta["files"].AsArray()
+        |> Seq.find (fun f -> field f "file" = "destination.org")
+
+    let args =
+        editArgs
+            svc
+            entry
+            [ "file", "destination.org"
+              "parent", field (dest["parents"][0]) "ref"
+              "destination_revision", field dest "revision" ]
+
+    let moved = svc.Invoke("task_move", args)
+    Assert.Equal("destination.org", field moved "file")
+    Assert.Contains("** TODO Move me", h.Text "/work/destination.org")
+    Assert.Contains("*** TODO Child", h.Text "/work/destination.org")
+    Assert.DoesNotContain("Move me", h.Text "/work/source.org")
+
+    svc.Invoke("task_undo", arg [ "actor", "human"; "token", field (moved["undo"]) "token" ])
+    |> ignore
+
+    Assert.Equal(source, h.Text "/work/source.org")
+    Assert.Equal(target, h.Text "/work/destination.org")
+
+[<Fact>]
+let ``undo cannot overwrite later external edits or another actors work`` () =
+    use h = new VirtualHost()
+    let svc = service h
+    let entry = create svc "Keep edits" false
+    let cancelled = action svc entry "human" "cancel" []
+    let undo = arg [ "token", field (cancelled["undo"]) "token"; "actor", "other" ]
+    fails "conflict" (fun () -> svc.Invoke("task_undo", undo))
+    undo["actor"] <- JsonValue.Create "human"
+    h.Put("/work/tasks.org", h.Text "/work/tasks.org" + "\nExternal note\n")
+    fails "conflict" (fun () -> svc.Invoke("task_undo", undo))
+    Assert.Contains("External note", h.Text "/work/tasks.org")
+
+[<Fact>]
+let ``column ordering is persistent outside notes and protected from stale overwrites`` () =
+    use h = new VirtualHost()
+    h.Environment["XDG_CONFIG_HOME"] <- "/home/test/settings"
+    let svc = service h
+    let initial = svc.Invoke("workspace", JsonObject())
+    let args = arg [ "expected_revision", field initial "revision" ]
+    args["settings"] <- JsonNode.Parse("{\"column_order\":[\"WAIT\",\"TODO\",\"PROG\",\"DONE\",\"KILL\"]}")
+    let result = svc.Invoke("board_settings", args)
+    Assert.StartsWith("/home/test/settings/org-cli/workspaces/", field result "path")
+    Assert.Equal("WAIT", (result["settings"].["column_order"].[0]).GetValue<string>())
+    let restored = (service h).Invoke("workspace", JsonObject())
+    Assert.Equal(result["settings"].ToJsonString(), restored["settings"].ToJsonString())
+    fails "conflict" (fun () -> svc.Invoke("board_settings", args))
+
+    Assert.False(
+        h.Files.Keys
+        |> Seq.exists (fun p -> p.StartsWith("/work/") && p.EndsWith(".json"))
+    )
+
+[<Fact>]
+let ``state changes respect file workflows review claims and cancellation dependencies`` () =
+    use h = new VirtualHost()
+    h.Put("/work/states.org", "#+TODO: WAIT TODO PROG | DONE KILL\n* TODO Plain\n")
+    let svc = service h
+    let plain = tasks svc "all" |> Seq.exactlyOne
+    fails "invalid_arguments" (fun () -> action svc plain "human" "state" [ "state", "DOING" ])
+    let doneTask = action svc plain "human" "state" [ "state", "DONE" ]
+    Assert.Equal("DONE", field doneTask "state")
+    let reopened = action svc doneTask "human" "state" [ "state", "TODO" ]
+    let configured = configure svc reopened [ "acceptance", "Review required" ]
+    fails "conflict" (fun () -> action svc configured "human" "state" [ "state", "DONE" ])
+    let claimed = claim svc configured "worker"
+    fails "conflict" (fun () -> action svc claimed "other" "state" [ "state", "WAIT" ])
+    let killed = action svc claimed "worker" "state" [ "state", "KILL" ]
+    let dependent = create svc "Depends on killed work" false
+    let args = editArgs svc dependent []
+    args["depends_on"] <- JsonArray(JsonValue.Create(field killed "id"))
+    let blocked = svc.Invoke("task_update", args)
+    Assert.Equal("blocked", field blocked "status")
+
+[<Fact>]
+let ``moves reject stale destinations changed state meanings and descendants`` () =
+    use h = new VirtualHost()
+    let source = "#+TODO: TODO PROG | DONE KILL\n* TODO Parent\n** TODO Child\n"
+    h.Put("/work/source.org", source)
+    h.Put("/work/target.org", "#+TODO: PROG | TODO DONE\n")
+    let svc = service h
+    let parent = tasks svc "all" |> Seq.find (fun row -> field row "title" = "Parent")
+
+    let args =
+        editArgs
+            svc
+            parent
+            [ "file", "target.org"
+              "destination_revision", OrgCli.Index.Application.revision (h.Text "/work/target.org") ]
+
+    fails "conflict" (fun () -> svc.Invoke("task_move", args))
+    h.Put("/work/target.org", "#+TODO: TODO PROG | DONE KILL\n")
+    fails "conflict" (fun () -> svc.Invoke("task_move", args))
+    let child = tasks svc "all" |> Seq.find (fun row -> field row "title" = "Child")
+
+    let intoChild =
+        editArgs
+            svc
+            parent
+            [ "file", "source.org"
+              "parent", field child "ref"
+              "destination_revision", OrgCli.Index.Application.revision source ]
+
+    fails "invalid_arguments" (fun () -> svc.Invoke("task_move", intoChild))
+    Assert.Equal(source, h.Text "/work/source.org")
+
+[<Fact>]
+let ``read only workspaces cannot reorder undo or move`` () =
+    use h = new VirtualHost()
+
+    let readOnly =
+        WorkspaceService(h, "/work", "/work/.org-index.db", Types.defaultConfig, readOnly = true)
+
+    for operation in [ "board_settings"; "task_undo"; "task_move" ] do
+        fails "read_only" (fun () -> readOnly.Invoke(operation, JsonObject()))

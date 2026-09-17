@@ -40,7 +40,10 @@ let private expected =
 /// One discoverable schema for HTTP and MCP; callers never supply shell commands or paths.
 let tools readOnly =
     let taskFields =
-        [ "acceptance", stringSchema "One-line, verifiable acceptance criteria"
+        [ "title", stringSchema "Task title"
+          "text", stringSchema "Description, without headings or managed drawers"
+          "tags", stringSchema "Space-separated tags"
+          "acceptance", stringSchema "One-line, verifiable acceptance criteria"
           "project", stringSchema "Project label, empty to clear"
           "owner", stringSchema "Assigned actor label, empty for anyone"
           "depends_on",
@@ -53,28 +56,61 @@ let tools readOnly =
               [ "type", str "boolean"
                 "description", str "Require a different actor to approve submitted evidence; default true" ]
           "priority", stringSchema "A-Z or empty to clear"
-          "scheduled", stringSchema "yyyy-MM-dd or empty to clear"
-          "deadline", stringSchema "yyyy-MM-dd or empty to clear" ]
+          "scheduled", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
+          "deadline", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear" ]
 
     let actor =
         "actor", stringSchema "Stable human or agent label. This is attribution, not authenticated identity."
 
     let taskDefinitions =
-        [ "tasks",
+        [ "workspace",
+          "Inspect workspace files, configured states, parent headings, board settings and latest undo token.",
+          true,
+          [],
+          []
+          "board_settings",
+          "Save shared column_order outside the Org directory using the returned settings revision.",
+          false,
+          [ "expected_revision"; "settings" ],
+          [ expected
+            "settings",
+            obj
+                [ "type", str "object"
+                  "properties", obj [ "column_order", obj [ "type", str "array"; "items", stringSchema "Org state" ] ] ] ]
+          "task_undo",
+          "Undo the latest task mutation by its original actor, only if no affected file changed since. File contents are restored, including prior history.",
+          false,
+          [ "token"; "actor" ],
+          [ "token", stringSchema "Latest undo token"; actor ]
+          "task_move",
+          "Move a task subtree to a workspace-relative Org file and optional parent. Reject incompatible destination states. Both files are revision checked.",
+          false,
+          [ "ref"; "expected_revision"; "actor"; "file"; "destination_revision" ],
+          [ entryRef
+            expected
+            actor
+            "file", stringSchema "Relative .org destination"
+            "parent", stringSchema "Destination parent reference or empty for root"
+            "destination_revision", stringSchema "Destination file revision (hash of empty text for new file)" ]
+          "tasks",
           "List existing Org TODOs and managed tasks, with readiness, dependency blockers, ownership, leases, acceptance criteria and file revisions. Default open; use ready to choose executable work or review to find submissions.",
           true,
           [],
           [ "status", stringSchema "open (default), all, ready, blocked, working, review, done, cancelled"
             "project", stringSchema "Exact project label"
-            "owner", stringSchema "Exact assigned actor label" ]
+            "owner", stringSchema "Exact assigned actor label"
+            "file", stringSchema "Relative file filter"
+            "state", stringSchema "Exact Org keyword filter" ]
           @ page
           "task_create",
-          "Create a durable task in tasks.org. Use a UUID request_id for safe retries. Define acceptance criteria and dependencies. Review by a different actor is required by default.",
+          "Create a durable task in an explicit relative file and optional parent; default inbox.org. Prefer the relevant existing file. Use a UUID request_id for safe retries. Define acceptance criteria and dependencies. Review by a different actor is required by default.",
           false,
           [ "request_id"; "title"; "actor" ],
           [ "request_id", stringSchema "UUID identifying this creation; reuse for identical retries"
-            "title", stringSchema "One-line task title"
-            "text", stringSchema "Optional Org description and context"
+            "file", stringSchema "Workspace-relative Org file, default inbox.org"
+            "parent", stringSchema "Parent heading reference, empty for file root"
+            "destination_revision", stringSchema "Expected destination revision"
+            "state", stringSchema "Configured active state"
             actor ]
           @ taskFields
           "task_update",
@@ -83,13 +119,14 @@ let tools readOnly =
           [ "ref"; "expected_revision"; "actor" ],
           [ entryRef; expected; actor ] @ taskFields
           "task_action",
-          "Coordinate execution: claim, renew, release, submit, approve, reject, cancel, reopen. Claims require a caller-generated UUID claim_id; renew/release/submit need that token and actor. Leases expire. Submit/approve/reject/cancel require evidence. Reopen can also reset stale work with evidence, preserving an active editor-selected state. A different actor reviews. Fetch before edits; after a lost response, fetch to inspect the outcome before retrying.",
+          "Coordinate execution: claim, renew, release, submit, approve, reject, cancel, reopen. Claims require a caller-generated UUID claim_id; renew/release/submit need that token and actor. Leases expire. Submit/approve/reject require evidence; cancellation reason is optional. State changes must use file-configured keywords and respect managed review. Reopen can also reset stale work with evidence, preserving an active editor-selected state. A different actor reviews. Fetch before edits; after a lost response, fetch to inspect the outcome before retrying.",
           false,
           [ "ref"; "expected_revision"; "actor"; "action" ],
           [ entryRef
             expected
             actor
-            "action", stringSchema "claim, renew, release, submit, approve, reject, cancel, reopen"
+            "action", stringSchema "claim, renew, release, submit, approve, reject, cancel, reopen, state"
+            "state", stringSchema "Configured Org keyword for state action"
             "claim_id", stringSchema "Nonzero UUID; generate once for a claim, reuse for renew/release/submit"
             "lease_minutes",
             obj
@@ -140,8 +177,8 @@ let tools readOnly =
           [ entryRef
             expected
             "state", stringSchema "Configured TODO keyword, or empty to clear"
-            "scheduled", stringSchema "yyyy-MM-dd or empty to clear"
-            "deadline", stringSchema "yyyy-MM-dd or empty to clear"
+            "scheduled", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
+            "deadline", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
             "priority", stringSchema "A-Z or empty to clear" ]
           "related",
           "Find incoming Org ID links to an entry. Does not require org-roam.",

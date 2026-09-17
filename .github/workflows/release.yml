@@ -73,6 +73,7 @@ jobs:
           "$RUNNER_TEMP/org-browser-tests/bin/pip" install -r tests/requirements-browser.txt
           "$RUNNER_TEMP/org-browser-tests/bin/playwright" install --with-deps chromium
           "$RUNNER_TEMP/org-browser-tests/bin/python" tests/browser_smoke.py
+          "$RUNNER_TEMP/org-browser-tests/bin/python" tests/board_workflows.py
 
       - name: Extract version from tag
         id: version

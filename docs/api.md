@@ -102,3 +102,26 @@ headline tags), and nullable `scheduled` / `deadline` objects. Each timestamp ha
 `date` (`YYYY-MM-DD`), nullable `time` (`HH:mm`, no timezone conversion), nullable
 `repeater`, and nullable `end` (another timestamp object). Dates remain separate
 from workflow status and ownership; these fields are read from the Org heading.
+
+### File-faithful task workflows (development)
+
+- `workspace {}`: file paths/revisions, parent references, `states`, `done_states`,
+  shared `settings`/`revision`/`path`, workspace identifier, and latest undo token.
+- `board_settings {expected_revision, settings:{column_order:[...]}}`: save shared
+  presentation order outside Org files. Stale revisions produce conflict.
+- `task_create`: accepts `file`, `parent`, `destination_revision`, initial `state`
+  and ordinary task fields. Default destination is an existing owner's inbox or
+  root inbox, never a hardcoded tasks file.
+- `task_update`: additionally accepts `title`, `text` (own description), and `tags`
+  (space separated). Planning values accept dates or local date/time.
+- `task_action`: `action:"state"` takes a file-defined `state`. Claiming selects a
+  configured progress keyword when available; cancellation selects a configured
+  terminal cancellation keyword. Review/dependency checks still apply.
+- `task_move {ref, expected_revision, actor, file, destination_revision, parent?}`:
+  transactional subtree move. Use the empty-string SHA-256 revision for a new file.
+- `task_undo {token, actor}`: undo only the latest operation, by its actor, without
+  intervening edits. Successful mutations return `undo:{token,actor}`.
+
+`tasks` additionally filters exact `file` and `state`. Rows include `description`,
+`states`, `done_states`, `managed`, exact `state`, and separate coordination
+`status`. Read-only servers expose `workspace` and reject all new mutations.

@@ -9,6 +9,12 @@ let help () =
     printfn "org task list|ready|review [--project NAME] [--owner ACTOR] [--status STATUS]"
     printfn "org task create TITLE --actor ACTOR [--acceptance TEXT] [--depends-on ID] [--project NAME]"
     printfn "org task show REF"
+    printfn "org task state REF --state KEYWORD --actor NAME"
+    printfn "org task move REF --file PATH [--parent REF] --destination-revision HASH --actor NAME"
+
+    printfn
+        "Creation: --file PATH [--parent REF]; default inbox.org. Editing: --title --text --tags --priority --scheduled --deadline."
+
     printfn "org task edit REF --actor ACTOR [--owner NAME] [--review-required true|false] [--acceptance TEXT]"
     printfn "org task claim REF --actor ACTOR [--claim-id UUID] [--lease-minutes 30]"
     printfn "org task renew|release|submit REF --actor ACTOR --claim-id UUID [--evidence TEXT]"
@@ -63,6 +69,11 @@ let run (service: WorkspaceService) (opts: Map<string, string list>) positional 
                       "dry-run"
                       "input"
                       "actor"
+                      "file"
+                      "parent"
+                      "destination-revision"
+                      "state"
+                      "tags"
                       "title"
                       "text"
                       "acceptance"
@@ -112,6 +123,8 @@ let run (service: WorkspaceService) (opts: Map<string, string list>) positional 
                 | "show" -> "fetch"
                 | "create" -> "task_create"
                 | "edit" -> "task_update"
+                | "move" -> "task_move"
+                | "state"
                 | "claim"
                 | "renew"
                 | "release"
@@ -132,6 +145,10 @@ let run (service: WorkspaceService) (opts: Map<string, string list>) positional 
 
             for key in
                 [ "actor"
+                  "file"
+                  "parent"
+                  "state"
+                  "tags"
                   "title"
                   "text"
                   "acceptance"
@@ -145,7 +162,7 @@ let run (service: WorkspaceService) (opts: Map<string, string list>) positional 
                   "ref" ] do
                 option key |> Option.iter (set key)
 
-            for key in [ "request-id"; "claim-id"; "expected-revision" ] do
+            for key in [ "request-id"; "claim-id"; "expected-revision"; "destination-revision" ] do
                 option key |> Option.iter (set (key.Replace('-', '_')))
 
             for key in [ "limit"; "offset"; "lease-minutes" ] do
