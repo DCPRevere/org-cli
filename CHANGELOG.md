@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Keep cancellation terminal without advancing repeats; show the actual resulting state after recurring completion.
+- Respect deadline times, show active appointments (including non-TODO headings), preview fixed repeats and ranges, and edit complete Org planning timestamps.
+- Display inherited tags separately, search heading body content, and refresh file/workflow catalogues while preserving drafts.
+
 - Keep scheduled dates separate from blockers; deadlines express latest completion.
 - Use exact file-defined Org keywords for cards and kanban columns; claims/review/blockers remain separate. Support card dragging and keyboard state changes, mixed workflow filtering and persisted shared column ordering outside notes.
 - Create tasks in a selected file/parent; otherwise use an existing owner's inbox or root inbox. Recommend WAIT TODO PROG | DONE KILL only in a fresh default workspace.

@@ -56,8 +56,12 @@ let tools readOnly =
               [ "type", str "boolean"
                 "description", str "Require a different actor to approve submitted evidence; default true" ]
           "priority", stringSchema "A-Z or empty to clear"
-          "scheduled", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
-          "deadline", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear" ]
+          "scheduled",
+          stringSchema
+              "Date, local date/time, or complete active Org timestamp/range with repeater and warning/delay; empty to clear"
+          "deadline",
+          stringSchema
+              "Date, local date/time, or complete active Org timestamp/range with repeater and warning/delay; empty to clear" ]
 
     let actor =
         "actor", stringSchema "Stable human or agent label. This is attribution, not authenticated identity."
@@ -96,7 +100,11 @@ let tools readOnly =
           "List existing Org TODOs and managed tasks, with readiness, dependency blockers, ownership, leases, acceptance criteria and file revisions. Default open; use ready to choose executable work or review to find submissions.",
           true,
           [],
-          [ "status", stringSchema "open (default), all, ready, blocked, working, review, done, cancelled"
+          [ "include_events",
+            obj
+                [ "type", str "boolean"
+                  "description", str "Include non-TODO headings with active appointment timestamps" ]
+            "status", stringSchema "open (default), all, ready, blocked, working, review, done, cancelled"
             "project", stringSchema "Exact project label"
             "owner", stringSchema "Exact assigned actor label"
             "file", stringSchema "Relative file filter"
@@ -177,8 +185,12 @@ let tools readOnly =
           [ entryRef
             expected
             "state", stringSchema "Configured TODO keyword, or empty to clear"
-            "scheduled", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
-            "deadline", stringSchema "yyyy-MM-dd or yyyy-MM-ddTHH:mm (local time), or empty to clear"
+            "scheduled",
+            stringSchema
+                "Date, local date/time, or complete active Org timestamp/range with repeater and warning/delay; empty to clear"
+            "deadline",
+            stringSchema
+                "Date, local date/time, or complete active Org timestamp/range with repeater and warning/delay; empty to clear"
             "priority", stringSchema "A-Z or empty to clear" ]
           "related",
           "Find incoming Org ID links to an entry. Does not require org-roam.",

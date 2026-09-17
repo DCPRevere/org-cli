@@ -69,7 +69,7 @@ let shiftTimestamp (ts: Timestamp) (now: DateTime) : Timestamp =
 // --- Planning timestamp parsing ---
 
 let private parseTimestampFromRaw (raw: string) : Timestamp option =
-    match Parsers.runParser Parsers.pTimestamp raw with
+    match Parsers.runParser Parsers.pTimestampRange raw with
     | Result.Ok ts -> Some ts
     | Result.Error _ -> None
 
@@ -127,7 +127,14 @@ let private keywordsFromContent (content: string) : string list =
     let effectiveConfig = FileConfig.mergeFileConfig Types.defaultConfig kws
     Types.allKeywords effectiveConfig.TodoKeywords
 
-let setTodoState (config: OrgConfig) (content: string) (pos: int64) (newState: string option) (now: DateTime) : string =
+let private setTodoStateCore
+    repeat
+    (config: OrgConfig)
+    (content: string)
+    (pos: int64)
+    (newState: string option)
+    (now: DateTime)
+    : string =
     let kws = keywordsFromConfig config
     let section = HeadlineEdit.split content pos
     let oldState = HeadlineEdit.getStateWith kws section.HeadlineLine
@@ -153,7 +160,9 @@ let setTodoState (config: OrgConfig) (content: string) (pos: int64) (newState: s
         |> Option.defaultValue Map.empty
 
     let isRepeat =
-        isDoneTransition && hasRepeaterInPlanning existingParts |> Option.isSome
+        repeat
+        && isDoneTransition
+        && hasRepeaterInPlanning existingParts |> Option.isSome
 
     if isRepeat then
         let repeatToState =
@@ -242,6 +251,18 @@ let setTodoState (config: OrgConfig) (content: string) (pos: int64) (newState: s
                     PlanningLine = newPlanningLine }
 
         HeadlineEdit.reassemble loggedSection
+
+/// Complete a recurring occurrence, or change a normal task state.
+let setTodoState config content pos newState now =
+    let repeat =
+        newState
+        |> Option.exists (fun state -> not (List.contains state [ "KILL"; "CANCELLED"; "CANCELED" ]))
+
+    setTodoStateCore repeat config content pos newState now
+
+/// Terminal cancellation must not advance a recurrence, even with a custom terminal keyword.
+let cancelTodoState config content pos newState now =
+    setTodoStateCore false config content pos newState now
 
 let private formatRescheduleEntry (keyword: string) (oldRaw: string) (now: DateTime) : string =
     let ts = HeadlineEdit.formatInactiveTimestamp now

@@ -826,3 +826,128 @@ let ``read only workspaces cannot reorder undo or move`` () =
 
     for operation in [ "board_settings"; "task_undo"; "task_move" ] do
         fails "read_only" (fun () -> readOnly.Invoke(operation, JsonObject()))
+
+[<Fact>]
+let ``recurrence cancellation keeps dates and terminal state while completion advances a range`` () =
+    for terminal in [ "DONE KILL"; "DONE" ] do
+        use h = new VirtualHost()
+
+        h.Put(
+            "/work/repeat.org",
+            "#+TODO: TODO | "
+            + terminal
+            + "\n* TODO Repeat\nSCHEDULED: <2030-01-01 Tue +1w>--<2030-01-02 Wed>\n"
+        )
+
+        let svc = service h
+        let entry = tasks svc "all" |> Seq.head
+        let cancelled = action svc entry "human" "cancel" []
+        Assert.Equal("cancelled", field cancelled "status")
+        Assert.Contains("2030-01-01", h.Text "/work/repeat.org")
+        Assert.DoesNotContain("LAST_REPEAT", h.Text "/work/repeat.org")
+
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/repeat.org",
+        "#+TODO: TODO | DONE KILL\n* TODO Repeat\nSCHEDULED: <2030-01-01 Tue +1w>--<2030-01-02 Wed>\n"
+    )
+
+    let svc = service h
+    let entry = tasks svc "all" |> Seq.head
+    let completed = action svc entry "human" "state" [ "state", "DONE" ]
+    Assert.Equal("TODO", field completed "state")
+    Assert.Equal("2030-01-08", field completed["scheduled"] "date")
+    Assert.Equal("2030-01-09", field completed["scheduled"].["end"] "date")
+    let killed = action svc completed "human" "state" [ "state", "KILL" ]
+    Assert.Equal("KILL", field killed "state")
+    Assert.Equal("2030-01-08", field killed["scheduled"] "date")
+
+[<Fact>]
+let ``calendar entries include active appointments but exclude examples history and inactive timestamps`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/events.org",
+        "* Meeting <2030-01-01 Tue 09:00-10:00>\n<2030-01-02 Wed>--<2030-01-03 Thu>\n[2030-01-04 Fri]\n:LOGBOOK:\n<2030-01-05 Sat>\n:END:\n#+BEGIN_SRC org\n<2030-01-06 Sun>\n#+END_SRC\n** TODO Child\nSCHEDULED: <2030-01-07 Mon>\n<2030-01-08 Tue>\n"
+    )
+
+    let svc = service h
+    Assert.Single(tasks svc "all") |> ignore
+    let args = arg [ "status", "all" ]
+    args["include_events"] <- JsonValue.Create true
+    let rows = (svc.Invoke("tasks", args)).["tasks"].AsArray()
+    Assert.Equal(2, rows.Count)
+    let meeting = rows |> Seq.find (fun row -> not (row["is_task"].GetValue<bool>()))
+    Assert.Equal(2, meeting["appointments"].AsArray().Count)
+    Assert.Equal("10:00", field meeting["appointments"].[0].["end"] "time")
+    let child = rows |> Seq.find (fun row -> row["is_task"].GetValue<bool>())
+    Assert.Single(child["appointments"].AsArray()) |> ignore
+
+[<Fact>]
+let ``task rows distinguish local and inherited tags and expose body search`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/tags.org",
+        "#+FILETAGS: :office:\n* Parent :team:\n** TODO Child :local:\nNeedle only in description\n"
+    )
+
+    let svc = service h
+    let entry = tasks svc "all" |> Seq.head
+    Assert.Equal("local", entry["tags"].[0].GetValue<string>())
+    Assert.Equal(2, entry["inherited_tags"].AsArray().Count)
+    Assert.Contains("Needle only", field entry "search_text")
+    let updated = svc.Invoke("task_update", editArgs svc entry [ "tags", "new" ])
+    Assert.Equal(2, updated["inherited_tags"].AsArray().Count)
+    Assert.Contains("** TODO Child :new:", h.Text "/work/tags.org")
+    Assert.DoesNotContain(":new:office:", h.Text "/work/tags.org")
+
+[<Fact>]
+let ``full planning timestamp editor handles repeat warning delay and range without losing endpoints`` () =
+    use h = new VirtualHost()
+    h.Put("/work/edit.org", "* TODO Edit\n")
+    let svc = service h
+    let entry = tasks svc "all" |> Seq.head
+
+    let updated =
+        svc.Invoke(
+            "task_update",
+            editArgs
+                svc
+                entry
+                [ "scheduled", "<2030-01-01 09:00 +1w --2d>--<2030-01-02 10:00>"
+                  "deadline", "<2030-01-03 17:00 -1d>" ]
+        )
+
+    Assert.Equal("--2d", field updated["scheduled"] "delay")
+    Assert.Equal("+1w", field updated["scheduled"] "repeater")
+    Assert.Equal("2030-01-02", field updated["scheduled"].["end"] "date")
+
+    let cleared =
+        svc.Invoke("task_update", editArgs svc updated [ "scheduled", "<2030-02-01 11:00>" ])
+
+    Assert.Null(cleared["scheduled"].["repeater"])
+    Assert.Null(cleared["scheduled"].["end"])
+
+    for invalid in [ "<2030-01-01>junk"; "<2030-01-03>--<2030-01-01>"; "<2030-01-01 +0w>" ] do
+        fails "invalid_arguments" (fun () -> svc.Invoke("task_update", editArgs svc cleared [ "scheduled", invalid ]))
+
+[<Fact>]
+let ``inherited tag selection and exclusion never remove explicit local tags`` () =
+    let doc =
+        Document.parse "#+FILETAGS: :office:\n* Parent :team:secret:\n** TODO Child :secret:\n"
+
+    let child = doc.Headlines |> List.last
+
+    let config =
+        { Types.defaultConfig with
+            InheritTags = Some [ "team" ]
+            TagsExcludeFromInheritance = [ "secret" ] }
+
+    Assert.Equal<string list>([ "team"; "secret" ], Headlines.computeInheritedTags config doc child)
+
+    Assert.Equal<string list>(
+        [ "secret" ],
+        Headlines.computeInheritedTags { config with TagInheritance = false } doc child
+    )

@@ -100,7 +100,7 @@ See the [MCP .NET SDK](https://github.com/modelcontextprotocol/csharp-sdk) and [
 Task results also include `outline` (parent heading titles), `tags` (explicit
 headline tags), and nullable `scheduled` / `deadline` objects. Each timestamp has
 `date` (`YYYY-MM-DD`), nullable `time` (`HH:mm`, no timezone conversion), nullable
-`repeater`, and nullable `end` (another timestamp object). Dates remain separate
+`repeater`, nullable `delay`, and nullable `end` (another timestamp object). Dates remain separate
 from workflow status and ownership; these fields are read from the Org heading.
 
 ### File-faithful task workflows (development)
@@ -125,3 +125,11 @@ from workflow status and ownership; these fields are read from the Org heading.
 `tasks` additionally filters exact `file` and `state`. Rows include `description`,
 `states`, `done_states`, `managed`, exact `state`, and separate coordination
 `status`. Read-only servers expose `workspace` and reject all new mutations.
+
+`tasks` accepts `include_events: true` to include non-TODO headings with active
+appointment timestamps. Rows expose `is_task`, `appointments`, `inherited_tags`
+(separate from local `tags`) and `search_text` (own heading content). Appointment
+headings are read-only in the board. Planning writes accept complete active Org
+timestamps/ranges in addition to simple dates; complete syntax explicitly replaces
+repeat/delay/range metadata. Simple date changes preserve existing repeat/delay
+metadata; use full syntax to edit a range.

@@ -38,14 +38,20 @@ let pDayName =
           pstring "Sat"
           pstring "Sun" ]
 
-let pTime = pipe2 (pint32 .>> pchar ':') pint32 (fun h m -> TimeSpan(h, m, 0))
+let pTime =
+    pipe2 (pint32 .>> pchar ':') pint32 (fun h m -> h, m)
+    >>= fun (h, m) ->
+        if h < 0 || h > 23 || m < 0 || m > 59 then
+            fail "Invalid time"
+        else
+            preturn (TimeSpan(h, m, 0))
 
 let pRepeater =
     many1Chars (anyOf "+.") .>>. many1Chars (digit <|> letter)
     |>> fun (prefix, value) -> prefix + value
 
 let pDelay =
-    pstring "-" .>>. many1Chars (digit <|> letter)
+    (attempt (pstring "--") <|> pstring "-") .>>. many1Chars (digit <|> letter)
     |>> fun (prefix, value) -> prefix + value
 
 let pTimestamp: Parser<Timestamp, unit> =
@@ -54,6 +60,7 @@ let pTimestamp: Parser<Timestamp, unit> =
         let! date = pDate
         let! _ = opt (attempt (ws1 >>. pDayName))
         let! timeOpt = opt (attempt (ws1 >>. pTime))
+        let! endTime = opt (attempt (pchar '-' >>. pTime))
         let! repeaterOpt = opt (attempt (ws1 >>. pRepeater))
         let! delayOpt = opt (attempt (ws1 >>. pDelay))
         let! _ = pTimestampClose tsType
@@ -69,7 +76,15 @@ let pTimestamp: Parser<Timestamp, unit> =
               HasTime = Option.isSome timeOpt
               Repeater = repeaterOpt
               Delay = delayOpt
-              RangeEnd = None }
+              RangeEnd =
+                endTime
+                |> Option.map (fun time ->
+                    { Type = tsType
+                      Date = date.Add(time)
+                      HasTime = true
+                      Repeater = None
+                      Delay = None
+                      RangeEnd = None }) }
     }
 
 let pTimestampRange: Parser<Timestamp, unit> =
@@ -80,6 +95,9 @@ let pTimestampRange: Parser<Timestamp, unit> =
         | Some endTs ->
             { start with
                 RangeEnd = Some { endTs with RangeEnd = None } }
+
+let parseCompleteTimestamp value =
+    runParser (pTimestampRange .>> eof) value
 
 // Link parsing
 // Format: [[type:path][description]] or [[type:path]] or [[path]]

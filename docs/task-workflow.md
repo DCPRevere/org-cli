@@ -32,7 +32,11 @@ dated entries and an Unscheduled section. Calendar provides Monday-first month
 and week views with Previous, Today, and Next navigation. Scheduled work and
 deadlines are separate, labelled entries; a task with both appears twice. Timestamp
 ranges span their recorded days. Dates and times retain Org's local wall-clock
-values. Repeater markers are displayed, but future occurrences are not expanded.
+values. Fixed `+`/`++` repeats have labelled previews within the visible calendar
+range (agenda: next 90 days); `.+` depends on completion and is not projected.
+Active appointment timestamps also appear, including headings without TODO states.
+Previews do not create entries or change files. Timed deadlines become overdue at
+their local time; date-only deadlines remain due through the end of the day.
 Undated tasks remain accessible in a collapsible section below the calendar. Compact calendar entries open
 full details on selection.
 
@@ -156,8 +160,9 @@ Task settings edit title, description, tags, priority, owner, dates and task
 contract fields. Description edits preserve children, property drawers and
 history; headings and managed drawers cannot be injected through this field.
 Planning dates accept `YYYY-MM-DD` or `YYYY-MM-DDTHH:mm`, with no timezone shift.
-Repeat/delay markers are preserved when a date changes. Edit ranged dates in the
-Org file, where both endpoints are visible. Claimed work must be released before
+Repeat/delay markers are preserved when a simple date changes. Full active Org
+syntax, such as `<2030-01-01 09:00 +1w --2d>--<2030-01-02 10:00>`, edits
+repeaters, warning/delay offsets and both range endpoints explicitly. Claimed work must be released before
 changing its contract; pending submissions must be reviewed or rejected.
 
 Move task chooses an existing file and optional parent. API/CLI can also target a
@@ -178,3 +183,9 @@ the draft. Ambiguous or deleted tasks require selecting the correct task again.
 Requests show progress and success/errors. Writes are disabled while pending;
 read/navigation actions queue behind them. After a timed-out write, inspect the
 file before retrying because the change may have succeeded.
+
+Local tags remain editable; inherited file/parent tags are displayed separately.
+Search includes the heading body and inherited tags. Automatic refresh updates
+file/workflow choices while preserving unsaved task drafts. Cancelling a recurring
+task does not advance its dates; completing an occurrence reports the actual
+resulting state and next planning dates.

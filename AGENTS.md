@@ -152,7 +152,9 @@ and handle conflicts explicitly.
 The browser offers List, Board, Agenda, and month/week Calendar views with shared
 filters and task details. Cards identify their source file and explicit owner;
 folders do not imply ownership. Scheduled work and deadlines remain distinct.
-Repeating timestamps show their recorded occurrence, not projected future repeats.
+Agenda/calendar include active appointment timestamps, including non-TODO headings.
+Fixed +/++ repeats have labelled previews; .+ depends on completion and is not projected.
+Inherited tags are displayed separately from editable local tags.
 The board refreshes automatically while preserving drafts. When warned about
 external changes, preserve any desired draft text and reload the current task
 before submitting. Recovery journals support interrupted multi-file operations;

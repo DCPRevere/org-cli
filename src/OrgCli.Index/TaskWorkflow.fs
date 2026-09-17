@@ -156,6 +156,51 @@ type private Entry =
       Heading: Headline
       Config: OrgConfig }
 
+let private ownText content (doc: OrgDocument) (h: Headline) =
+    let finish =
+        doc.Headlines
+        |> List.tryFind (fun next -> next.Position > h.Position)
+        |> Option.map (fun next -> int next.Position)
+        |> Option.defaultValue (String.length content)
+
+    content.Substring(int h.Position, finish - int h.Position)
+
+let private appointments content doc h =
+    let mutable drawer = false
+    let mutable block = false
+
+    ownText content doc h
+    |> fun source -> source.Split('\n')
+    |> Array.collect (fun line ->
+        let trimmed = line.Trim()
+
+        if trimmed.StartsWith("#+BEGIN_", StringComparison.OrdinalIgnoreCase) then
+            block <- true
+        elif trimmed.StartsWith("#+END_", StringComparison.OrdinalIgnoreCase) then
+            block <- false
+        elif trimmed = ":END:" then
+            drawer <- false
+        elif System.Text.RegularExpressions.Regex.IsMatch(trimmed, "^:[A-Za-z_]+:$") then
+            drawer <- true
+
+        if
+            drawer
+            || block
+            || System.Text.RegularExpressions.Regex.IsMatch(trimmed, "^(SCHEDULED:|DEADLINE:|CLOSED:|#)")
+        then
+            [||]
+        else
+            System.Text.RegularExpressions.Regex.Matches(line, @"<\d{4}-\d{2}-\d{2}[^>]*>(?:--<[^>]*>)?")
+            |> Seq.choose (fun m ->
+                try
+                    match Parsers.runParser Parsers.pTimestampRange m.Value with
+                    | Ok stamp when stamp.Type = TimestampType.Active -> Some stamp
+                    | _ -> None
+                with _ ->
+                    None)
+            |> Seq.toArray)
+    |> Array.toList
+
 let private entries (ctx: Context) docs =
     docs
     |> List.collect (fun (file, doc) ->
@@ -290,6 +335,7 @@ let rec private planningJson (stamp: Timestamp) =
                text (stamp.Date.ToString("HH:mm", Globalization.CultureInfo.InvariantCulture))
            else
                null)
+          "delay", (stamp.Delay |> Option.map text |> Option.defaultValue null)
           "repeater", (stamp.Repeater |> Option.map text |> Option.defaultValue null)
           "end", (stamp.RangeEnd |> Option.map planningJson |> Option.defaultValue null) ]
 
@@ -326,6 +372,14 @@ let private row ctx graph e =
           "revision", text (hash content)
           "outline", parents |> Seq.map (fun parent -> text parent.Title) |> arr
           "tags", h.Tags |> Seq.map text |> arr
+          "inherited_tags",
+          (Headlines.computeInheritedTags e.Config e.Doc h
+           |> List.filter (fun tag -> not (List.contains tag h.Tags)))
+          |> Seq.map text
+          |> arr
+          "search_text", text (ownText content e.Doc h)
+          "appointments", appointments content e.Doc h |> Seq.map planningJson |> arr
+          "is_task", flag h.TodoKeyword.IsSome
           "scheduled",
           (h.Planning
            |> Option.bind (fun p -> p.Scheduled)
@@ -343,7 +397,7 @@ let private row ctx graph e =
           "done_states", e.Config.TodoKeywords.DoneStates |> Seq.map (fun k -> text k.Keyword) |> arr
           "managed", flag (prop "TASK_MANAGED" h = "true")
           "state", text (h.TodoKeyword |> Option.defaultValue "")
-          "status", text (status graph e)
+          "status", text (if h.TodoKeyword.IsSome then status graph e else "event")
           "project", text (prop "TASK_PROJECT" h)
           "owner", text (prop "TASK_OWNER" h)
           "acceptance", text (prop "TASK_ACCEPTANCE" h)
@@ -365,7 +419,15 @@ let private row ctx graph e =
 
 let allowed operation =
     match operation with
-    | "tasks" -> [ "status"; "project"; "owner"; "file"; "state"; "limit"; "offset" ]
+    | "tasks" ->
+        [ "include_events"
+          "status"
+          "project"
+          "owner"
+          "file"
+          "state"
+          "limit"
+          "offset" ]
     | "task_move" ->
         [ "ref"
           "expected_revision"
@@ -539,35 +601,50 @@ let private applyFields graph taskId cfg (args: JsonObject) content pos =
         if args.ContainsKey key then
             let value = optional args key ""
 
-            if value <> "" then
-                match
-                    DateTime.TryParseExact(
-                        value,
-                        [| "yyyy-MM-dd"; "yyyy-MM-ddTHH:mm" |],
-                        Globalization.CultureInfo.InvariantCulture,
-                        Globalization.DateTimeStyles.None
-                    )
-                with
-                | true, _ -> ()
-                | _ -> fail "invalid_arguments" 400 (key + " must be yyyy-MM-dd or empty")
+            let explicitStamp = value.StartsWith("<")
 
             let stamp =
                 if value = "" then
                     None
                 else
-                    Some
-                        { Type = TimestampType.Active
-                          Date =
-                            DateTime.ParseExact(
-                                value,
-                                [| "yyyy-MM-dd"; "yyyy-MM-ddTHH:mm" |],
-                                Globalization.CultureInfo.InvariantCulture,
-                                Globalization.DateTimeStyles.None
-                            )
-                          HasTime = value.Contains("T")
-                          Repeater = None
-                          Delay = None
-                          RangeEnd = None }
+                    let raw =
+                        if explicitStamp then
+                            value
+                        else
+                            "<" + value.Replace("T", " ") + ">"
+
+                    let parsed =
+                        try
+                            match Parsers.parseCompleteTimestamp raw with
+                            | Ok stamp when Writer.formatTimestamp stamp <> "" -> Some stamp
+                            | _ -> None
+                        with _ ->
+                            None
+
+                    match parsed with
+                    | Some stamp when System.Text.RegularExpressions.Regex.IsMatch(raw, @"^<[^>]+>(?:--<[^>]+>)?$") ->
+                        if stamp.RangeEnd |> Option.exists (fun ending -> ending.Date < stamp.Date) then
+                            fail "invalid_arguments" 400 "Range end must not precede its start"
+
+                        if
+                            stamp.Repeater
+                            |> Option.exists (fun repeat -> Mutations.parseRepeater repeat |> Option.isNone)
+                        then
+                            fail "invalid_arguments" 400 "Invalid repeater"
+
+                        if
+                            stamp.Delay
+                            |> Option.exists (fun delay ->
+                                not (System.Text.RegularExpressions.Regex.IsMatch(delay, @"^--?\d+[hdwmy]$")))
+                        then
+                            fail "invalid_arguments" 400 "Invalid warning/delay offset"
+
+                        Some stamp
+                    | _ ->
+                        fail
+                            "invalid_arguments"
+                            400
+                            "Use a date, local date/time, or complete active Org timestamp/range"
 
             let previous =
                 (Document.parseWithConfig cfg result).Headlines
@@ -578,7 +655,7 @@ let private applyFields graph taskId cfg (args: JsonObject) content pos =
 
             let stamp =
                 match stamp, previous with
-                | Some next, Some old ->
+                | Some next, Some old when not explicitStamp ->
                     if old.RangeEnd.IsSome then
                         fail
                             "invalid_arguments"
@@ -773,10 +850,35 @@ let invoke (ctx: Context) operation (args: JsonObject) =
         let limit = intArg args "limit" 50 1 100
         let offset = intArg args "offset" 0 0 1000000
 
+        let candidates =
+            if boolArg args "include_events" false then
+                all
+                @ (docs
+                   |> List.collect (fun (file, doc) ->
+                       let content = Runtime.readText file
+
+                       doc.Headlines
+                       |> List.filter (fun h ->
+                           h.TodoKeyword.IsNone
+                           && (not (List.isEmpty (appointments content doc h))
+                               || (h.Planning
+                                   |> Option.exists (fun plan -> plan.Scheduled.IsSome || plan.Deadline.IsSome))))
+                       |> List.map (fun h ->
+                           { File = file
+                             Doc = doc
+                             Heading = h
+                             Config = FileConfig.mergeFileConfig ctx.Config doc.Keywords })))
+            else
+                all
+
         let filtered =
-            all
+            candidates
             |> List.filter (fun e ->
-                let phase = status graph e
+                let phase =
+                    if e.Heading.TodoKeyword.IsSome then
+                        status graph e
+                    else
+                        "event"
 
                 (selectedStatus = "all"
                  || (selectedStatus = "open" && phase <> "done" && phase <> "cancelled")
@@ -1224,8 +1326,11 @@ let invoke (ctx: Context) operation (args: JsonObject) =
                     cfg.TodoKeywords.DoneStates
                     |> List.tryFind (fun k -> List.contains k.Keyword [ "KILL"; "CANCELLED"; "CANCELED" ])
                 with
-                | Some k -> after <- Mutations.setTodoState cfg after pos (Some k.Keyword) (Runtime.now ())
-                | None -> after <- state cfg true after pos
+                | Some k -> after <- Mutations.cancelTodoState cfg after pos (Some k.Keyword) (Runtime.now ())
+                | None ->
+                    match cfg.TodoKeywords.DoneStates |> List.tryHead with
+                    | Some k -> after <- Mutations.cancelTodoState cfg after pos (Some k.Keyword) (Runtime.now ())
+                    | None -> fail "invalid_arguments" 400 "No terminal state is configured"
 
                 after <- Mutations.setProperty after pos "TASK_PHASE" "CANCELLED"
             elif action = "reopen" then

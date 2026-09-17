@@ -105,12 +105,15 @@ let computeInheritedTags (config: OrgConfig) (doc: OrgDocument) (target: Headlin
         else
             []
 
-    let combined = filetags @ ancestorTags @ target.Tags
     let excluded = Set.ofList config.TagsExcludeFromInheritance
 
-    combined
-    |> List.filter (fun t -> not (Set.contains t excluded))
-    |> List.distinct
+    let inherited =
+        filetags @ ancestorTags
+        |> List.filter (fun tag ->
+            not (Set.contains tag excluded)
+            && (config.InheritTags |> Option.forall (List.contains tag)))
+
+    (inherited @ target.Tags) |> List.distinct
 
 let private alwaysInheritedProperties =
     set [ "CATEGORY"; "ARCHIVE"; "COLUMNS"; "LOGGING" ]

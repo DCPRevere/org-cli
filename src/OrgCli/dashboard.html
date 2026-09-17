@@ -725,8 +725,21 @@
                 if (!stamp) return "";
                 return stamp.date + (stamp.time ? " " + stamp.time : "") +
                     (stamp.end ? " – " + dateLabel(stamp.end) : "") +
-                    (stamp.repeater ? " (" + stamp.repeater + ")" : "");
+                    (stamp.repeater ? " (" + stamp.repeater + ")" : "") + (stamp.delay ? " [warning/delay " + stamp.delay + "]" : "");
             }
+            function timestampInput(stamp) {
+                if (!stamp) return "";
+                const simple = stamp.date + (stamp.time ? "T" + stamp.time : "");
+                if (!stamp.end && !stamp.repeater && !stamp.delay) return simple;
+                const raw = value => "<" + value.date + (value.time ? " " + value.time : "") + (value.repeater ? " " + value.repeater : "") + (value.delay ? " " + value.delay : "") + ">";
+                return raw(stamp) + (stamp.end ? "--" + raw(stamp.end) : "");
+            }
+            function overdue(stamp, now = new Date()) {
+                if (!stamp) return false;
+                const end = stamp.end || stamp;
+                return end.time ? new Date(end.date + "T" + end.time) < now : end.date < dayKey(now);
+            }
+            const eventLabel = event => (event.projected ? "Projected " : "") + ({deadline:"Deadline", scheduled:"Scheduled", appointment:"Appointment"}[event.kind]) + ": " + dateLabel(event.stamp);
             async function load(more = false) {
                 const comprehensive = $("view").value !== "list" || $("search-filter").value.trim() || $("workflow-filter").value;
                 savePreferences();
@@ -736,6 +749,7 @@
                 do {
                     response = await request("tasks", {
                         status: $("status").value,
+                        include_events: ["agenda", "calendar"].includes($("view").value),
                         project: $("project-filter").value,
                         owner: $("owner-filter").value,
                         file: $("file-filter").value,
@@ -754,11 +768,11 @@
                 $("coverage").textContent = next === null ? "All matching tasks loaded." : rows.length + " of " + response.total + " tasks loaded. Load more to see the rest.";
                 renderList();
             }
-            function taskCard(row, compact = false, eventLabel = "") {
+            function taskCard(row, compact = false, eventLabel = "", projected = false) {
                 const b = el("button", undefined, "task");
                 b.setAttribute("aria-pressed", String(selected?.ref === row.ref));
-                b.append(el("span", row.state, "badge org-state"), el("span", row.status, "badge coordination " + row.status));
-                b.draggable = canWrite;
+                b.append(el("span", row.is_task === false ? "Appointment" : row.state, "badge org-state"), el("span", row.status, "badge coordination " + row.status));
+                b.draggable = canWrite && row.is_task !== false;
                 b.ondragstart = event => { draggedTask = row; draggedColumn = null; event.dataTransfer.setData("text/plain", row.ref); };
                 b.ondragend = () => { draggedTask = null; };
                 if (eventLabel) b.append(el("span", eventLabel, "meta"));
@@ -774,22 +788,57 @@
                     if (row.scheduled) add("Scheduled: " + dateLabel(row.scheduled));
                     if (row.deadline) add("Deadline: " + dateLabel(row.deadline));
                     if (row.tags?.length) add("Tags: " + row.tags.join(", "));
+                    if (row.inherited_tags?.length) add("Inherited tags: " + row.inherited_tags.join(", "));
                     if (row.acceptance) add("Acceptance: " + row.acceptance, "meta preview");
                     else if (row.description) add(row.description, "meta preview");
                     if (row.depends_on?.length) add("Dependencies: " + row.depends_on.length);
                     for (const blocker of row.blockers) add(blocker, "meta overdue");
                     if (row.managed && row.review_required && !finished(row)) add(row.status === "review" ? "Awaiting review" + (row.submitted_by ? " · submitted by " + row.submitted_by : "") : "Review required");
                 } else if (row.blockers.length) add(row.blockers.length + " blocker(s)", "meta overdue");
-                if (!finished(row) && row.deadline?.date < todayKey()) add("Overdue deadline", "meta overdue");
-                if (!finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta");
+                if (!projected && !finished(row) && overdue(row.deadline)) add("Overdue deadline", "meta overdue");
+                if (!projected && !finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta");
                 if (row.claim_stale || row.submission_stale) add("Requirements changed", "meta overdue");
                 if (row.claim_expired) add("Claim expired", "meta overdue");
                 b.onclick = () => read(() => choose(row));
                 return b;
             }
-            function planningEvents(tasks) {
-                return tasks.flatMap(row => ["scheduled", "deadline"].filter(kind => row[kind]).map(kind => ({row, kind, stamp: row[kind]})))
-                    .sort((a,b) => (a.stamp.date + (a.stamp.time || "")).localeCompare(b.stamp.date + (b.stamp.time || "")) || a.row.title.localeCompare(b.row.title));
+            function planningEvents(tasks, from, through) {
+                const horizon = new Date(); horizon.setDate(horizon.getDate() + 90);
+                through ||= dayKey(horizon);
+                const events = [];
+                const shift = (stamp, n, unit) => {
+                    const date = new Date(stamp.date + "T" + (stamp.time || "00:00"));
+                    const old = new Date(date);
+                    if (unit === "h") date.setHours(date.getHours() + n);
+                    else if (unit === "d" || unit === "w") date.setDate(date.getDate() + n * (unit === "w" ? 7 : 1));
+                    else { const day = date.getDate(); date.setDate(1); date.setMonth(date.getMonth() + n * (unit === "y" ? 12 : 1)); date.setDate(Math.min(day, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate())); }
+                    const moved = {...stamp, date:dayKey(date), time:stamp.time ? String(date.getHours()).padStart(2,"0") + ":" + String(date.getMinutes()).padStart(2,"0") : null};
+                    if (stamp.end) { const end = new Date(stamp.end.date + "T" + (stamp.end.time || "00:00")); end.setTime(end.getTime() + date.getTime() - old.getTime()); moved.end = {...stamp.end, date:dayKey(end), time:stamp.end.time ? String(end.getHours()).padStart(2,"0") + ":" + String(end.getMinutes()).padStart(2,"0") : null}; }
+                    return moved;
+                };
+                for (const row of tasks) {
+                    const source = ["scheduled", "deadline"].filter(kind => row[kind]).map(kind => ({kind, stamp:row[kind]})).concat((row.appointments || []).map(stamp => ({kind:"appointment", stamp})));
+                    for (const {kind, stamp} of source) {
+                        const add = (value, projected) => { if ((!from || (value.end?.date || value.date) >= from) && (!projected || value.date <= through)) events.push({row,kind,stamp:value,projected}); };
+                        add(stamp, false);
+                        const repeat = /^(\+\+|\+)([1-9]\d*)([hdwmy])$/.exec(stamp.repeater || "");
+                        if (!repeat || finished(row)) continue; // .+ needs an actual completion date.
+                        let next = stamp;
+                        if (["h", "d", "w"].includes(repeat[3])) {
+                            const end = stamp.end || stamp;
+                            const elapsed = new Date((from || todayKey()) + "T00:00") - new Date(end.date + "T" + (end.time || "00:00"));
+                            const unit = {h:3600000,d:86400000,w:604800000}[repeat[3]];
+                            const skip = Math.max(0, Math.floor(elapsed / (Number(repeat[2]) * unit)) - 2);
+                            if (skip) next = shift(stamp, skip * Number(repeat[2]), repeat[3]);
+                        }
+                        for (let i = 0; i < 100000; i++) {
+                            next = shift(next, Number(repeat[2]), repeat[3]);
+                            if (next.date > through || !/^\d{4}-/.test(next.date)) break;
+                            if (next.date >= (from || todayKey()) || (next.end?.date || next.date) >= (from || todayKey())) add(next, true);
+                        }
+                    }
+                }
+                return events.sort((a,b) => (a.stamp.date + (a.stamp.time || "")).localeCompare(b.stamp.date + (b.stamp.time || "")) || a.row.title.localeCompare(b.row.title));
             }
             function renderList() {
                 const list = $("list"), view = $("view").value;
@@ -800,7 +849,7 @@
                 const calendarScroll = list.querySelector(".calendar-scroll")?.scrollLeft || 0;
                 list.replaceChildren();
                 const query = $("search-filter").value.trim().toLowerCase();
-                const visible = rows.filter(row => (!$("workflow-filter").value || workflowKey(row) === $("workflow-filter").value)).filter(row => [row.title, row.file, row.owner, row.project, row.acceptance, ...(row.tags || []), ...(row.outline || [])].join(" ").toLowerCase().includes(query));
+                const visible = rows.filter(row => (!$("workflow-filter").value || workflowKey(row) === $("workflow-filter").value)).filter(row => [row.title, row.file, row.owner, row.project, row.acceptance, row.description, row.search_text, ...(row.tags || []), ...(row.inherited_tags || []), ...(row.outline || [])].join(" ").toLowerCase().includes(query));
                 if (view === "board") {
                     const relevantFiles = (workspace?.files || []).filter(file => (!$("file-filter").value || file.file === $("file-filter").value) && (!$("workflow-filter").value || workflowKey(file) === $("workflow-filter").value));
                     const discovered = [...new Set(relevantFiles.flatMap(file => file.states).concat(visible.flatMap(row => row.states || [row.state])))];
@@ -835,17 +884,31 @@
                         column.append(cards); list.append(column);
                     }
                 } else if (view === "agenda") {
+                    list.append(el("p", "Recorded dates plus projected +/++ repeats for the next 90 days. .+ repeats depend on completion. Ranges show both endpoints.", "calendar-help"));
                     const groups = new Map();
                     for (const event of planningEvents(visible)) {
-                        const day = event.stamp.date;
-                        const key = day < todayKey() && !finished(event.row) ? (event.kind === "deadline" ? "Overdue deadlines" : "Planned earlier") : day === todayKey() ? "Today · " + day : day;
+                        const rangeDays = [event.stamp.date];
+                        if (event.stamp.end) {
+                            const cursor = new Date((event.stamp.date < todayKey() ? todayKey() : event.stamp.date) + "T12:00");
+                            const horizon = new Date(); horizon.setDate(horizon.getDate() + 90);
+                            while (dayKey(cursor) <= event.stamp.end.date && dayKey(cursor) <= dayKey(horizon)) {
+                                if (dayKey(cursor) !== event.stamp.date) rangeDays.push(dayKey(cursor));
+                                cursor.setDate(cursor.getDate() + 1);
+                            }
+                        }
+                        for (const day of rangeDays) {
+                        const key = !finished(event.row) && event.kind === "deadline" && overdue(event.stamp) ? "Overdue deadlines" : day < todayKey() && !finished(event.row) && event.kind === "scheduled" ? "Planned earlier" : day === todayKey() ? "Today · " + day : day;
                         if (!groups.has(key)) groups.set(key, []);
-                        groups.get(key).push(event);
+                        if (!groups.get(key).includes(event)) groups.get(key).push(event);
+                        }
                     }
-                    for (const [label, events] of [...groups].sort(([a], [b]) => a.startsWith("Overdue") ? -1 : b.startsWith("Overdue") ? 1 : 0)) {
+                    for (const [label, events] of [...groups].sort(([a], [b]) => {
+                        const key = label => label === "Overdue deadlines" ? "0" : label === "Planned earlier" ? "1" : "2" + label.replace("Today · ", "");
+                        return key(a).localeCompare(key(b));
+                    })) {
                         const group = el("section", undefined, "agenda-group");
                         group.append(el("h3", label));
-                        events.forEach(event => group.append(taskCard(event.row, false, (event.kind === "deadline" ? "Deadline: " : "Scheduled: ") + dateLabel(event.stamp))));
+                        events.forEach(event => group.append(taskCard(event.row, false, eventLabel(event), event.projected)));
                         list.append(group);
                     }
                     appendUnscheduled(list, visible);
@@ -856,7 +919,7 @@
                 if (!visible.length && view !== "calendar" && view !== "board") list.append(el("p", "No tasks in this view.", "empty"));
             }
             function appendUnscheduled(root, tasks) {
-                const undated = tasks.filter(row => !row.scheduled && !row.deadline);
+                const undated = tasks.filter(row => !row.scheduled && !row.deadline && !row.appointments?.length);
                 if (!undated.length) return;
                 const collapsible = $("view").value === "calendar";
                 const group = el(collapsible ? "details" : "section", undefined, "agenda-group");
@@ -882,16 +945,17 @@
                     nav.append(button);
                 }
                 nav.append(el("h3", week ? "Week of " + dayKey(start) : calendarDate.toLocaleDateString(undefined, {month:"long", year:"numeric"})));
-                root.append(nav, el("p", "Scheduled and deadline entries are separate. Select an entry for full details and workflow actions. Repeating tasks show their recorded occurrence; future repeats are not expanded.", "calendar-help"));
+                root.append(nav, el("p", "Scheduled work, deadlines and appointments are separate. Ranges span their dates. Projected +/++ repeats are previews, not new file entries; .+ repeats depend on completion and are not projected.", "calendar-help"));
                 const scroll = el("div", undefined, "calendar-scroll"), grid = el("div", undefined, "calendar");
-                const events = planningEvents(tasks);
+                const finish = new Date(start); finish.setDate(finish.getDate() + days - 1);
+                const events = planningEvents(tasks, dayKey(start), dayKey(finish));
                 for (let i = 0; i < days; i++) {
                     const date = new Date(start); date.setDate(start.getDate() + i);
                     const key = dayKey(date), cell = el("section", undefined, "calendar-day" + (key === todayKey() ? " today" : ""));
                     cell.dataset.date = key;
                     cell.append(el("h3", date.toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"})));
                     for (const event of events.filter(event => event.stamp.date <= key && (event.stamp.end?.date || event.stamp.date) >= key))
-                        cell.append(taskCard(event.row, true, (event.kind === "deadline" ? "Deadline: " : "Scheduled: ") + dateLabel(event.stamp)));
+                        cell.append(taskCard(event.row, true, eventLabel(event), event.projected));
                     grid.append(cell);
                 }
                 scroll.append(grid); root.append(scroll);
@@ -978,6 +1042,10 @@
                             "box",
                         ),
                     );
+                }
+                if (row.is_task === false) {
+                    const source = el("section", undefined, "box"); source.append(el("h3", "Appointment · Source Org"), el("pre", fetched.text)); root.append(source);
+                    return;
                 }
                 const stateLabel = labelled("Org state", "edit-state", "", "select");
                 for (const state of row.states) stateLabel.lastChild.append(new Option(state, state));
@@ -1068,10 +1136,10 @@
                 form.append(
                     labelled("Title", "edit-title", row.title),
                     labelled("Description", "edit-text", row.description, "textarea"),
-                    labelled("Tags", "edit-tags", row.tags.join(" ")),
+                    labelled("Local tags (inherited tags are shown above)", "edit-tags", row.tags.join(" ")),
                     labelled("Priority (A–Z)", "edit-priority", row.priority),
-                    labelled("Scheduled (planned date/time)", "edit-scheduled", row.scheduled ? row.scheduled.date + (row.scheduled.time ? "T" + row.scheduled.time : "") : ""),
-                    labelled("Deadline (latest completion date/time)", "edit-deadline", row.deadline ? row.deadline.date + (row.deadline.time ? "T" + row.deadline.time : "") : ""),
+                    labelled("Scheduled (planned date/time)", "edit-scheduled", timestampInput(row.scheduled)),
+                    labelled("Deadline (latest completion date/time)", "edit-deadline", timestampInput(row.deadline)),
                     labelled(
                         "Acceptance criteria",
                         "edit-acceptance",
@@ -1113,8 +1181,8 @@
                         for (const [key, id, old] of [
                             ["title", "edit-title", row.title], ["text", "edit-text", row.description],
                             ["tags", "edit-tags", row.tags.join(" ")], ["priority", "edit-priority", row.priority],
-                            ["scheduled", "edit-scheduled", row.scheduled ? row.scheduled.date + (row.scheduled.time ? "T" + row.scheduled.time : "") : ""],
-                            ["deadline", "edit-deadline", row.deadline ? row.deadline.date + (row.deadline.time ? "T" + row.deadline.time : "") : ""],
+                            ["scheduled", "edit-scheduled", timestampInput(row.scheduled)],
+                            ["deadline", "edit-deadline", timestampInput(row.deadline)],
                             ["acceptance", "edit-acceptance", row.acceptance], ["project", "edit-project", row.project], ["owner", "edit-owner", row.owner]
                         ]) if ($(id).value !== old) args[key] = $(id).value;
                         if ($("edit-deps").value !== row.depends_on.join(" ")) args.depends_on = $("edit-deps").value.trim().split(/\s+/).filter(Boolean);
@@ -1125,6 +1193,7 @@
                         message(result.warning || "Task saved.");
                     });
                 };
+                form.append(el("p", "Dates accept YYYY-MM-DD, YYYY-MM-DDTHH:mm, or full Org syntax: <2030-01-01 09:00 +1w -2d>--<2030-01-02 10:00>. Edit repeaters, warning/delay offsets and range endpoints here; empty clears the timestamp.", "meta"));
                 contract.append(form);
                 root.append(contract);
                 const move = el("details"); move.append(el("summary", "Move to another file or heading"));
@@ -1279,6 +1348,7 @@
             async function refreshView() {
                 // Preserve all loaded pages, so polling does not collapse pagination.
                 const count = Math.max(rows.length, 50);
+                await loadWorkspace();
                 await load();
                 while (next !== null && rows.length < count) await load(true);
                 if (!selected) return;
@@ -1364,7 +1434,7 @@
                 if (row.state === state) return;
                 if (!row.states.includes(state)) throw Error("This file does not define " + state + ". Choose one of its configured states.");
                 const result = await request("task_action", {ref: row.ref, expected_revision: row.revision, actor: actor(), action: "state", state});
-                await afterWrite(result); message("State saved as " + state + ".");
+                await afterWrite(result); message(result.warning || (result.state === state ? "State saved as " + result.state + "." : "Occurrence completed; file state is " + result.state + ". " + [result.scheduled ? "Next scheduled: " + dateLabel(result.scheduled) : "", result.deadline ? "Next deadline: " + dateLabel(result.deadline) : ""].filter(Boolean).join(" ")));
             }
             async function reorderColumn(order, from, to) {
                 const next = [...order]; next.splice(next.indexOf(from), 1); next.splice(order.indexOf(to), 0, from);
