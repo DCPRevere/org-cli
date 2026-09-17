@@ -1065,9 +1065,12 @@
                     ].includes(action)
                 )
                     args.evidence = evidence;
+                if (action === "cancel") $("activity").textContent = "Cancelling task…";
                 const result = await request("task_action", args);
                 claimRequest = null;
+                if (action === "cancel") $("activity").textContent = "Updating task list…";
                 await afterWrite(result);
+                if (action === "cancel") message("Task cancelled." + (result.warning ? " " + result.warning : ""));
             }
             async function connect() {
                 const tools = await request("tools");

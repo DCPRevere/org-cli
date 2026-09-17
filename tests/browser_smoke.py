@@ -198,9 +198,33 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                     raise AssertionError(layout + ' overflow')
             page.set_viewport_size({'width': 1400, 'height': 1000})
             page.locator('#evidence').fill('')
+            # Cancellation must finish without a subsequent external file edit.
+            held_cancel = []
+            page.route('**/api/v1/task_action', lambda route: held_cancel.append(route), times=1)
             page.get_by_role('button', name='Cancel task', exact=True).click()
+            expect(page.locator('#activity')).to_have_text('Cancelling task…')
+            expect(page.get_by_role('button', name='Cancel task', exact=True)).to_be_disabled()
+            # Navigation requested while the action is pending must run afterwards.
+            page.locator('#view').select_option('list')
+            assert held_cancel
+            held_cancel[0].continue_()
             expect(page.locator('#detail > .badge')).to_have_text('cancelled')
+            expect(page.locator('body')).to_have_attribute('aria-busy', 'false')
+            expect(page.locator('#activity')).to_be_empty()
             assert 'Task cancel by reviewer' in source.read_text()
+            # Select and cancel a different heading in the same file, whose loc ref changed.
+            page.locator('#list .task').filter(has_text='Undated 000').click()
+            expect(page.locator('#detail .detail-title')).to_have_text('Undated 000')
+            page.get_by_role('button', name='Cancel task', exact=True).click()
+            expect(page.locator('#message')).to_have_text('Task cancelled.')
+            expect(page.locator('#detail > .badge')).to_have_text('cancelled')
+            expect(page.locator('#list .task').filter(has_text='Undated 000')).to_have_count(0)
+            page.locator('#status').select_option('cancelled')
+            expect(page.locator('#list .task')).to_have_count(2)
+            page.locator('#list .task').filter(has_text='Undated 000').click()
+            expect(page.locator('#detail .detail-title')).to_have_text('Undated 000')
+            page.get_by_role('button', name='Reopen', exact=True).click()
+            expect(page.locator('#detail > .badge')).to_have_text('ready')
             page.reload()
             expect(page.locator('#actor')).to_have_value('reviewer')
             expect(page.locator('#token')).to_have_value('')
