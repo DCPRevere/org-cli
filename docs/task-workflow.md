@@ -189,3 +189,28 @@ Search includes the heading body and inherited tags. Automatic refresh updates
 file/workflow choices while preserving unsaved task drafts. Cancelling a recurring
 task does not advance its dates; completing an occurrence reports the actual
 resulting state and next planning dates.
+
+## Rich heading view
+
+Selecting a task shows clickable outline breadcrumbs and an expandable subheading
+tree. You can navigate ordinary headings as well as tasks, even outside the current
+list filter. Existing title cookies remain visible exactly as recorded; additional
+counts report immediate child tasks in terminal states and top-level checkboxes.
+
+The Content panel renders common Org emphasis, lists, tables, source blocks and
+links, with a Source toggle. HTTP(S)/email links open normally; `id:` links navigate
+the workspace. Other link targets stay visible as text/tooltips. It never evaluates
+source blocks or raw HTML. This is a practical Org renderer, not an Emacs exporter;
+unsupported constructs remain available in source. Local file links are not served.
+
+Checkbox clicks preserve the outline and update existing fraction/percentage cookies.
+Nested parents become mixed when only some children are checked. `COOKIE_DATA: todo`
+cookies are left alone; checkbox `recursive` statistics count nested boxes. ORDERED
+lists enforce sequence; radio lists remain read-only. Unsaved editor drafts must be
+saved or discarded before a checkbox write. External-edit conflicts leave files intact.
+
+Properties shows effective values with Explicit/Inherited labels and their source.
+Time and history shows CLOSED, each clock entry, completed duration for this heading
+only, and the original logbook. Running clocks show elapsed time when loaded and are
+excluded from the completed total. These panels inspect properties and clocks; they
+do not rewrite them or start timers.

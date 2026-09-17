@@ -339,9 +339,8 @@ let rec private planningJson (stamp: Timestamp) =
           "repeater", (stamp.Repeater |> Option.map text |> Option.defaultValue null)
           "end", (stamp.RangeEnd |> Option.map planningJson |> Option.defaultValue null) ]
 
-let private row ctx graph e =
+let private rowWithContent ctx graph e (content: string) =
     let h = e.Heading
-    let content = Runtime.readText e.File
 
     let parents =
         e.Doc.Headlines
@@ -417,8 +416,13 @@ let private row ctx graph e =
           "claim_expired", flag (prop "TASK_CLAIM_ID" h <> "" && not (active h))
           "submitted_by", text (prop "TASK_SUBMITTED_BY" h) ]
 
+let private row ctx graph e =
+    rowWithContent ctx graph e (Runtime.readText e.File)
+
 let allowed operation =
     match operation with
+    | "entry_details" -> [ "ref" ]
+    | "entry_checkbox" -> [ "ref"; "expected_revision"; "actor"; "line"; "checked" ]
     | "tasks" ->
         [ "include_events"
           "status"
@@ -480,7 +484,7 @@ let allowed operation =
     | _ -> []
 
 let isMutation operation =
-    List.contains operation [ "task_create"; "task_update"; "task_action"; "task_move" ]
+    List.contains operation [ "task_create"; "task_update"; "task_action"; "task_move"; "entry_checkbox" ]
 
 let private requireRevision args content =
     if required args "expected_revision" <> hash content then
@@ -831,6 +835,86 @@ let invoke (ctx: Context) operation (args: JsonObject) =
         result
 
     match operation with
+    | "entry_details" ->
+        let file, pos, content, doc = ctx.Resolve(required args "ref")
+
+        if pos < 0L then
+            fail "invalid_arguments" 400 "Choose a heading"
+
+        let h = doc.Headlines |> List.find (fun h -> h.Position = pos)
+        let cfg = FileConfig.mergeFileConfig ctx.Config doc.Keywords
+
+        let result =
+            rowWithContent
+                ctx
+                graph
+                { File = file
+                  Doc = doc
+                  Heading = h
+                  Config = cfg }
+                content
+
+        if
+            h.TodoKeyword.IsNone
+            && List.isEmpty (appointments content doc h)
+            && not (
+                h.Planning
+                |> Option.exists (fun plan -> plan.Scheduled.IsSome || plan.Deadline.IsSome)
+            )
+        then
+            result["status"] <- text "note"
+
+        result["detail"] <-
+            TaskPresentation.details content doc h cfg (fun heading -> ctx.Reference file doc heading.Position)
+
+        result
+    | "entry_checkbox" ->
+        let actor = required args "actor" |> single "actor"
+        let file, pos, before, doc = ctx.Resolve(required args "ref")
+
+        if pos < 0L then
+            fail "invalid_arguments" 400 "Choose a heading"
+
+        requireRevision args before
+        Document.ensureEditable before
+        let h = doc.Headlines |> List.find (fun h -> h.Position = pos)
+
+        let e =
+            { File = file
+              Doc = doc
+              Heading = h
+              Config = FileConfig.mergeFileConfig ctx.Config doc.Keywords }
+
+        if isDone e || isCancelled e || prop "TASK_PHASE" h = "REVIEW" then
+            fail "conflict" 409 "Reopen completed work or reject the submission before editing its checklist"
+
+        if active h && (prop "TASK_CLAIM_OWNER" h <> actor || claimStale e) then
+            fail "conflict" 409 "Another actor owns the claim, or its requirements changed"
+
+        if not (args.ContainsKey "line" && args.ContainsKey "checked") then
+            fail "invalid_arguments" 400 "line and checked are required"
+
+        let mutable after =
+            TaskPresentation.toggleCheckbox before doc h (intArg args "line" 0 1 1000000) (boolArg args "checked" false)
+
+        after <- note actor "checkbox" "" after pos
+
+        if active h then
+            let updated = Document.parseWithConfig e.Config after
+            let heading = updated.Headlines |> List.find (fun heading -> heading.Position = pos)
+
+            after <-
+                Mutations.setProperty
+                    after
+                    pos
+                    "TASK_CLAIM_CONTRACT"
+                    (contractText
+                        after
+                        { e with
+                            Doc = updated
+                            Heading = heading })
+
+        finish file pos before after
     | "tasks" ->
         let selectedStatus = optional args "status" "open"
 

@@ -951,3 +951,129 @@ let ``inherited tag selection and exclusion never remove explicit local tags`` (
         [ "secret" ],
         Headlines.computeInheritedTags { config with TagInheritance = false } doc child
     )
+
+[<Fact>]
+let ``entry details represent hierarchy properties progress and own clock history`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/rich.org",
+        "#+CATEGORY: work\n* Parent\n:PROPERTIES:\n:ID: parent\n:CATEGORY: family\n:END:\n** TODO Child [0/1]\nCLOSED: [2026-01-01 Thu 10:00]\n:PROPERTIES:\n:ID: child\n:OWNER: alice\n:END:\n:LOGBOOK:\nCLOCK: [2026-01-01 Thu 09:00]--[2026-01-01 Thu 10:00] => 1:00\n- State \\\"TODO\\\" from \\\"WAIT\\\"\n:END:\n- [ ] First\n*** DONE Grandchild\n:LOGBOOK:\nCLOCK: [2026-01-01 Thu 11:00]--[2026-01-01 Thu 13:00] => 2:00\n:END:\n"
+    )
+
+    let svc = service h
+    let entry = svc.Invoke("entry_details", arg [ "ref", "id:child" ])
+    let detail = entry["detail"]
+    Assert.Equal("Parent", field detail["parents"].[0] "title")
+    Assert.Equal("Grandchild", field detail["children"].[0] "title")
+    Assert.Equal(1, detail["child_tasks_done"].GetValue<int>())
+    Assert.Equal(1, detail["checkbox_total"].GetValue<int>())
+    Assert.Equal(60, detail["clock_total_minutes"].GetValue<int>())
+
+    let inherited =
+        detail["properties"].AsArray() |> Seq.find (fun p -> field p "key" = "CATEGORY")
+
+    Assert.True(inherited["inherited"].GetValue<bool>())
+    Assert.Equal("family", field inherited "value")
+    Assert.Equal("Parent", field inherited "source")
+
+    let local =
+        detail["properties"].AsArray() |> Seq.find (fun p -> field p "key" = "OWNER")
+
+    Assert.False(local["inherited"].GetValue<bool>())
+    Assert.DoesNotContain("Grandchild", field detail "own_source")
+
+let checkbox svc entry line checkedValue =
+    let args = editArgs svc entry []
+    args["line"] <- JsonValue.Create(line: int)
+    args["checked"] <- JsonValue.Create(checkedValue: bool)
+    svc.Invoke("entry_checkbox", args)
+
+[<Fact>]
+let ``checkbox writes update nested states and existing cookies preserve children and support undo`` () =
+    use h = new VirtualHost()
+
+    let original =
+        "* TODO Parent [0/1] [0%]\n:PROPERTIES:\n:ID: parent\n:END:\n- [ ] Group [0/2]\n  - [ ] One\n  - [ ] Two\n** TODO Child [0/1]\n- [ ] Untouched\n"
+
+    h.Put("/work/boxes.org", original)
+    let svc = service h
+    let entry = svc.Invoke("entry_details", arg [ "ref", "id:parent" ])
+    let line = entry["detail"].["checkboxes"].[1].["line"].GetValue<int>()
+    let result = checkbox svc entry line true
+    Assert.Contains("- [-] Group [1/2]", h.Text "/work/boxes.org")
+    Assert.Contains("** TODO Child [0/1]\n- [ ] Untouched", h.Text "/work/boxes.org")
+    let next = svc.Invoke("entry_details", arg [ "ref", "id:parent" ])
+    let groupLine = next["detail"].["checkboxes"].[0].["line"].GetValue<int>()
+    let completed = checkbox svc next groupLine true
+    Assert.Contains("* TODO Parent [1/1] [100%]", h.Text "/work/boxes.org")
+    Assert.Contains("- [X] Group [2/2]\n  - [X] One\n  - [X] Two", h.Text "/work/boxes.org")
+
+    svc.Invoke("task_undo", arg [ "token", field completed["undo"] "token"; "actor", "human" ])
+    |> ignore
+
+    Assert.Contains("- [-] Group [1/2]", h.Text "/work/boxes.org")
+    let stale = editArgs svc result []
+    stale["line"] <- JsonValue.Create line
+    stale["checked"] <- JsonValue.Create false
+    h.Put("/work/boxes.org", h.Text "/work/boxes.org" + "External change\n")
+    fails "conflict" (fun () -> svc.Invoke("entry_checkbox", stale))
+
+[<Fact>]
+let ``checklists enforce ORDERED and exclude examples and drawers`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/boxes.org",
+        "* Notes [0/2]\n:PROPERTIES:\n:ID: notes\n:ORDERED: t\n:END:\n#+BEGIN_SRC org\n- [ ] Example\n#+END_SRC\n- [ ] First\n- [ ] Second\n"
+    )
+
+    let svc = service h
+    let entry = svc.Invoke("entry_details", arg [ "ref", "id:notes" ])
+    Assert.Equal(2, entry["detail"].["checkboxes"].AsArray().Count)
+    let second = entry["detail"].["checkboxes"].[1].["line"].GetValue<int>()
+    fails "invalid_arguments" (fun () -> checkbox svc entry second true)
+    fails "invalid_arguments" (fun () -> checkbox svc entry 6 true)
+    let first = entry["detail"].["checkboxes"].[0].["line"].GetValue<int>()
+    checkbox svc entry first true |> ignore
+    Assert.Contains("* Notes [1/2]", h.Text "/work/boxes.org")
+    Assert.DoesNotContain("TASK_MANAGED", h.Text "/work/boxes.org")
+
+    let readOnly =
+        WorkspaceService(h, "/work", "/work/.org-index.db", Types.defaultConfig, readOnly = true)
+
+    fails "read_only" (fun () -> checkbox readOnly entry first false)
+
+[<Fact>]
+let ``own claim can record checklist progress without invalidating its claim`` () =
+    use h = new VirtualHost()
+    h.Put("/work/boxes.org", "* TODO Work\n:PROPERTIES:\n:ID: work\n:END:\n- [ ] Check\n")
+    let svc = service h
+    let entry = svc.Invoke("entry_details", arg [ "ref", "id:work" ])
+    claim svc entry "human" |> ignore
+    let fresh = svc.Invoke("entry_details", arg [ "ref", "id:work" ])
+    let line = fresh["detail"].["checkboxes"].[0].["line"].GetValue<int>()
+    let other = editArgs svc fresh []
+    other["actor"] <- JsonValue.Create "other"
+    other["line"] <- JsonValue.Create line
+    other["checked"] <- JsonValue.Create true
+    fails "conflict" (fun () -> svc.Invoke("entry_checkbox", other))
+    let updated = checkbox svc fresh line true
+    Assert.False(updated["claim_stale"].GetValue<bool>())
+    Assert.Equal("working", field updated "status")
+
+[<Fact>]
+let ``clock examples are not tracked time and radio checklists are preserved`` () =
+    use h = new VirtualHost()
+
+    h.Put(
+        "/work/examples.org",
+        "* Notes\n:PROPERTIES:\n:ID: examples\n:END:\n#+BEGIN_EXAMPLE\nCLOCK: [2026-01-01 Thu 09:00]--[2026-01-01 Thu 10:00] => 1:00\n#+END_EXAMPLE\n#+ATTR_ORG: :radio t\n- [ ] First\n- [X] Second\n"
+    )
+
+    let svc = service h
+    let entry = svc.Invoke("entry_details", arg [ "ref", "id:examples" ])
+    Assert.Equal(0, entry["detail"].["clock_total_minutes"].GetValue<int>())
+    let first = entry["detail"].["checkboxes"].[0].["line"].GetValue<int>()
+    fails "invalid_arguments" (fun () -> checkbox svc entry first true)
+    Assert.Contains("- [ ] First\n- [X] Second", h.Text "/work/examples.org")

@@ -395,6 +395,18 @@
                     font-size: 24px;
                 }
             }
+            .org-content { overflow-wrap: anywhere; }
+            .org-content p { white-space: pre-wrap; }
+            .org-content code { background: var(--line); padding: 1px 3px; border-radius: 3px; }
+            .org-list-item label { display: flex; align-items: baseline; gap: 8px; }
+            .org-list-item input[type=checkbox] { width: auto; flex: none; }
+            .org-table-scroll, #entry-properties { overflow-x: auto; }
+            .org-content table, #entry-properties table { width: 100%; border-collapse: collapse; }
+            .org-content td, #entry-properties td, #entry-properties th { border: 1px solid var(--line); padding: 6px; text-align: left; overflow-wrap: anywhere; }
+            .inline-link { background: transparent; border: 0; padding: 0; color: var(--green); text-decoration: underline; cursor: pointer; }
+            .breadcrumbs { overflow-wrap: anywhere; margin-bottom: 12px; }
+            .outline-node { padding-left: 12px; border-left: 1px solid var(--line); margin: 8px 0; }
+            .outline-link { text-align: left; width: 100%; }
         </style>
     </head>
     <body>
@@ -677,8 +689,8 @@
                 else run(fn);
             }
             function writeControls() {
-                document.querySelectorAll("button[data-write], #new, #create-form button[type=submit]")
-                    .forEach(button => button.disabled = busy || !canWrite);
+                document.querySelectorAll("[data-write], #new, #create-form button[type=submit]")
+                    .forEach(button => button.disabled = busy || !canWrite || button.dataset.locked === "true");
             }
             async function run(fn, background = false) {
                 if (busy) {
@@ -771,7 +783,7 @@
             function taskCard(row, compact = false, eventLabel = "", projected = false) {
                 const b = el("button", undefined, "task");
                 b.setAttribute("aria-pressed", String(selected?.ref === row.ref));
-                b.append(el("span", row.is_task === false ? "Appointment" : row.state, "badge org-state"), el("span", row.status, "badge coordination " + row.status));
+                b.append(el("span", row.is_task === false ? (row.status === "note" ? "Heading" : "Appointment") : row.state, "badge org-state"), el("span", row.status, "badge coordination " + row.status));
                 b.draggable = canWrite && row.is_task !== false;
                 b.ondragstart = event => { draggedTask = row; draggedColumn = null; event.dataTransfer.setData("text/plain", row.ref); };
                 b.ondragend = () => { draggedTask = null; };
@@ -985,6 +997,8 @@
             async function choose(row, preserveDraft = false) {
                 const version = ++selectionVersion;
                 const data = await fetchWhole(row.ref);
+                const entry = await request("entry_details", {ref:row.ref});
+                if (entry.revision !== data.revision) throw Error("The file changed while loading. Select the heading again.");
                 if (version !== selectionVersion) return;
                 if (preserveDraft && draftDirty) {
                     message(
@@ -993,7 +1007,8 @@
                     return;
                 }
                 draftDirty = false;
-                selected = row;
+                entry._outline = Boolean(row._outline || (selected?.ref === row.ref && selected._outline));
+                selected = entry;
                 fetched = data;
                 renderList();
                 renderDetail();
@@ -1016,13 +1031,148 @@
                 label.append(input);
                 return label;
             }
+            async function navigateEntry(ref) {
+                if (draftDirty) throw Error("Save your draft or use Reload task (discard draft) before navigating.");
+                await choose({ref, _outline:true});
+            }
+            function inlineOrg(root, value) {
+                const pattern = /\[\[([^\]\n]+)\](?:\[([^\]\n]*)\])?\]|([*\/_+=~])([^\n]+?)\3/g;
+                let offset = 0;
+                for (const match of value.matchAll(pattern)) {
+                    root.append(document.createTextNode(value.slice(offset, match.index)));
+                    if (match[1]) {
+                        const target = match[1], label = match[2] || target;
+                        if (/^id:[^\s]+$/.test(target)) {
+                            const link = el("button", label, "inline-link"); link.onclick = () => read(() => navigateEntry(target)); root.append(link);
+                        } else if (/^(https?:\/\/|mailto:)/i.test(target)) {
+                            const link = el("a", label); link.href = target; link.target = "_blank"; link.rel = "noopener noreferrer"; root.append(link);
+                        } else { const link = el("span", label); link.title = target; root.append(link); }
+                    } else {
+                        const tag = {"*":"strong", "/":"em", "_":"u", "+":"s", "=":"code", "~":"code"}[match[3]];
+                        const boundary = match.index === 0 || /\s|[([{]/.test(value[match.index - 1]);
+                        const ending = match.index + match[0].length;
+                        if (boundary && (ending === value.length || /\s|[.,;:!?)}\]]/.test(value[ending]))) root.append(el(tag, match[4]));
+                        else root.append(document.createTextNode(match[0]));
+                    }
+                    offset = match.index + match[0].length;
+                }
+                root.append(document.createTextNode(value.slice(offset)));
+            }
+            function renderedContent(row) {
+                const content = el("div", undefined, "org-content"), detail = row.detail;
+                const lines = detail.own_source.split("\n");
+                const checks = new Map(detail.checkboxes.map(item => [item.line, item]));
+                let drawer = null, block = null, blockLines = [], table = null, list = null;
+                for (let index = 1; index < lines.length; index++) {
+                    const line = lines[index], trimmed = line.trim();
+                    if (block !== null) {
+                        if (/^#\+END_/i.test(trimmed)) { const pre = el("pre", blockLines.join("\n")); pre.dataset.language = block; content.append(pre); block = null; blockLines = []; }
+                        else blockLines.push(line);
+                        continue;
+                    }
+                    if (/^#\+BEGIN_/i.test(trimmed)) { block = trimmed.slice(8); table = list = null; continue; }
+                    if (drawer !== null) {
+                        if (trimmed === ":END:") { if (!["PROPERTIES","LOGBOOK"].includes(drawer)) content.append(el("pre", ":" + drawer + ":\n" + blockLines.join("\n") + "\n:END:")); drawer = null; blockLines = []; }
+                        else blockLines.push(line);
+                        continue;
+                    }
+                    const drawerStart = /^:([A-Za-z_]+):$/.exec(trimmed);
+                    if (drawerStart) { drawer = drawerStart[1]; table = list = null; continue; }
+                    if (/^(SCHEDULED:|DEADLINE:|CLOSED:)/.test(trimmed)) continue;
+                    if (trimmed.startsWith("|")) {
+                        list = null;
+                        if (!table) { const scroll = el("div", undefined, "org-table-scroll"); table = el("table"); scroll.append(table); content.append(scroll); }
+                        if (/^\|[-+|: ]+\|?$/.test(trimmed)) continue;
+                        const tr = el("tr");
+                        trimmed.replace(/^\|/, "").replace(/\|$/, "").split("|").forEach(value => { const td = el("td"); inlineOrg(td, value.trim()); tr.append(td); }); table.append(tr); continue;
+                    }
+                    table = null;
+                    const item = /^(\s*)([-+*]|\d+[.)])\s+(.*)$/.exec(line);
+                    if (item) {
+                        if (!list) { list = el("div", undefined, "org-list"); list.setAttribute("role", "list"); content.append(list); }
+                        const element = el("div", undefined, "org-list-item"); element.setAttribute("role", "listitem"); element.style.paddingLeft = Math.min(item[1].replace(/\t/g,"        ").length, 24) + "ch";
+                        const checkbox = checks.get(index);
+                        if (checkbox) {
+                            const label = el("label"), input = el("input"); input.type = "checkbox";
+                            input.checked = checkbox.state.toUpperCase() === "X"; input.indeterminate = checkbox.state === "-";
+                            input.dataset.write = "true"; input.dataset.line = index;
+                            input.dataset.locked = String(finished(row) || row.status === "review" || (row.claimed_by && row.claimed_by !== $("actor").value.trim()) || /#\+ATTR_ORG:.*:radio\s+t/i.test(detail.own_source));
+                            input.disabled = !canWrite || input.dataset.locked === "true";
+                            input.oninput = event => event.stopPropagation();
+                            input.onchange = event => {
+                                event.stopPropagation(); const checked = input.checked; input.checked = checkbox.state.toUpperCase() === "X"; input.indeterminate = checkbox.state === "-";
+                                run(async () => {
+                                    if (draftDirty) throw Error("Save your draft or reload the task before changing a checkbox.");
+                                    const result = await request("entry_checkbox", {ref:row.ref,expected_revision:fetched.revision,actor:actor(),line:index,checked});
+                                    await afterWrite(result); message(result.warning || "Checklist saved.");
+                                });
+                            };
+                            label.append(input); const text = el("span"); inlineOrg(text, checkbox.text); label.append(text); element.append(label);
+                        } else { inlineOrg(element, item[2] + " " + item[3]); }
+                        list.append(element); continue;
+                    }
+                    list = null;
+                    if (!trimmed) continue;
+                    const paragraph = el(/^#\+|^: /.test(trimmed) ? "pre" : "p"); inlineOrg(paragraph, line); content.append(paragraph);
+                }
+                if (block !== null || drawer !== null) content.append(el("pre", blockLines.join("\n")));
+                return content;
+            }
+            function detailPanel(label, key) {
+                const panel = el("details", undefined, "box"); panel.append(el("summary", label));
+                rememberExpansion(panel, "detail-" + selected.ref + "-" + key); return panel;
+            }
+            function renderRichDetail(root, row) {
+                const detail = row.detail;
+                const breadcrumbs = el("nav", undefined, "breadcrumbs"); breadcrumbs.setAttribute("aria-label", "Outline path");
+                for (const parent of detail.parents) { const button = el("button", parent.title, "inline-link"); button.onclick = () => read(() => navigateEntry(parent.ref)); breadcrumbs.append(button, document.createTextNode(" / ")); }
+                breadcrumbs.append(el("span", row.title)); root.append(breadcrumbs);
+                const context = el("section", undefined, "box"); context.id = "entry-content"; context.append(el("h3", "Content"));
+                const controls = el("div", undefined, "actions"), rendered = renderedContent(row), raw = el("pre", detail.own_source);
+                raw.hidden = true;
+                const render = el("button", "Rendered"), source = el("button", "Source"); render.setAttribute("aria-pressed", "true"); source.setAttribute("aria-pressed", "false");
+                render.onclick = () => { rendered.hidden = false; raw.hidden = true; render.setAttribute("aria-pressed","true"); source.setAttribute("aria-pressed","false"); };
+                source.onclick = () => { rendered.hidden = true; raw.hidden = false; render.setAttribute("aria-pressed","false"); source.setAttribute("aria-pressed","true"); };
+                controls.append(render,source); context.append(controls);
+                if (detail.checkbox_total) context.append(el("p", "Checklist: " + detail.checkbox_done + "/" + detail.checkbox_total + " top-level items checked", "meta"));
+                context.append(rendered,raw); root.append(context);
+                if (detail.children.length) {
+                    const tree = detailPanel("Subheadings · " + detail.children.length, "tree");
+                    tree.append(el("p", detail.child_tasks_done + "/" + detail.child_tasks_total + " immediate child tasks in terminal states", "meta"));
+                    const appendNodes = (container, nodes) => {
+                        for (const child of nodes) {
+                            const item = el("div", undefined, "outline-node");
+                            const link = el("button", (child.state ? child.state + " " : "") + child.title, "outline-link"); link.onclick = () => read(() => navigateEntry(child.ref)); item.append(link);
+                            if (child.has_children) {
+                                const nested = el("details"); nested.append(el("summary", "Expand subheadings"));
+                                nested.ontoggle = () => { if (nested.open && !nested.dataset.loaded) read(async () => { const next = await request("entry_details",{ref:child.ref}); if (!nested.isConnected) return; nested.dataset.loaded = "true"; appendNodes(nested,next.detail.children); }); };
+                                item.append(nested);
+                            }
+                            container.append(item);
+                        }
+                    };
+                    appendNodes(tree,detail.children); root.append(tree);
+                }
+                const properties = detailPanel("Properties · " + detail.properties.length, "properties"); properties.id = "entry-properties";
+                const table = el("table"), header = el("tr"); ["Property","Value","Origin"].forEach(label => header.append(el("th",label))); table.append(header);
+                detail.properties.forEach(property => { const tr = el("tr"); tr.append(el("td",property.key),el("td",property.value),el("td",property.inherited ? "Inherited · " + property.source : "Explicit · this heading")); table.append(tr); });
+                properties.append(table); root.append(properties);
+                const time = detailPanel("Time and history", "time"); time.id = "entry-time";
+                const duration = minutes => Math.floor(minutes / 60) + ":" + String(minutes % 60).padStart(2,"0");
+                if (detail.closed) time.append(el("p","Closed: " + detail.closed));
+                time.append(el("p","Completed clock time: " + duration(detail.clock_total_minutes) + " (this heading only)"));
+                for (const clock of detail.clocks) time.append(el("p", clock.start + (clock.end ? " — " + clock.end + " · " + (clock.minutes === null ? "no duration" : duration(clock.minutes)) : " · running; elapsed when loaded " + duration(clock.running_minutes) + "; excluded from completed total")));
+                if (detail.history) { const history = el("details"); history.append(el("summary","Work history"), el("pre",detail.history)); history.open = row.status === "review"; time.append(history); }
+                root.append(time);
+            }
+
             function renderDetail() {
                 const root = $("detail");
                 root.replaceChildren();
                 if (!selected) return;
                 const row = selected;
                 root.append(
-                    el("span", row.state, "badge org-state"),
+                    el("span", row.state || (row.status === "note" ? "Heading" : "Appointment"), "badge org-state"),
                     el("span", row.status, "badge coordination " + row.status),
                     el("h2", row.title, "detail-title"),
                     el("div", row.file + " · " + row.ref, "meta"),
@@ -1030,7 +1180,7 @@
                 const metadata = taskCard(row);
                 const summary = el("section", undefined, "box");
                 // Reuse card metadata without nesting an interactive card in the details panel.
-                for (const node of [...metadata.children].slice(3)) summary.append(node);
+                for (const node of [...metadata.children].slice(3)) if (!node.classList.contains("preview")) summary.append(node);
                 root.append(summary);
                 if (row.claim_stale || row.submission_stale) {
                     root.append(
@@ -1044,7 +1194,8 @@
                     );
                 }
                 if (row.is_task === false) {
-                    const source = el("section", undefined, "box"); source.append(el("h3", "Appointment · Source Org"), el("pre", fetched.text)); root.append(source);
+                    renderRichDetail(root, row);
+                    const source = el("section", undefined, "box"); source.append(el("h3", (row.status === "note" ? "Heading" : "Appointment") + " · Source Org"), el("pre", fetched.text)); root.append(source);
                     return;
                 }
                 const stateLabel = labelled("Org state", "edit-state", "", "select");
@@ -1120,6 +1271,7 @@
                     button("Reopen", "reopen");
                 else button("Cancel task", "cancel", "danger");
                 root.append(actions);
+                renderRichDetail(root, row);
                 if (row.claimed_by)
                     root.append(
                         el(
@@ -1211,32 +1363,6 @@
                 move.append(moveButton); root.append(move);
                 destination.lastChild.onchange = () => destinationFields("move");
                 move.ontoggle = () => { if (move.open && move.isConnected) read(async () => { await loadWorkspace(); if (move.isConnected) destinationFields("move"); }); };
-                const history =
-                    fetched.text.match(
-                        /^:LOGBOOK:\s*\n([\s\S]*?)^:END:\s*$/m,
-                    )?.[1] || "";
-                const body = fetched.text
-                    .replace(/^[^\n]*\n/, "")
-                    .replace(
-                        /^:(?:PROPERTIES|LOGBOOK):[^\n]*\n[\s\S]*?^:END:[ \t]*$/gm,
-                        "",
-                    )
-                    .replace(/^CLOSED:.*$/gm, "")
-                    .trim();
-                if (body) {
-                    const context = el("section", undefined, "box");
-                    context.append(el("h3", "Context"), el("pre", body));
-                    root.append(context);
-                }
-                if (history) {
-                    const audit = el("details");
-                    audit.open = row.status === "review";
-                    audit.append(
-                        el("summary", "Work history"),
-                        el("pre", history),
-                    );
-                    root.append(audit);
-                }
                 const source = el("details");
                 source.append(
                     el("summary", "Source Org"),
@@ -1352,7 +1478,10 @@
                 await load();
                 while (next !== null && rows.length < count) await load(true);
                 if (!selected) return;
-                const current = rows.find((r) => r.ref === selected.ref);
+                let current = rows.find((r) => r.ref === selected.ref);
+                if (!current && selected._outline) {
+                    try { current = await request("entry_details", {ref:selected.ref}); } catch (error) { if (draftDirty) { message("The heading changed or was removed; your draft is preserved."); return; } throw error; }
+                }
                 if (draftDirty) {
                     if (!current || current.revision !== fetched?.revision)
                         message(
@@ -1363,7 +1492,7 @@
                 if (current) {
                     if (
                         current.revision !== fetched?.revision ||
-                        JSON.stringify(current) !== JSON.stringify(selected)
+                        current.status !== selected.status || current.claimed_by !== selected.claimed_by || current.claim_expired !== selected.claim_expired || current.claim_stale !== selected.claim_stale || current.submission_stale !== selected.submission_stale
                     )
                         await choose(current, true);
                 } else {

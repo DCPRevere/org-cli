@@ -62,6 +62,12 @@ API/MCP tool schemas. Do not invent options or assume proposed features exist.
 - `workspace` returns file workflows, revisions and parent references. Use it
   before choosing destinations. Creation in a fresh default workspace recommends
   `#+TODO: WAIT TODO PROG | DONE KILL`; existing configurations are preserved.
+- `entry_details` reads any heading with parent/child references, its own text,
+  explicit/inherited properties, checkboxes, completion timestamp, clocks and history.
+- `entry_checkbox` changes a checkbox by its zero-based line in `detail.own_source`,
+  with `expected_revision`, `actor` and `checked`. Always rediscover the line after
+  a write. It updates existing checkbox statistics without changing TODO states,
+  supports undo, and respects live claims, review, and ORDERED checklists.
 - `task_update` edits title, description, tags, owner, acceptance, dependencies,
   priority and planning dates. It preserves child headings and managed drawers.
 - `task_action` with `action: state` changes an exact file-defined keyword.

@@ -341,6 +341,8 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
     let invoke operation (args: JsonObject) =
         let allowed =
             match operation with
+            | "entry_details"
+            | "entry_checkbox"
             | "tasks"
             | "task_create"
             | "task_update"
@@ -461,6 +463,8 @@ type WorkspaceService(host: Runtime.IHost, directory: string, dbPath: string, co
             invalidateAll ()
             refresh ()
             obj [ "undone", boolean true ]
+        | "entry_details"
+        | "entry_checkbox"
         | "tasks"
         | "task_create"
         | "task_update"

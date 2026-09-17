@@ -121,6 +121,20 @@ let tools readOnly =
             "state", stringSchema "Configured active state"
             actor ]
           @ taskFields
+          "entry_details",
+          "Read a heading with hierarchy, own content, explicit/inherited properties, checkboxes, clocks and history.",
+          true,
+          [ "ref" ],
+          [ entryRef ]
+          "entry_checkbox",
+          "Change a checkbox by zero-based line in entry_details.detail.own_source. Checks the file revision; preserves children, updates existing checkbox cookies and supports undo. No TODO state changes.",
+          false,
+          [ "ref"; "expected_revision"; "actor"; "line"; "checked" ],
+          [ entryRef
+            expected
+            actor
+            "line", intSchema 1000000
+            "checked", obj [ "type", str "boolean" ] ]
           "task_update",
           "Configure a task contract or adopt an existing TODO: acceptance, project, assignment, dependencies, review policy, priority and dates. Requires current file revision; release active work or reject a submission first. Missing or cyclic dependencies are rejected.",
           false,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add outline navigation, safe rendered/source content, explicit/inherited property inspection and own-heading clock/history details.
+- Add revision-checked, undoable checkbox editing with nested states, existing progress-cookie updates, ordered-list and claim/review protection.
+
 - Keep cancellation terminal without advancing repeats; show the actual resulting state after recurring completion.
 - Respect deadline times, show active appointments (including non-TODO headings), preview fixed repeats and ranges, and edit complete Org planning timestamps.
 - Display inherited tags separately, search heading body content, and refresh file/workflow catalogues while preserving drafts.

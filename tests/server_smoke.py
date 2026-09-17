@@ -69,7 +69,7 @@ def stdio(root):
             p.stdin.write('{"jsonrpc":"2.0","method":"notifications/initialized"}\n')
             p.stdin.flush()
             names = {t["name"] for t in rpc("tools/list")["result"]["tools"]}
-            assert names == {"search","fetch","agenda","capture","append_note","update_task","related","tasks","task_create","task_update","task_action","workspace","board_settings","task_move","task_undo"}, names
+            assert names == {"search","fetch","agenda","capture","append_note","update_task","related","tasks","task_create","task_update","task_action","workspace","board_settings","task_move","task_undo","entry_details","entry_checkbox"}, names
             payload = {"request_id":str(uuid.uuid4()),"title":"Stdio task","state":"TODO"}
             result = rpc("tools/call", {"name":"capture","arguments":payload})["result"]
             assert not result["isError"], result

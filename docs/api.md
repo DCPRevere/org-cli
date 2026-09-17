@@ -133,3 +133,20 @@ headings are read-only in the board. Planning writes accept complete active Org
 timestamps/ranges in addition to simple dates; complete syntax explicitly replaces
 repeat/delay/range metadata. Simple date changes preserve existing repeat/delay
 metadata; use full syntax to edit a range.
+
+### Rich heading details (development)
+
+`entry_details {ref}` returns a task-compatible row plus `detail`: own heading
+source, parent and immediate-child references, local/inherited effective properties
+with origins, checkbox line numbers/states, completion timestamp, own clock entries,
+completed clock minutes, and raw logbook history. Non-task headings can be read too.
+Child lists are loaded separately when expanding deeper outline levels.
+
+`entry_checkbox {ref, expected_revision, actor, line, checked}` changes a checkbox
+at a zero-based line in `detail.own_source`. Line numbers expire after any write.
+It updates nested checkbox states and existing statistics cookies, preserving other
+headings. It does not set TODO states or adopt headings as managed tasks. Writes
+are revision checked, logged and undoable. Another actor's claim, stale claims,
+completed tasks and pending review reject edits. The current claimant can record
+progress without invalidating their claim. ORDERED checklists enforce sequence;
+radio lists are currently read-only and must be edited in the file.
