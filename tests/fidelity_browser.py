@@ -11,6 +11,7 @@ import tempfile
 import time
 import urllib.request
 from playwright.sync_api import sync_playwright, expect
+from browser_controls import view
 
 binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else 'src/OrgCli/bin/Debug/net9.0/org').resolve())
 with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile.TemporaryFile(mode='w+') as log:
@@ -53,13 +54,13 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             expect(page.locator('#message')).to_contain_text('Occurrence completed; file state is TODO')
             assert '<2030-01-08' in source.read_text() and '--<2030-01-09' in source.read_text()
             page.locator('#edit-state').select_option('KILL'); page.get_by_role('button', name='Change state', exact=True).click()
-            expect(page.locator('#detail > .org-state')).to_have_text('KILL')
+            expect(page.locator('#detail .detail-header > .org-state')).to_have_text('KILL')
             assert '<2030-01-08' in source.read_text() and '<2030-01-15' not in source.read_text()
             # Date-time compares the exact local time, while date-only is due through that day.
             assert page.evaluate("overdue({date:'2030-01-01',time:'09:00'},new Date('2030-01-01T15:00'))")
             assert not page.evaluate("overdue({date:'2030-01-01'},new Date('2030-01-01T15:00'))")
             assert not page.evaluate("overdue({date:'2030-01-01',time:'17:00'},new Date('2030-01-01T15:00'))")
-            page.locator('#view').select_option('calendar')
+            view(page, 'calendar')
             page.evaluate("calendarDate = new Date('2030-01-01T12:00'); renderList()")
             expect(page.locator('.calendar-day[data-date="2030-01-03"]')).to_contain_text('Meeting')
             expect(page.locator('.calendar-day[data-date="2030-01-03"]')).to_contain_text('09:00 – 2030-01-03 10:00')
@@ -68,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             expect(page.locator('#edit-state')).to_have_count(0)
             assert not page.locator('.calendar-day[data-date="2030-01-11"]').get_by_text('Relative repeat', exact=True).count()
             # Live file/workflow catalogue refresh preserves an in-progress editor draft.
-            page.locator('#view').select_option('list')
+            view(page, 'list')
             page.locator('#list .task').filter(has_text='Body search').click()
             page.get_by_text('Task settings', exact=True).click()
             page.locator('#edit-title').fill('Unsaved title')
@@ -81,12 +82,12 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             page.get_by_role('button', name='Save settings', exact=True).click()
             expect(page.locator('#message')).to_have_text('Task saved.')
             assert '+1w --2d>' in source.read_text()
-            page.locator('#view').select_option('calendar')
+            view(page, 'calendar')
             expect(page.locator('.calendar-day[data-date="2030-01-01"]')).to_contain_text('Unsaved title')
             expect(page.locator('.calendar-day[data-date="2030-01-02"]')).to_contain_text('Unsaved title')
             expect(page.locator('.calendar-day[data-date="2030-01-08"]')).to_contain_text('Projected Scheduled')
             expect(page.locator('.calendar-day[data-date="2030-01-09"]')).to_contain_text('Unsaved title')
-            page.locator('#view').select_option('agenda')
+            view(page, 'agenda')
             expect(page.locator('#list')).to_contain_text('Meeting')
             expect(page.locator('.agenda-group').filter(has=page.get_by_role('heading', name='2030-01-09', exact=True))).to_contain_text('Unsaved title')
             # Long-ago hourly repeats skip to the visible window, and month ends clamp.

@@ -49,6 +49,7 @@ jobs:
           "$RUNNER_TEMP/org-browser-tests/bin/python" tests/board_workflows.py
           "$RUNNER_TEMP/org-browser-tests/bin/python" tests/fidelity_browser.py
           "$RUNNER_TEMP/org-browser-tests/bin/python" tests/rich_browser.py
+          "$RUNNER_TEMP/org-browser-tests/bin/python" tests/design_browser.py
 
       - name: Vulnerability check
         run: |

@@ -10,6 +10,7 @@ import tempfile
 import time
 import urllib.request
 from playwright.sync_api import sync_playwright, expect
+from browser_controls import view, select_filter, action
 
 binary = str(Path(sys.argv[1] if len(sys.argv) > 1 else 'src/OrgCli/bin/Debug/net9.0/org').resolve())
 with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile.TemporaryFile(mode='w+') as log:
@@ -37,13 +38,13 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             page.goto(base)
             expect(page.locator('#list .task')).to_have_count(2)
             page.locator('#actor').fill('human')
-            page.locator('#view').select_option('board')
+            view(page, 'board')
             expect(page.locator('.column')).to_have_count(5)
             assert page.locator('.column').evaluate_all('(nodes) => nodes.map(n => n.dataset.state)') == ['WAIT','TODO','PROG','DONE','KILL']
             planned = page.locator('.column[data-state="TODO"] .task')
             expect(planned).to_contain_text('ready')
             planned.drag_to(page.locator('.column[data-state="PROG"] h3'))
-            expect(page.locator('#detail > .org-state')).to_have_text('PROG')
+            expect(page.locator('#detail .detail-header > .org-state')).to_have_text('PROG')
             assert '** PROG Planned task' in source.read_text()
             page.locator('#undo').click()
             expect(page.locator('.column[data-state="TODO"] .task')).to_have_count(1)
@@ -57,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             assert not list(root.glob('**/*.json'))
             second = browser.new_page(viewport={'width':1800,'height':1100})
             second.goto(base); expect(second.locator('#list .task')).to_have_count(2)
-            second.locator('#view').select_option('board')
+            view(second, 'board')
             expect(second.locator('.column').first).to_have_attribute('data-state', 'TODO')
             page.get_by_role('button', name='Move PROG left', exact=True).click()
             expect(second.locator('.column').nth(1)).to_have_attribute('data-state', 'PROG', timeout=15000)
@@ -94,7 +95,7 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             page.locator('#create-state').select_option('WAIT')
             page.locator('#create-title').fill('New child')
             page.get_by_role('button', name='Create task', exact=True).click()
-            expect(page.locator('#detail > .org-state')).to_have_text('WAIT')
+            expect(page.locator('#detail .detail-header > .org-state')).to_have_text('WAIT')
             assert '** WAIT New child' in (root / 'other.org').read_text()
             assert not (root / 'tasks.org').exists()
             # Explicit conflict comparison leaves the draft intact, and reload is explicit.
@@ -104,25 +105,25 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             page.locator('#edit-text').fill('Unsaved draft')
             source.write_text(source.read_text().replace('Description saved','Externally changed description'))
             expect(page.locator('#message')).to_contain_text('Your draft is preserved', timeout=15000)
-            page.get_by_role('button', name='Compare with file', exact=True).click()
+            action(page, 'Compare with file')
             expect(page.locator('#detail')).to_contain_text('Externally changed description')
             expect(page.locator('#edit-text')).to_have_value('Unsaved draft')
             page.get_by_role('button', name='Save settings', exact=True).click()
             expect(page.locator('#message')).to_contain_text('File changed')
             expect(page.locator('#edit-text')).to_have_value('Unsaved draft')
-            page.get_by_role('button', name='Reload task (discard draft)', exact=True).click()
+            action(page, 'Reload task (discard draft)')
             expect(page.locator('#edit-text')).to_have_value('Externally changed description')
             # Save/restore a named view and the current view across reloads.
-            page.locator('#file-filter').select_option('project.org')
+            select_filter(page, '#file-filter', 'project.org')
             expect(page.locator('#list .task')).to_have_count(2)
             page.once('dialog', lambda dialog: dialog.accept('Project work'))
             page.locator('#save-view').click()
-            page.locator('#view').select_option('agenda')
+            view(page, 'agenda')
             expect(page.locator('body')).to_have_attribute('aria-busy','false')
             page.reload()
             expect(page.locator('#view')).to_have_value('agenda')
             expect(page.locator('#file-filter')).to_have_value('project.org')
-            page.locator('#saved-view').select_option('Project work')
+            select_filter(page, '#saved-view', 'Project work')
             expect(page.locator('#view')).to_have_value('board')
             page.set_viewport_size({'width':390,'height':844})
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')

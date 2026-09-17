@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Refine the browser UI with compact view tabs, collapsible filters and removable chips, content-first task details, contextual evidence, local feedback, independent panes and a mobile Back view that preserves drafts.
+
 - Add outline navigation, safe rendered/source content, explicit/inherited property inspection and own-heading clock/history details.
 - Add revision-checked, undoable checkbox editing with nested states, existing progress-cookie updates, ordered-list and claim/review protection.
 

@@ -58,6 +58,8 @@ org mcp --stdio -d ~/org
 
 Set `ORG_API_TOKEN` before starting the server to require a bearer token for data and tools. The board's empty HTML shell is available without a token so a person can enter it; no workspace data is embedded in that shell. The board keeps the token in the current page's memory. The page loads automatically, showing an unlock prompt only when a token is required. Enter Your name to attribute changes; the browser remembers it locally. This name is not a login or authenticated identity. Read-only servers expose inspection and disable editing in the board.
 
+Switch between List, Board, Agenda and Calendar with the view tabs. Search stays visible; Filters opens the remaining controls, and chips let you remove active filters. Task details put content and checklists before expandable properties, history and settings. More actions contains cancellation and draft recovery. Evidence opens when an action needs it. Desktop panes scroll independently; on a phone, Back to tasks preserves your unsaved draft. Use arrow keys within the view tabs, `/` to focus search outside a text field, and Escape to close filters or the actions menu.
+
 Existing Org TODO headings appear in the task queue. They need no conversion. Editing or claiming an existing heading assigns a standard UUID if needed and opts that heading into the managed workflow. Choose a destination file and optional parent when creating tasks. Without an
 explicit file the API uses an existing owner's folder's `inbox.org`, otherwise
 workspace `inbox.org`. The UI offers the selected file as a starting point and lets
