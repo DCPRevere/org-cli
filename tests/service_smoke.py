@@ -81,7 +81,9 @@ with tempfile.TemporaryDirectory(prefix='org-service-test-') as directory:
     # Validate the shipped unit with a real executable location, without enabling it.
     unit = root / 'org-cli.service'
     unit.write_text(Path('packaging/systemd/org-cli.service').read_text().replace('/usr/bin/org', str(binary)))
-    subprocess.run(['systemd-analyze', '--user', 'verify', str(unit)], check=True, timeout=15)
+    runtime = root / 'runtime'
+    runtime.mkdir(mode=0o700)
+    subprocess.run(['systemd-analyze', '--user', 'verify', str(unit)], env=dict(os.environ, XDG_RUNTIME_DIR=str(runtime)), check=True, timeout=15)
     # No user manager: fail before creating config or touching the workspace.
     fakebin = root / 'bin'
     fakebin.mkdir()
