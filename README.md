@@ -110,7 +110,7 @@ dotnet build OrgCli.slnx
 
 ## Optional Linux service
 
-In development after 2.0.0: `org service install --directory ~/org --mcp` enables the local board/API as a systemd user service. Installation is opt-in; no server starts merely because the package is installed. See [service setup and troubleshooting](docs/service.md).
+In the reissued GitHub 2.0.0 build and AUR `2.0.0-2`: `org service install --directory ~/org --mcp` enables the local board/API as a systemd user service. Installation is opt-in; no server starts merely because the package is installed. See [service setup and troubleshooting](docs/service.md).
 
 ## Quick start
 

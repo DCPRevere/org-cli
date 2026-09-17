@@ -1,13 +1,13 @@
 # Maintainer: dcprevere
 pkgname=org-cli-bin
 pkgver=@@VERSION@@
-pkgrel=1
+pkgrel=2
 pkgdesc='Standalone Org notes and task management for humans and agents'
 arch=('x86_64')
 url='https://github.com/dcprevere/org-cli'
 provides=('org-cli')
 conflicts=('org-cli')
-source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/org-linux-x64.tar.gz")
+source=("${pkgname}-${pkgver}-${pkgrel}.tar.gz::${url}/releases/download/v${pkgver}/org-linux-x64.tar.gz")
 sha256sums=('@@SHA256_LINUX_X64@@')
 options=('!strip')
 

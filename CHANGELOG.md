@@ -1,15 +1,13 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 — 2026-09-17
+
+Stable release of the standalone Org engine and shared human/agent task workflow. Reissued on 2026-09-17 with opt-in systemd user service installation. GitHub downloads replace the original 2.0.0 build; AUR uses package revision 2 (`2.0.0-2`). NuGet.org cannot replace a published version, so its 2.0.0 package remains the original build; use GitHub binaries or AUR for the service-enabled build.
 
 - Anchor HTTP host configuration discovery to the executable directory, avoiding accidental scans of the user’s home when started by systemd.
 
 - Add opt-in `org service install|status|restart|stop|uninstall` for Linux systemd user services, with external workspace settings, readiness checks and preservation of custom units.
 - Ship a user service unit in the AUR package and Linux release archives; standalone binaries embed the same template. Package installation never starts a server or enables lingering.
-
-## 2.0.0 — 2026-09-17
-
-Stable release of the standalone Org engine and shared human/agent task workflow. Promotes the tested RC2 implementation; no task or storage behavior changes from RC2.
 
 - Org files are authoritative; the disposable search index refreshes through content checks and a server filesystem watcher. Direct editor changes are supported.
 - One binary provides the CLI, browser task board, optional HTTP API and MCP. Org-roam is an optional extension.
@@ -23,7 +21,7 @@ Keep your Org files and IDs. Use a CLI-owned `.org-index.db`, never an Emacs `or
 
 Start the task board with `org serve -d ~/org --mcp`. See the [task workflow guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/task-workflow.md) and [architecture/migration guide](https://github.com/DCPRevere/org-cli/blob/v2.0.0/docs/architecture.md).
 
-Validation: 868 automated tests passed, with 8 legacy Emacs tests skipped; browser and real-process API/MCP, watcher and competing-worker checks passed. Native macOS and Windows smoke tests passed during development; routine CI runs on Linux. Actor names are cooperative attribution, not authenticated approval identities; task leases coordinate one local filesystem, not independent synced replicas.
+Validation: 876 automated tests passed, with 8 legacy Emacs tests skipped; browser and real-process API/MCP, watcher and competing-worker checks passed. Native macOS and Windows smoke tests passed during development; routine CI runs on Linux. Actor names are cooperative attribution, not authenticated approval identities; task leases coordinate one local filesystem, not independent synced replicas.
 
 ## 2.0.0-rc.2 — 2026-09-17
 
