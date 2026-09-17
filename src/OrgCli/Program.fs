@@ -423,6 +423,7 @@ let printUsage () =
     printfn "org - Org file querying and roam database management"
     printfn ""
     printfn "Usage: org [options] <command> [arguments]"
+    printfn "  service install|status|restart|stop|uninstall  Manage the optional systemd user service"
     printfn "  serve [--mcp] [--port 8765]             Run the optional local HTTP API"
     printfn "  mcp --stdio                            Run MCP over stdin/stdout"
     printfn ""
@@ -1316,6 +1317,7 @@ let main args =
     else
         try
             match positional with
+            | "service" :: rest -> OrgCli.ServiceCommands.run opts rest
             | ("serve" | "mcp") :: rest when hasHelpFlag opts rest ->
                 printfn "org serve [-d directory] [--db path] [--port 8765] [--mcp] [--read-only]"
                 printfn "org mcp --stdio [-d directory] [--db path] [--read-only]"
@@ -2248,7 +2250,7 @@ let main args =
             | "completions" :: "bash" :: _ ->
                 printfn
                     """_org_completions() {
-    local commands="task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts id backlinks recover roam batch serve mcp schema completions"
+    local commands="task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts id backlinks recover roam batch serve mcp service schema completions"
     local flags="--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help"
     if [ "${#COMP_WORDS[@]}" -eq 2 ]; then
         COMPREPLY=($(compgen -W "$commands $flags" -- "${COMP_WORDS[1]}"))
@@ -2262,7 +2264,7 @@ complete -F _org_completions org"""
                 printfn
                     """#compdef org
 _org() {
-    local commands=(task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions)
+    local commands=(task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp service schema completions)
     local flags=(--format --directory --files --config --log-done --deadline-warning-days --dry-run --quiet --version --help)
     _arguments '1:command:($commands)' '*:flags:($flags)'
 }
@@ -2272,7 +2274,7 @@ compdef _org org"""
 
             | "completions" :: "fish" :: _ ->
                 printfn
-                    """set -l commands task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp schema completions
+                    """set -l commands task today agenda headlines add todo priority tag property schedule deadline note clock refile archive read search links export index fts roam batch serve mcp service schema completions
 complete -c org -f -n '__fish_use_subcommand' -a "$commands"
 complete -c org -l format -d 'Output format: text or json'
 complete -c org -l directory -s d -d 'Base directory'

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Anchor HTTP host configuration discovery to the executable directory, avoiding accidental scans of the user’s home when started by systemd.
+
+- Add opt-in `org service install|status|restart|stop|uninstall` for Linux systemd user services, with external workspace settings, readiness checks and preservation of custom units.
+- Ship a user service unit in the AUR package and Linux release archives; standalone binaries embed the same template. Package installation never starts a server or enables lingering.
+
 ## 2.0.0 — 2026-09-17
 
 Stable release of the standalone Org engine and shared human/agent task workflow. Promotes the tested RC2 implementation; no task or storage behavior changes from RC2.

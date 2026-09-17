@@ -1,0 +1,16 @@
+# org-cli managed user service v1
+[Unit]
+Description=Org CLI local task board and API
+Documentation=https://github.com/DCPRevere/org-cli
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/org service run
+EnvironmentFile=-%E/org-cli/service.env
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+
+[Install]
+WantedBy=default.target

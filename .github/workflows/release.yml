@@ -64,6 +64,9 @@ jobs:
       - name: API and MCP process smoke tests
         run: python3 tests/server_smoke.py
 
+      - name: Service entrypoint and unit smoke tests
+        run: python3 tests/service_smoke.py
+
       - name: Browser task workflow
         run: |
           python3 -m venv "$RUNNER_TEMP/org-browser-tests"
@@ -105,9 +108,11 @@ jobs:
 
       - name: Package binaries
         run: |
+          cp packaging/systemd/org-cli.service artifacts/linux-x64/
+          cp packaging/systemd/org-cli.service artifacts/linux-arm64/
           cd artifacts
-          tar czf org-linux-x64.tar.gz -C linux-x64 org
-          tar czf org-linux-arm64.tar.gz -C linux-arm64 org
+          tar czf org-linux-x64.tar.gz -C linux-x64 org org-cli.service
+          tar czf org-linux-arm64.tar.gz -C linux-arm64 org org-cli.service
           tar czf org-osx-x64.tar.gz -C osx-x64 org
           tar czf org-osx-arm64.tar.gz -C osx-arm64 org
           zip -j org-win-x64.zip win-x64/org.exe

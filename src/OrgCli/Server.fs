@@ -348,7 +348,11 @@ let buildHttp (service: WorkspaceService) port enableMcp (token: string option) 
     if port < 0 || port > 65535 then
         invalidArg "port" "Port must be between 0 and 65535"
 
-    let builder = WebApplication.CreateSlimBuilder(WebApplicationOptions(Args = [||]))
+    // Do not let ASP.NET discover/watch appsettings across a caller's home or
+    // notes tree before we clear its defaults (especially in a user service).
+    let builder =
+        WebApplication.CreateSlimBuilder(WebApplicationOptions(Args = [||], ContentRootPath = AppContext.BaseDirectory))
+
     builder.Configuration.Sources.Clear()
 
     builder.Logging.ClearProviders().AddConsole(fun options -> options.LogToStandardErrorThreshold <- LogLevel.Trace)

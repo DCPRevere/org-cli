@@ -19,6 +19,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="../../packaging/systemd/org-cli.service" LogicalName="OrgCli.org-cli.service" />
     <EmbeddedResource Include="dashboard.html" LogicalName="OrgCli.dashboard.html" />
   </ItemGroup>
 
@@ -27,6 +28,7 @@
     <Compile Include="Version.fs" />
     <Compile Include="Server.fs" />
     <Compile Include="TaskCommands.fs" />
+    <Compile Include="ServiceCommands.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

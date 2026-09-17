@@ -13,4 +13,5 @@ options=('!strip')
 
 package() {
     install -Dm755 "${srcdir}/org" "${pkgdir}/usr/bin/org"
+    install -Dm644 "${srcdir}/org-cli.service" "${pkgdir}/usr/lib/systemd/user/org-cli.service"
 }

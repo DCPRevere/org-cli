@@ -39,6 +39,7 @@
     <Compile Include="DirectoryConfigTests.fs" />
     <Compile Include="VirtualWorkspaceTests.fs" />
     <Compile Include="ServiceTests.fs" />
+    <Compile Include="ServiceCommandsTests.fs" />
     <Compile Include="TaskWorkflowTests.fs" />
     <Compile Include="Tests.fs" />
   </ItemGroup>

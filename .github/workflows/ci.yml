@@ -37,6 +37,9 @@ jobs:
       - name: API and MCP process smoke tests
         run: python3 tests/server_smoke.py
 
+      - name: Service entrypoint and unit smoke tests
+        run: python3 tests/service_smoke.py
+
       - name: Browser task workflow
         run: |
           python3 -m venv "$RUNNER_TEMP/org-browser-tests"
