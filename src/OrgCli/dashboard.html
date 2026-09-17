@@ -337,7 +337,32 @@
                 color: var(--muted);
                 font-size: 12px;
             }
+            .meta { overflow-wrap: anywhere; }
+            .grid > *, .filters > * { min-width: 0; }
+            .box > .meta, .task .meta { display: block; overflow-wrap: anywhere; }
+            .task-title { overflow-wrap: anywhere; }
+            .preview { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+            .view-controls { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; margin-bottom: 16px; }
+            .view-controls label { margin: 0; }
+            .layout.wide { max-width: none; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); }
+            aside, main { min-width: 0; }
+            .board { display: grid; grid-template-columns: repeat(6, minmax(240px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 12px; }
+            .column { min-width: 0; }
+            .column h3, .agenda-group h3 { font-size: 15px; margin: 0 0 12px; }
+            .column .task, .agenda-group .task { margin-bottom: 9px; }
+            .calendar-scroll { overflow-x: auto; }
+            .calendar { display: grid; grid-template-columns: repeat(7, minmax(130px, 1fr)); min-width: 910px; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+            .calendar-day { background: var(--bg); padding: 8px; min-height: 130px; }
+            .calendar-day.today { box-shadow: inset 0 3px var(--green); }
+            .calendar-day h3 { font-size: 12px; margin: 4px 0 8px; }
+            .calendar-day .task { padding: 8px; margin-bottom: 8px; }
+            .calendar-day .task-title { font-size: 13px; }
+            .calendar-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 14px; }
+            .calendar-nav h3 { margin: 0; font-size: 16px; }
+            .calendar-help { color: var(--muted); font-size: 12px; }
+            .overdue { color: var(--danger); }
             @media (max-width: 800px) {
+                .layout.wide { grid-template-columns: 1fr; }
                 header {
                     padding: 20px;
                 }
@@ -399,9 +424,18 @@
                     <h2>Work queue <small id="count"></small></h2>
                     <button id="new" disabled>+ New task</button>
                 </div>
+                <div class="view-controls">
+                    <label>Layout<select id="view">
+                        <option value="list">List</option><option value="board">Board</option>
+                        <option value="agenda">Agenda</option><option value="calendar">Calendar</option>
+                    </select></label>
+                    <label id="calendar-scale-label" hidden>Calendar range<select id="calendar-scale">
+                        <option value="month">Month</option><option value="week">Week</option>
+                    </select></label>
+                </div>
                 <div class="filters">
                     <label
-                        >View<select id="status">
+                        >Status<select id="status">
                             <option value="open">All open work</option>
                             <option value="ready">Ready to start</option>
                             <option value="working">In progress</option>
@@ -417,6 +451,11 @@
                             placeholder="All projects"
                     /></label>
                 </div>
+                <div class="filters">
+                    <label>Owner<input id="owner-filter" placeholder="All owners" /></label>
+                    <label>Search<input id="search-filter" type="search" placeholder="Title, file, tag or context" /></label>
+                </div>
+                <p id="coverage" class="meta" role="status"></p>
                 <div id="list" class="list">
                     <p class="empty">Connect to load your workspace.</p>
                 </div>
@@ -548,53 +587,162 @@
                         .forEach((b) => (b.disabled = !canWrite));
                 }
             }
+            let calendarDate = new Date();
+            const expandedGroups = new Set();
+            function rememberExpansion(element, key, defaultOpen = false) {
+                element.open = defaultOpen || expandedGroups.has(key);
+                element.ontoggle = () => {
+                    if (!element.isConnected) return;
+                    if (element.open) expandedGroups.add(key);
+                    else expandedGroups.delete(key);
+                };
+            }
+            const dayKey = (date) => [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
+            const todayKey = () => dayKey(new Date());
+            const finished = (row) => ["done", "cancelled"].includes(row.status);
+            function dateLabel(stamp) {
+                if (!stamp) return "";
+                return stamp.date + (stamp.time ? " " + stamp.time : "") +
+                    (stamp.end ? " – " + dateLabel(stamp.end) : "") +
+                    (stamp.repeater ? " (" + stamp.repeater + ")" : "");
+            }
             async function load(more = false) {
-                const response = await request("tasks", {
-                    status: $("status").value,
-                    project: $("project-filter").value,
-                    limit: 50,
-                    offset: more ? (next ?? 0) : 0,
-                });
-                rows = more ? rows.concat(response.tasks) : response.tasks;
-                next = response.next_offset;
+                const comprehensive = $("view").value !== "list" || $("search-filter").value.trim();
+                let offset = more ? (next ?? 0) : 0;
+                let collected = more ? [...rows] : [];
+                let response;
+                do {
+                    response = await request("tasks", {
+                        status: $("status").value,
+                        project: $("project-filter").value,
+                        owner: $("owner-filter").value,
+                        limit: 100,
+                        offset,
+                    });
+                    collected.push(...response.tasks);
+                    offset = response.next_offset;
+                } while (comprehensive && offset !== null);
+                rows = collected;
+                next = offset;
                 $("more").hidden = next === null;
                 $("count").textContent = "· " + response.total;
+                $("coverage").textContent = next === null ? "All matching tasks loaded." : rows.length + " of " + response.total + " tasks loaded. Load more to see the rest.";
                 renderList();
             }
+            function taskCard(row, compact = false, eventLabel = "") {
+                const b = el("button", undefined, "task");
+                b.setAttribute("aria-pressed", String(selected?.ref === row.ref));
+                b.append(el("span", row.status, "badge " + row.status));
+                if (eventLabel) b.append(el("span", eventLabel, "meta"));
+                b.append(el("span", row.title, "task-title"));
+                const add = (text, cls = "meta") => { if (text) b.append(el("span", text, cls)); };
+                add("Owner: " + (row.owner || "Unassigned"));
+                if (row.claimed_by) add("Claimed by: " + row.claimed_by + (compact ? "" : " · until " + row.claim_until));
+                add("File: " + row.file);
+                if (row.priority) add("Priority " + row.priority);
+                if (!compact) {
+                    if (row.outline?.length) add(row.outline.join(" / "));
+                    if (row.project) add("Project: " + row.project);
+                    if (row.state && row.state.toLowerCase() !== row.status) add("Org state: " + row.state);
+                    if (row.scheduled) add("Scheduled: " + dateLabel(row.scheduled));
+                    if (row.deadline) add("Deadline: " + dateLabel(row.deadline));
+                    if (row.tags?.length) add("Tags: " + row.tags.join(", "));
+                    if (row.acceptance) add("Acceptance: " + row.acceptance, "meta preview");
+                    if (row.depends_on?.length) add("Dependencies: " + row.depends_on.length);
+                    for (const blocker of row.blockers) add(blocker, "meta overdue");
+                    if (row.review_required && !finished(row)) add(row.status === "review" ? "Awaiting review" + (row.submitted_by ? " · submitted by " + row.submitted_by : "") : "Review required");
+                } else if (row.blockers.length) add(row.blockers.length + " blocker(s)", "meta overdue");
+                if (!finished(row) && row.deadline?.date < todayKey()) add("Overdue deadline", "meta overdue");
+                if (!finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta overdue");
+                if (row.claim_stale || row.submission_stale) add("Requirements changed", "meta overdue");
+                if (row.claim_expired) add("Claim expired", "meta overdue");
+                b.onclick = () => run(() => choose(row));
+                return b;
+            }
+            function planningEvents(tasks) {
+                return tasks.flatMap(row => ["scheduled", "deadline"].filter(kind => row[kind]).map(kind => ({row, kind, stamp: row[kind]})))
+                    .sort((a,b) => (a.stamp.date + (a.stamp.time || "")).localeCompare(b.stamp.date + (b.stamp.time || "")) || a.row.title.localeCompare(b.row.title));
+            }
             function renderList() {
-                const list = $("list");
+                const list = $("list"), view = $("view").value;
+                document.querySelector(".layout").classList.toggle("wide", view !== "list");
+                $("calendar-scale-label").hidden = view !== "calendar";
+                list.className = view === "board" ? "board" : "list";
+                const calendarScroll = list.querySelector(".calendar-scroll")?.scrollLeft || 0;
                 list.replaceChildren();
-                if (!rows.length) {
-                    list.append(el("p", "No tasks in this view.", "empty"));
-                    return;
+                const query = $("search-filter").value.trim().toLowerCase();
+                const visible = rows.filter(row => [row.title, row.file, row.owner, row.project, row.acceptance, ...(row.tags || []), ...(row.outline || [])].join(" ").toLowerCase().includes(query));
+                if (view === "board") {
+                    for (const [status, name] of [["ready","Ready"],["working","In progress"],["review","Review"],["blocked","Blocked"],["done","Done"],["cancelled","Cancelled"]]) {
+                        const group = visible.filter(row => row.status === status);
+                        const column = el(["done","cancelled"].includes(status) ? "details" : "section", undefined, "column");
+                        if (column.tagName === "DETAILS") rememberExpansion(column, "board-" + status);
+                        column.append(el(column.tagName === "DETAILS" ? "summary" : "h3", name + " · " + group.length));
+                        group.forEach(row => column.append(taskCard(row)));
+                        list.append(column);
+                    }
+                } else if (view === "agenda") {
+                    const groups = new Map();
+                    for (const event of planningEvents(visible)) {
+                        const day = event.stamp.date;
+                        const key = day < todayKey() && !finished(event.row) ? "Overdue / scheduled earlier" : day === todayKey() ? "Today · " + day : day;
+                        if (!groups.has(key)) groups.set(key, []);
+                        groups.get(key).push(event);
+                    }
+                    for (const [label, events] of [...groups].sort(([a], [b]) => a.startsWith("Overdue") ? -1 : b.startsWith("Overdue") ? 1 : 0)) {
+                        const group = el("section", undefined, "agenda-group");
+                        group.append(el("h3", label));
+                        events.forEach(event => group.append(taskCard(event.row, false, (event.kind === "deadline" ? "Deadline: " : "Scheduled: ") + dateLabel(event.stamp))));
+                        list.append(group);
+                    }
+                    appendUnscheduled(list, visible);
+                } else if (view === "calendar") renderCalendar(list, visible);
+                else visible.forEach(row => list.append(taskCard(row)));
+                const scroller = list.querySelector(".calendar-scroll");
+                if (scroller) scroller.scrollLeft = calendarScroll;
+                if (!visible.length && view !== "calendar" && view !== "board") list.append(el("p", "No tasks in this view.", "empty"));
+            }
+            function appendUnscheduled(root, tasks) {
+                const undated = tasks.filter(row => !row.scheduled && !row.deadline);
+                if (!undated.length) return;
+                const collapsible = $("view").value === "calendar";
+                const group = el(collapsible ? "details" : "section", undefined, "agenda-group");
+                if (collapsible) rememberExpansion(group, "unscheduled", Boolean($("search-filter").value.trim()));
+                group.append(el(collapsible ? "summary" : "h3", "Unscheduled · " + undated.length));
+                undated.forEach(row => group.append(taskCard(row)));
+                root.append(group);
+            }
+            function renderCalendar(root, tasks) {
+                const week = $("calendar-scale").value === "week";
+                const start = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), week ? calendarDate.getDate() : 1);
+                start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+                const days = week ? 7 : Math.ceil(((new Date(calendarDate.getFullYear(), calendarDate.getMonth(), 1).getDay() + 6) % 7 + new Date(calendarDate.getFullYear(), calendarDate.getMonth() + 1, 0).getDate()) / 7) * 7;
+                const nav = el("div", undefined, "calendar-nav");
+                for (const [label, delta] of [["Previous",-1],["Today",0],["Next",1]]) {
+                    const button = el("button", label);
+                    button.onclick = () => {
+                        if (!delta) calendarDate = new Date();
+                        else if (week) calendarDate.setDate(calendarDate.getDate() + delta * 7);
+                        else calendarDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth() + delta, 1);
+                        renderList();
+                    };
+                    nav.append(button);
                 }
-                for (const row of rows) {
-                    const b = el("button", undefined, "task");
-                    b.setAttribute(
-                        "aria-pressed",
-                        String(selected?.ref === row.ref),
-                    );
-                    b.append(
-                        el("span", row.status, "badge " + row.status),
-                        el("span", row.title, "task-title"),
-                        el(
-                            "span",
-                            [
-                                row.project,
-                                row.owner ? "Assigned to " + row.owner : "",
-                                row.claimed_by
-                                    ? "Working: " + row.claimed_by
-                                    : "",
-                                row.priority ? "Priority " + row.priority : "",
-                            ]
-                                .filter(Boolean)
-                                .join(" · "),
-                            "meta",
-                        ),
-                    );
-                    b.onclick = () => run(() => choose(row));
-                    list.append(b);
+                nav.append(el("h3", week ? "Week of " + dayKey(start) : calendarDate.toLocaleDateString(undefined, {month:"long", year:"numeric"})));
+                root.append(nav, el("p", "Scheduled and deadline entries are separate. Select an entry for full details and workflow actions. Repeating tasks show their recorded occurrence; future repeats are not expanded.", "calendar-help"));
+                const scroll = el("div", undefined, "calendar-scroll"), grid = el("div", undefined, "calendar");
+                const events = planningEvents(tasks);
+                for (let i = 0; i < days; i++) {
+                    const date = new Date(start); date.setDate(start.getDate() + i);
+                    const key = dayKey(date), cell = el("section", undefined, "calendar-day" + (key === todayKey() ? " today" : ""));
+                    cell.dataset.date = key;
+                    cell.append(el("h3", date.toLocaleDateString(undefined, {weekday:"short", month:"short", day:"numeric"})));
+                    for (const event of events.filter(event => event.stamp.date <= key && (event.stamp.end?.date || event.stamp.date) >= key))
+                        cell.append(taskCard(event.row, true, (event.kind === "deadline" ? "Deadline: " : "Scheduled: ") + dateLabel(event.stamp)));
+                    grid.append(cell);
                 }
+                scroll.append(grid); root.append(scroll);
+                appendUnscheduled(root, tasks);
             }
             async function choose(row, preserveDraft = false) {
                 const version = ++selectionVersion;
@@ -640,6 +788,11 @@
                     el("h2", row.title, "detail-title"),
                     el("div", row.file + " · " + row.ref, "meta"),
                 );
+                const metadata = taskCard(row);
+                const summary = el("section", undefined, "box");
+                // Reuse card metadata without nesting an interactive card in the details panel.
+                for (const node of [...metadata.children].slice(2)) summary.append(node);
+                root.append(summary);
                 if (row.claim_stale || row.submission_stale) {
                     root.append(
                         el(
@@ -940,6 +1093,10 @@
             }, 3000);
             $("status").onchange = () => run(() => load());
             $("project-filter").onchange = () => run(() => load());
+            $("owner-filter").onchange = () => run(() => load());
+            $("search-filter").onchange = () => run(() => load());
+            $("view").onchange = () => run(async () => { if (connected) await load(); else renderList(); });
+            $("calendar-scale").onchange = renderList;
             $("more").onclick = () => run(() => load(true));
             $("new").onclick = () => {
                 createRequest = crypto.randomUUID();

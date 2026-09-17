@@ -545,3 +545,30 @@ let ``stale workflow recovery clears metadata with evidence and preserves editor
     Assert.DoesNotContain(":TASK_PHASE:", h.Text "/work/tasks.org")
     Assert.DoesNotContain(":TASK_SUBMISSION_CONTRACT:", h.Text "/work/tasks.org")
     Assert.Contains("Requirements changed in editor", h.Text "/work/tasks.org")
+
+[<Fact>]
+let ``task cards expose planning and source context without changing Org files`` () =
+    use h = new VirtualHost()
+
+    let content =
+        "* Project\n** Earlier sibling\n*** Old child\n** TODO [#A] Plan launch :release:team:\nSCHEDULED: <2026-09-17 Thu 09:30 +1w> DEADLINE: <2026-09-20 Sun>\n:PROPERTIES:\n:TASK_OWNER: daniel\n:END:\n** TODO Undated\n"
+
+    h.Put("/work/project.org", content)
+    let svc = service h
+    let entries = tasks svc "all"
+    let entry = entries |> Seq.find (fun row -> field row "title" = "Plan launch")
+    Assert.Equal("project.org", field entry "file")
+    Assert.Equal("daniel", field entry "owner")
+    Assert.Equal("A", field entry "priority")
+    Assert.Equal("Project", (entry["outline"][0]).GetValue<string>())
+    Assert.Single(entry["outline"].AsArray()) |> ignore
+    Assert.Equal("release", (entry["tags"][0]).GetValue<string>())
+    Assert.Equal("2026-09-17", field (entry["scheduled"]) "date")
+    Assert.Equal("09:30", field (entry["scheduled"]) "time")
+    Assert.Equal("+1w", field (entry["scheduled"]) "repeater")
+    Assert.Equal("2026-09-20", field (entry["deadline"]) "date")
+    Assert.Null(entry["deadline"]["time"])
+    let undated = entries |> Seq.find (fun row -> field row "title" = "Undated")
+    Assert.Null(undated["scheduled"])
+    Assert.Null(undated["deadline"])
+    Assert.Equal(content, h.Text "/work/project.org")

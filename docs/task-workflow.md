@@ -2,6 +2,34 @@
 
 Org CLI coordinates work between people and agents using ordinary Org files. The CLI, local browser board, HTTP API, and MCP tools call the same workflow. It supplies task state and coordination; the agent still chooses and performs work using its own tools.
 
+## Workspace views
+
+The browser offers List, Board, Agenda, and Calendar layouts with shared status,
+project, owner, and text filters. Cards show the relative source file, parent
+headings, owner (or Unassigned), active claimant, priority, project, tags,
+acceptance preview, scheduled time, deadline, and coordination warnings when
+present. Source folders do not determine ownership. Selecting a card opens the
+same full Org content, settings, evidence, history, and workflow actions in every
+layout. Switching layouts preserves drafts.
+
+Board groups work by workflow status; Done and Cancelled columns start collapsed.
+Use the Status filter to include completed work. Changes use the checked actions
+in the details panel rather than unrestricted card dragging.
+
+Agenda shows overdue deadlines and earlier scheduled work first, followed by
+dated entries and an Unscheduled section. Calendar provides Monday-first month
+and week views with Previous, Today, and Next navigation. Scheduled work and
+deadlines are separate, labelled entries; a task with both appears twice. Timestamp
+ranges span their recorded days. Dates and times retain Org's local wall-clock
+values. Repeater markers are displayed, but future occurrences are not expanded.
+Undated tasks remain accessible in a collapsible section below the calendar. Compact calendar entries open
+full details on selection.
+
+List uses explicit pagination. Board, Agenda, Calendar, and text search load all
+matching pages so tasks beyond the first page remain visible. Very large result
+sets may take longer to load; narrow the shared filters when needed. Themes offer
+System, Light, and Dark, remembering the choice in this browser.
+
 ## Start here
 
 ```sh

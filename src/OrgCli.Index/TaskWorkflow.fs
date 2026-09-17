@@ -281,8 +281,30 @@ let private status graph e =
     elif not (List.isEmpty (blockers graph e)) then "blocked"
     else "ready"
 
+let rec private planningJson (stamp: Timestamp) =
+    obj
+        [ "date", text (stamp.Date.ToString("yyyy-MM-dd", Globalization.CultureInfo.InvariantCulture))
+          "time",
+          (if stamp.HasTime then
+               text (stamp.Date.ToString("HH:mm", Globalization.CultureInfo.InvariantCulture))
+           else
+               null)
+          "repeater", (stamp.Repeater |> Option.map text |> Option.defaultValue null)
+          "end", (stamp.RangeEnd |> Option.map planningJson |> Option.defaultValue null) ]
+
 let private row ctx graph e =
     let h = e.Heading
+
+    let parents =
+        e.Doc.Headlines
+        |> List.takeWhile (fun candidate -> candidate.Position < h.Position)
+        |> List.fold
+            (fun stack candidate ->
+                candidate
+                :: (stack |> List.skipWhile (fun parent -> parent.Level >= candidate.Level)))
+            []
+        |> List.filter (fun parent -> parent.Level < h.Level)
+        |> List.rev
 
     obj
         [ "ref", text (ctx.Reference e.File e.Doc h.Position)
@@ -290,6 +312,18 @@ let private row ctx graph e =
           "title", text h.Title
           "file", text (Path.GetRelativePath(ctx.Root, e.File))
           "revision", text (hash (Runtime.readText e.File))
+          "outline", parents |> Seq.map (fun parent -> text parent.Title) |> arr
+          "tags", h.Tags |> Seq.map text |> arr
+          "scheduled",
+          (h.Planning
+           |> Option.bind (fun p -> p.Scheduled)
+           |> Option.map planningJson
+           |> Option.defaultValue null)
+          "deadline",
+          (h.Planning
+           |> Option.bind (fun p -> p.Deadline)
+           |> Option.map planningJson
+           |> Option.defaultValue null)
           "state", text (h.TodoKeyword |> Option.defaultValue "")
           "status", text (status graph e)
           "project", text (prop "TASK_PROJECT" h)

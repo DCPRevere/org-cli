@@ -96,3 +96,9 @@ python3 tests/server_smoke.py /path/to/published/org
 The .NET service tests include an entirely virtual filesystem/environment and real in-memory SQLite, plus live HTTP/MCP requests against that virtual workspace. Process tests cover stdio framing, EOF shutdown, concurrent capture retries, HTTP access checks, and ordinary CLI use after shutdown. The server is also available in `EnableRoam=false` builds.
 
 See the [MCP .NET SDK](https://github.com/modelcontextprotocol/csharp-sdk) and [transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports) for protocol details.
+
+Task results also include `outline` (parent heading titles), `tags` (explicit
+headline tags), and nullable `scheduled` / `deadline` objects. Each timestamp has
+`date` (`YYYY-MM-DD`), nullable `time` (`HH:mm`, no timezone conversion), nullable
+`repeater`, and nullable `end` (another timestamp object). Dates remain separate
+from workflow status and ownership; these fields are read from the Org heading.
