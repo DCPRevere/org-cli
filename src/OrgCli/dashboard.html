@@ -278,6 +278,7 @@
                 max-height: 420px;
                 overflow: auto;
             }
+            #activity:not(:empty) { padding: 8px 36px; }
             #message {
                 padding: 0 36px;
                 min-height: 0;
@@ -420,6 +421,7 @@
             </div>
         </header>
         <div id="message" role="status" aria-live="polite"></div>
+        <div id="activity" class="meta" role="status" aria-live="polite"></div>
         <div class="layout">
             <aside>
                 <div class="toolbar">
@@ -563,11 +565,24 @@
                 const headers = { "Content-Type": "application/json" };
                 if ($("token").value)
                     headers.Authorization = "Bearer " + $("token").value;
-                const response = await fetch("/api/v1/" + operation, {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), 30000);
+                let response, payload;
+                try {
+                    response = await fetch("/api/v1/" + operation, {
                     method: args === undefined ? "GET" : "POST",
                     headers,
                     body: args === undefined ? undefined : JSON.stringify(args),
-                });
+                    signal: controller.signal,
+                    });
+                    if (response.status !== 401) payload = await response.json();
+                } catch (error) {
+                    const uncertainWrite = ["task_create", "task_update", "task_action"].includes(operation);
+                    throw Error((controller.signal.aborted ? "The server took too long to respond." : "Could not load the server response.") +
+                        (uncertainWrite ? " The change may have been saved. Refresh and inspect the task before retrying." : " Check that the service is running, then retry."));
+                } finally {
+                    clearTimeout(timeout);
+                }
                 if (response.status === 401) {
                     connected = false;
                     $("token-label").hidden = false;
@@ -575,7 +590,6 @@
                     $("connect").textContent = "Unlock workspace";
                     throw Error("This workspace requires an access token. Enter it above to unlock.");
                 }
-                const payload = await response.json();
                 if (!response.ok || payload.ok === false)
                     throw Error(
                         payload.error?.message ||
@@ -585,9 +599,23 @@
                     );
                 return payload.data ?? payload;
             }
+            const pendingReads = [];
+            function read(fn) {
+                if (busy) pendingReads.push(fn);
+                else run(fn);
+            }
+            function writeControls() {
+                document.querySelectorAll("button[data-write], #new, #create-form button[type=submit]")
+                    .forEach(button => button.disabled = busy || !canWrite);
+            }
             async function run(fn, background = false) {
-                if (busy) return;
+                if (busy) {
+                    if (!background) message("An operation is still running. Wait for it to finish before making another change.");
+                    return;
+                }
                 busy = true;
+                writeControls();
+                $("activity").textContent = background ? "Refreshing…" : "Loading…";
                 document.body.setAttribute("aria-busy", "true");
                 if (!background) message("");
                 try {
@@ -601,9 +629,10 @@
                 } finally {
                     busy = false;
                     document.body.setAttribute("aria-busy", "false");
-                    document
-                        .querySelectorAll("button[data-write]")
-                        .forEach((b) => (b.disabled = !canWrite));
+                    $("activity").textContent = "";
+                    writeControls();
+                    const queued = pendingReads.shift();
+                    if (queued) read(queued);
                 }
             }
             let calendarDate = new Date();
@@ -675,7 +704,7 @@
                 if (!finished(row) && row.scheduled?.date < todayKey()) add("Scheduled earlier", "meta overdue");
                 if (row.claim_stale || row.submission_stale) add("Requirements changed", "meta overdue");
                 if (row.claim_expired) add("Claim expired", "meta overdue");
-                b.onclick = () => run(() => choose(row));
+                b.onclick = () => read(() => choose(row));
                 return b;
             }
             function planningEvents(tasks) {
@@ -1062,9 +1091,9 @@
                     }
                 }
             }
-            $("connect").onclick = () => run(connect);
+            $("connect").onclick = () => read(connect);
             $("token").onkeydown = (event) => {
-                if (event.key === "Enter") run(connect);
+                if (event.key === "Enter") read(connect);
             };
             $("detail").addEventListener("input", () => {
                 draftDirty = true;
@@ -1104,7 +1133,7 @@
                     );
                 }
             }
-            $("refresh").onclick = () => run(refreshView);
+            $("refresh").onclick = () => read(refreshView);
             // Poll only while visible, connected and idle. Do not touch the creation dialog.
             setInterval(() => {
                 if (
@@ -1115,13 +1144,13 @@
                 )
                     run(refreshView, true);
             }, 3000);
-            $("status").onchange = () => run(() => load());
-            $("project-filter").onchange = () => run(() => load());
-            $("owner-filter").onchange = () => run(() => load());
-            $("search-filter").onchange = () => run(() => load());
-            $("view").onchange = () => run(async () => { if (connected) await load(); else renderList(); });
+            $("status").onchange = () => read(() => load());
+            $("project-filter").onchange = () => read(() => load());
+            $("owner-filter").onchange = () => read(() => load());
+            $("search-filter").onchange = () => read(() => load());
+            $("view").onchange = () => read(async () => { if (connected) await load(); else renderList(); });
             $("calendar-scale").onchange = renderList;
-            $("more").onclick = () => run(() => load(true));
+            $("more").onclick = () => read(() => load(true));
             $("new").onclick = () => {
                 createRequest = crypto.randomUUID();
                 $("create-dialog").showModal();

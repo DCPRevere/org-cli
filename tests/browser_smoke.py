@@ -216,6 +216,7 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                 with socket.socket() as probe:
                     probe.bind(('127.0.0.1', 0))
                     local_port = probe.getsockname()[1]
+                Path(local_workspace, 'example.org').write_text('* TODO Open task\n* DONE Finished task\n')
                 local_env = dict(os.environ)
                 local_env.pop('ORG_API_TOKEN', None)
                 local_process = subprocess.Popen(
@@ -237,6 +238,32 @@ with tempfile.TemporaryDirectory(prefix='org-board-test-') as workspace, tempfil
                     expect(local_page.locator('#connect')).to_be_hidden()
                     expect(local_page.locator('#token')).to_be_hidden()
                     expect(local_page.locator('#actor')).to_have_value('')
+                    expect(local_page.locator('#list .task')).to_have_count(1)
+                    # A filter change during an in-flight refresh must not be dropped.
+                    held = []
+                    local_page.route('**/api/v1/tasks', lambda route: held.append(route), times=1)
+                    local_page.get_by_role('button', name='Refresh', exact=True).click()
+                    expect(local_page.locator('#activity')).to_contain_text('Loading')
+                    expect(local_page.locator('#new')).to_be_disabled()
+                    local_page.locator('#status').select_option('done')
+                    assert held
+                    held[0].continue_()
+                    expect(local_page.locator('#list .task')).to_contain_text('Finished task')
+                    expect(local_page.locator('#activity')).to_be_empty()
+                    # Transport failures must produce an actionable message and a usable retry.
+                    local_page.route('**/api/v1/tasks', lambda route: route.abort(), times=1)
+                    local_page.get_by_role('button', name='Refresh', exact=True).click()
+                    expect(local_page.locator('#message')).to_contain_text('Check that the service is running')
+                    expect(local_page.locator('body')).to_have_attribute('aria-busy', 'false')
+                    local_page.get_by_role('button', name='Refresh', exact=True).click()
+                    expect(local_page.locator('#message')).to_be_empty()
+                    expect(local_page.locator('#list .task')).to_contain_text('Finished task')
+                    # Opening and dismissing creation must not write a file.
+                    local_page.get_by_role('button', name='+ New task').click()
+                    expect(local_page.locator('#create-dialog')).to_be_visible()
+                    local_page.locator('#create-cancel').click()
+                    expect(local_page.locator('#create-dialog')).to_be_hidden()
+                    assert not Path(local_workspace, 'tasks.org').exists()
                     local_page.close()
                 finally:
                     local_process.send_signal(signal.SIGINT)
