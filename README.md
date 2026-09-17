@@ -47,6 +47,8 @@ A parser and CLI for org-mode files: headlines, TODO states, priorities, tags, t
 
 Intended for scripts and AI agents that need to read or edit an org-mode corpus without running Emacs.
 
+AI agents: read [AGENTS.md](AGENTS.md) before using org-cli on behalf of a user. It covers existing workspace practices, recommended conventions, safe coordination, and current routing limitations.
+
 ## Installation
 
 Pre-built, self-contained binaries for Linux, macOS, and Windows are attached to every [GitHub release](https://github.com/dcprevere/org-cli/releases). No .NET runtime required.
