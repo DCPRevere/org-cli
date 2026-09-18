@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Avoid unchanged polling redraws and preserve scroll/focus during live updates; refresh loaded pages together to prevent pagination jumps.
+
 - Refine the browser UI with compact view tabs, collapsible filters and removable chips, content-first task details, contextual evidence, local feedback, independent panes and a mobile Back view that preserves drafts.
 
 - Add outline navigation, safe rendered/source content, explicit/inherited property inspection and own-heading clock/history details.

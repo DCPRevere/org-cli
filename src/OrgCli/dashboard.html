@@ -889,7 +889,7 @@
                 return end.time ? new Date(end.date + "T" + end.time) < now : end.date < dayKey(now);
             }
             const eventLabel = event => (event.projected ? "Projected " : "") + ({deadline:"Deadline", scheduled:"Scheduled", appointment:"Appointment"}[event.kind]) + ": " + dateLabel(event.stamp);
-            async function load(more = false) {
+            async function load(more = false, minimumCount = 0) {
                 const comprehensive = $("view").value !== "list" || $("search-filter").value.trim() || $("workflow-filter").value;
                 savePreferences();
                 let offset = more ? (next ?? 0) : 0;
@@ -908,7 +908,7 @@
                     });
                     collected.push(...response.tasks);
                     offset = response.next_offset;
-                } while (comprehensive && offset !== null);
+                } while (offset !== null && (comprehensive || collected.length < minimumCount));
                 rows = collected;
                 if (workspace && response.board) { workspace.settings = response.board.settings; workspace.revision = response.board.revision; }
                 next = offset;
@@ -995,7 +995,31 @@
                 }
                 return events.sort((a,b) => (a.stamp.date + (a.stamp.time || "")).localeCompare(b.stamp.date + (b.stamp.time || "")) || a.row.title.localeCompare(b.row.title));
             }
+            let listSnapshot = "";
+            function preserveViewport(root, update) {
+                const panes = [root, ...root.querySelectorAll("*")].filter(node => node.scrollHeight > node.clientHeight || node.scrollWidth > node.clientWidth);
+                const positions = panes.map(node => ({node, key:node === root ? null : node.className, top:node.scrollTop, left:node.scrollLeft}));
+                const active = document.activeElement;
+                const buttons = [...root.querySelectorAll("button")];
+                const focused = root.contains(active) ? {id:active.id, index:buttons.indexOf(active), text:active.textContent} : null;
+                update();
+                if (focused && !active.isConnected) {
+                    const replacement = focused.id ? $(focused.id) : [...root.querySelectorAll("button")][focused.index];
+                    if (replacement && (focused.id || replacement.textContent === focused.text)) replacement.focus({preventScroll:true});
+                }
+                for (const position of positions) {
+                    const node = position.node.isConnected ? position.node : [...root.querySelectorAll("*")].find(candidate => position.key && candidate.className === position.key);
+                    if (node) { node.scrollTop = position.top; node.scrollLeft = position.left; }
+                }
+            }
             function renderList() {
+                const snapshot = JSON.stringify([rows, selected?.ref, dayKey(calendarDate), todayKey(), workspace?.settings, workspace?.files, canWrite,
+                    ...["view","search-filter","workflow-filter","file-filter","state-filter","status","project-filter","owner-filter","calendar-scale"].map(id => $(id).value)]);
+                if (snapshot === listSnapshot) return;
+                preserveViewport(document.querySelector("aside"), renderListContent);
+                listSnapshot = snapshot;
+            }
+            function renderListContent() {
                 const list = $("list"), view = $("view").value;
                 syncViewControls();
                 document.querySelector(".layout").classList.toggle("wide", view !== "list");
@@ -1119,8 +1143,7 @@
             }
             async function reloadRows() {
                 const count = rows.length;
-                await load();
-                while (next !== null && rows.length < count) await load(true);
+                await load(false, count);
             }
             function currentRow(row) {
                 const candidates = rows.filter(task => row.id ? task.id === row.id : task.file === row.file && task.title === row.title && JSON.stringify(task.outline) === JSON.stringify(row.outline));
@@ -1161,7 +1184,7 @@
                 selected = entry;
                 fetched = data;
                 renderList();
-                renderDetail();
+                preserveViewport($("detail"), renderDetail);
                 document.body.classList.add("has-selection");
                 if (!preserveDraft || wasOpen) document.body.classList.add("detail-open");
                 if (!preserveDraft) {
@@ -1673,8 +1696,7 @@
                 // Preserve all loaded pages, so polling does not collapse pagination.
                 const count = Math.max(rows.length, 50);
                 await loadWorkspace();
-                await load();
-                while (next !== null && rows.length < count) await load(true);
+                await load(false, count);
                 if (!selected) return;
                 let current = rows.find((r) => r.ref === selected.ref);
                 if (!current && selected._outline) {

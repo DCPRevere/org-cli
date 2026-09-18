@@ -61,6 +61,19 @@ with tempfile.TemporaryDirectory(prefix='org-workflow-board-') as temp, tempfile
             expect(page.get_by_role('button',name='Cancel task',exact=True)).to_have_count(0)
             expect(page.locator('#detail')).not_to_contain_text('No acceptance criteria recorded')
             assert page.locator('#entry-content').bounding_box()['y'] < 600
+            # Unchanged polling must preserve DOM identity and keyboard focus.
+            card.focus()
+            card.evaluate('node => window.pollCard = node')
+            page.wait_for_timeout(3500)
+            assert card.evaluate('node => node === window.pollCard')
+            expect(card).to_be_focused()
+            # A file update must preserve the scrolled detail pane.
+            page.locator('#detail').evaluate('node => node.scrollTop = 250')
+            scroll_before = page.locator('#detail').evaluate('node => node.scrollTop')
+            source.write_text(source.read_text().replace('Write a clear summary', 'Write a revised summary'))
+            expect(page.locator('#entry-content')).to_contain_text('Write a revised summary', timeout=10000)
+            assert abs(page.locator('#detail').evaluate('node => node.scrollTop') - scroll_before) <= 1
+            page.locator('#detail').evaluate('node => node.scrollTop = 0')
             page.set_viewport_size({'width':1400,'height':1000})
             page.screenshot(animations='disabled', path='/tmp/org-design-light.png')
             page.locator('#theme').select_option('dark')
